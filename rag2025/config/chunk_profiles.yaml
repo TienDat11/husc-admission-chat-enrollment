@@ -1,0 +1,47 @@
+# Chunk Profile Configuration (YAML)
+# Defines chunking strategies for different document types
+
+profiles:
+  faq:
+    description: "FAQ-style Q&A documents (short, atomic answers)"
+    chunk_size: 320
+    overlap: 60
+    separator_priority:
+      - "\n\n"
+      - "\n"
+      - " "
+    min_tokens: 80
+    compression: "summary"
+    preserve_metadata_fields:
+      - "faq_type"
+      - "audience"
+      - "info_type"
+
+  policy:
+    description: "Legal/policy documents (hierarchical structure)"
+    chunk_size: 450
+    overlap: 90
+    preserve_sections: true
+    section_regex: "^Chương|Điều|Khoản|Mục"
+    separator_priority:
+      - "\n\n\n"
+      - "\n\n"
+      - "\n"
+    min_tokens: 150
+    compression: "full_text"
+    preserve_metadata_fields:
+      - "source"
+      - "effective_date"
+      - "unit"
+
+  auto:
+    description: "Auto-detect based on metadata (default)"
+    chunk_size: 350
+    overlap: 70
+    separator_priority:
+      - "\n\n"
+      - "\n"
+      - ". "
+      - " "
+    min_tokens: 100
+    compression: "adaptive"
