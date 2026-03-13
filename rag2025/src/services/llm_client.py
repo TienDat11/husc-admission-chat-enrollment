@@ -16,13 +16,21 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
 
+from dotenv import load_dotenv
 from loguru import logger
 from openai import AsyncOpenAI
+from openai import PermissionDeniedError
+
+# Load .env from the project root (rag2025/) regardless of cwd
+# override=True ensures .env values take precedence over system env vars
+load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env", override=True)
 from tenacity import (
     retry,
     retry_if_exception_type,
+    retry_if_not_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
@@ -37,13 +45,50 @@ class LLMResponse:
         self.provider = provider
 
     def as_json(self) -> Dict[str, Any]:
-        """Parse content as JSON, stripping markdown fences if present."""
+        """Parse content as JSON, stripping markdown fences if present.
+
+        Handles:
+        - Pure JSON
+        - ```json ... ``` fenced blocks
+        - Text before/after a JSON block (extracts first {...} or [...])
+        """
         text = self.content.strip()
+
+        # Strip markdown code fences (```json ... ``` or ``` ... ```)
         if text.startswith("```"):
             lines = text.split("\n")
             # remove first line (```json or ```) and last ```
-            text = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
-        return json.loads(text.strip())
+            inner = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+            text = inner.strip()
+
+        # Try direct parse first
+        try:
+            return json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Try to extract first JSON object or array from text
+        # (handles cases where model adds text before/after JSON)
+        for start_char, end_char in (("{", "}"), ("[", "]")):
+            start = text.find(start_char)
+            if start == -1:
+                continue
+            # Find matching closing bracket
+            depth = 0
+            for i, ch in enumerate(text[start:], start):
+                if ch == start_char:
+                    depth += 1
+                elif ch == end_char:
+                    depth -= 1
+                    if depth == 0:
+                        candidate = text[start:i + 1]
+                        try:
+                            return json.loads(candidate)
+                        except (json.JSONDecodeError, ValueError):
+                            break
+
+        # Final attempt: raise original error
+        return json.loads(text)
 
     def __str__(self) -> str:
         return self.content
@@ -133,6 +178,8 @@ class UnifiedLLMClient:
     def __init__(self, force_model: Optional[str] = None) -> None:
         self._providers = _build_providers()
         self._force_model = force_model
+        # Circuit breaker: track providers that returned permanent errors
+        self._broken_providers: Set[str] = set()
 
         if not self._providers:
             logger.warning(
@@ -147,13 +194,16 @@ class UnifiedLLMClient:
         return AsyncOpenAI(
             api_key=provider.api_key,
             base_url=provider.base_url,
+            # Override User-Agent: some providers (e.g. ramclouds.me) block
+            # requests with "OpenAI/Python" UA. Use a neutral UA instead.
+            default_headers={"User-Agent": "python-httpx/0.27.0"},
         )
 
     @retry(
         stop=stop_after_attempt(2),
         wait=wait_exponential(min=1, max=8),
-        retry=retry_if_exception_type(Exception),
-        reraise=False,
+        retry=retry_if_not_exception_type(PermissionDeniedError),
+        reraise=True,
     )
     async def _call_provider(
         self,
@@ -163,6 +213,13 @@ class UnifiedLLMClient:
         max_tokens: int,
         json_mode: bool,
     ) -> LLMResponse:
+        # Skip immediately if provider is known broken (PermissionDenied)
+        if provider.name in self._broken_providers:
+            raise PermissionDeniedError(
+                message=f"Provider {provider.name} is circuit-broken (permanent error)",
+                response=None,  # type: ignore[arg-type]
+                body=None,
+            )
         client = self._get_client(provider)
         model = self._force_model or provider.model
 
@@ -206,12 +263,20 @@ class UnifiedLLMClient:
         messages.append({"role": "user", "content": user_message})
 
         for provider in self._providers:
+            if provider.name in self._broken_providers:
+                logger.debug(f"LLM [{provider.name}] skipped (circuit-broken)")
+                continue
             try:
                 result = await self._call_provider(
                     provider, messages, temperature, max_tokens, json_mode=False
                 )
                 logger.debug(f"LLM [{provider.name}/{result.model}]: OK")
                 return result
+            except PermissionDeniedError as exc:
+                logger.warning(
+                    f"LLM [{provider.name}] PermissionDenied – marking as broken: {exc}"
+                )
+                self._broken_providers.add(provider.name)
             except Exception as exc:
                 logger.warning(f"LLM [{provider.name}] failed: {exc}")
 
@@ -235,21 +300,53 @@ class UnifiedLLMClient:
         messages.append({"role": "user", "content": user_message})
 
         for provider in self._providers:
-            try:
-                result = await self._call_provider(
-                    provider, messages, temperature, max_tokens, json_mode=True
-                )
+            # Skip circuit-broken providers immediately
+            if provider.name in self._broken_providers:
+                logger.debug(f"LLM JSON [{provider.name}] skipped (circuit-broken)")
+                continue
+            # Try with json_mode first, fallback to plain text if not supported
+            for use_json_mode in (True, False):
                 try:
-                    return result.as_json()
-                except (json.JSONDecodeError, ValueError):
-                    # Provider didn't return valid JSON despite json_mode
-                    # Try without json_mode
-                    result2 = await self._call_provider(
-                        provider, messages, temperature, max_tokens, json_mode=False
+                    result = await self._call_provider(
+                        provider, messages, temperature, max_tokens,
+                        json_mode=use_json_mode,
                     )
-                    return result2.as_json()
-            except Exception as exc:
-                logger.warning(f"LLM JSON [{provider.name}] failed: {exc}")
+                    try:
+                        return result.as_json()
+                    except (json.JSONDecodeError, ValueError) as parse_err:
+                        if use_json_mode:
+                            # json_mode returned non-JSON, try plain text
+                            continue
+                        logger.warning(
+                            f"LLM JSON [{provider.name}] returned non-JSON in plain mode "
+                            f"({parse_err}); content[:120]={result.content[:120]!r}"
+                        )
+                        break
+                except PermissionDeniedError as exc:
+                    if use_json_mode:
+                        # json_mode not supported by this model → try plain text
+                        # Do NOT mark provider as broken yet (may work in plain mode)
+                        logger.debug(
+                            f"LLM JSON [{provider.name}] json_mode PermissionDenied "
+                            f"(model may not support JSON mode), retrying plain: {exc}"
+                        )
+                        continue
+                    # Plain mode also PermissionDenied → content blocked, mark broken
+                    logger.warning(
+                        f"LLM JSON [{provider.name}] PermissionDenied in plain mode – "
+                        f"marking as broken: {exc}"
+                    )
+                    self._broken_providers.add(provider.name)
+                    break
+                except Exception as exc:
+                    if use_json_mode:
+                        # json_mode not supported → try plain
+                        logger.debug(
+                            f"LLM JSON [{provider.name}] json_mode failed ({type(exc).__name__}), retrying plain"
+                        )
+                        continue
+                    logger.warning(f"LLM JSON [{provider.name}] failed: {exc}")
+                    break  # both modes failed for this provider, try next
 
         raise RuntimeError("All LLM providers failed for JSON mode")
 
