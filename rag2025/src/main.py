@@ -564,6 +564,7 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
                 query=original_query,
                 chunks=chunks,
                 top_k=top_k,
+                apply_lost_in_middle=True,
             )
 
         status_code = "SUCCESS"
