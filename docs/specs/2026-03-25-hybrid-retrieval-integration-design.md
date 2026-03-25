@@ -86,11 +86,31 @@ Enable BM25 hybrid retrieval (dense + sparse) in the RAG pipeline to improve rec
 ### Key Components
 
 #### 1. Configuration (`config/settings.py`)
-Add new setting:
+Add new settings:
 ```python
+# Hybrid Retrieval Configuration
 USE_HYBRID_RETRIEVAL: bool = Field(
     default=False,
     description="Enable hybrid retrieval (dense + BM25 sparse)"
+)
+
+HYBRID_FUSION_DENSE_WEIGHT: float = Field(
+    default=0.6,
+    ge=0.0,
+    le=1.0,
+    description="Weight for dense retrieval in RRF fusion (0.0-1.0)"
+)
+
+HYBRID_FUSION_SPARSE_WEIGHT: float = Field(
+    default=0.4,
+    ge=0.0,
+    le=1.0,
+    description="Weight for sparse (BM25) retrieval in RRF fusion (0.0-1.0)"
+)
+
+BM25_INDEX_PATH: Optional[str] = Field(
+    default=None,
+    description="Path to persist BM25 index (None = in-memory only)"
 )
 ```
 
@@ -106,26 +126,33 @@ async def startup_event():
     if settings.USE_HYBRID_RETRIEVAL:
         logger.info("Initializing Hybrid Retriever (dense + BM25)...")
 
-        # Load corpus from LanceDB
-        corpus_texts, corpus_ids = await load_corpus_for_bm25()
+        try:
+            # Load corpus from LanceDB
+            corpus_texts, corpus_ids = await load_corpus_for_bm25()
 
-        # Initialize HybridRetriever
-        from services.retriever import HybridRetriever
-        from services.embedding import EmbeddingService
-        from services.vector_store import VectorStore
+            # Initialize HybridRetriever
+            from services.retriever import HybridRetriever
+            from services.embedding import EmbeddingService
+            from services.vector_store import VectorStore
 
-        embedding_service = EmbeddingService(settings)
-        vector_store = VectorStore(settings)  # Wraps LanceDB
+            embedding_service = EmbeddingService(settings)
+            vector_store = VectorStore(settings)  # Wraps LanceDB
 
-        hybrid_retriever_service = HybridRetriever(
-            embedding_service=embedding_service,
-            vector_store=vector_store,
-            settings=settings
-        )
+            hybrid_retriever_service = HybridRetriever(
+                embedding_service=embedding_service,
+                vector_store=vector_store,
+                settings=settings
+            )
 
-        # Build BM25 index
-        hybrid_retriever_service.build_bm25_index(corpus_texts, corpus_ids)
-        logger.info("Hybrid Retriever ready")
+            # Build BM25 index (in-memory)
+            hybrid_retriever_service.build_bm25_index(corpus_texts, corpus_ids)
+            logger.info(f"Hybrid Retriever ready: {len(corpus_texts)} chunks indexed")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize Hybrid Retriever: {e}")
+            logger.warning("Falling back to dense-only retrieval")
+            hybrid_retriever_service = None
+            # Continue startup - dense-only path will be used
 ```
 
 #### 3. Corpus Loading Helper
@@ -197,31 +224,73 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
    - Load all chunks from LanceDB table
    - Extract `sparse_terms` (or fallback to `text`)
    - Build BM25 index in memory via `rank_bm25.BM25Okapi`
+   - **If build fails:** log error, set `hybrid_retriever_service = None`, continue with dense-only
 
 2. **Query Time:**
    - User query → HYDE variants (existing)
    - For each variant:
      - **Dense search:** Encode variant → LanceDB vector search → top-K results
      - **Sparse search:** Tokenize variant → BM25 scoring → top-K results
-     - **RRF fusion:** Merge dense + sparse with weights (0.6 dense, 0.4 sparse)
+     - **RRF fusion:** Merge dense + sparse with configurable weights (`HYBRID_FUSION_DENSE_WEIGHT` / `HYBRID_FUSION_SPARSE_WEIGHT`)
    - **Reranking:** Cross-encoder on top-50 fused results
    - **Deduplication:** Merge across variants (existing logic)
    - LLM generation (existing)
 
 ---
 
+## BM25 Index Lifecycle
+
+### Build Strategy: Startup (In-Memory)
+The BM25 index is built **once at startup** from the full LanceDB corpus:
+
+```
+App starts
+    ├── LanceDB table loaded (existing)
+    ├── USE_HYBRID_RETRIEVAL = True?
+    │       ├── YES → scan all rows → build BM25Okapi in RAM → ready
+    │       │          (on any error → warn → hybrid_retriever_service = None)
+    │       └── NO  → skip (dense-only)
+    └── API accepts requests
+```
+
+**Rationale:** BM25 index build for ~1000 chunks takes <3 seconds. In-memory BM25 lookup is O(n) per query (~1ms at 1k chunks). The corpus is read-heavy and rarely mutated, so startup build is optimal.
+
+### Persistence Strategy: In-Memory Only (v1)
+The BM25 index is **not persisted to disk** in v1:
+- `BM25_INDEX_PATH = None` by default
+- On every restart, the index rebuilds from LanceDB in <5s
+- This avoids serialization complexity and stale-index risks
+
+**v2 consideration:** If corpus grows beyond 50k chunks and startup rebuild exceeds 30s, persist via `pickle` to `BM25_INDEX_PATH`. Stamp the file with LanceDB's row count; invalidate on mismatch.
+
+### Corpus Sync Strategy
+When new chunks are added (via `/v2/graph/update` or ingestion scripts):
+- **Dense retrieval:** LanceDB updates automatically (existing behavior)
+- **BM25 index:** becomes **stale** — it does NOT update automatically in v1
+
+**Sync approach for v1:** Manual rebuild triggered by calling the rebuild endpoint or restarting the service. Acceptable because:
+- Admission data is updated infrequently (1-2 times per semester)
+- Dense retrieval still covers new chunks immediately
+- BM25 only affects keyword-heavy queries
+
+**v2 consideration:** Add a `POST /admin/hybrid/rebuild` endpoint guarded by `x-admin-token` to trigger BM25 rebuild on demand without restart.
+
+---
+
 ## Implementation Plan
 
 ### Phase 1: Configuration & Adapter (1 hour)
-- [ ] Add `USE_HYBRID_RETRIEVAL` to `config/settings.py`
+- [ ] Add `USE_HYBRID_RETRIEVAL`, `HYBRID_FUSION_DENSE_WEIGHT`, `HYBRID_FUSION_SPARSE_WEIGHT`, `BM25_INDEX_PATH` to `config/settings.py`
 - [ ] Create `VectorStore` wrapper class for `HybridRetriever` compatibility
 - [ ] Create `EmbeddingService` wrapper for `HybridRetriever` compatibility
+- [ ] Update `HybridRetriever._reciprocal_rank_fusion()` call to pass weights from `settings`
 
 ### Phase 2: Startup Integration (2 hours)
 - [ ] Implement `load_corpus_for_bm25()` helper
-- [ ] Add `HybridRetriever` initialization in `startup_event()`
+- [ ] Add `HybridRetriever` initialization in `startup_event()` with try-catch
 - [ ] Add BM25 index build step
-- [ ] Add error handling for missing dependencies
+- [ ] Add graceful fallback: if BM25 build fails, log warning and set `hybrid_retriever_service = None`
+- [ ] Verify dense-only path still works when hybrid init fails
 
 ### Phase 3: Query Path Integration (2 hours)
 - [ ] Modify `/query` endpoint to check `USE_HYBRID_RETRIEVAL` flag
@@ -265,15 +334,84 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
 
 ---
 
+## Fallback Strategy
+
+The system follows a **graceful degradation** model with three levels:
+
+```
+Level 1: USE_HYBRID_RETRIEVAL=True + BM25 build SUCCESS
+    → Full hybrid pipeline (dense + BM25 + RRF + reranker)
+    → Best recall
+
+Level 2: USE_HYBRID_RETRIEVAL=True + BM25 build FAILS
+    → hybrid_retriever_service = None (set during startup catch)
+    → /query endpoint detects None → auto-falls back to dense-only
+    → WARNING logged: "Hybrid init failed, using dense-only fallback"
+    → No service interruption, graceful degradation
+
+Level 3: USE_HYBRID_RETRIEVAL=False (default)
+    → Dense-only path (current production behavior)
+    → Zero risk, baseline behavior
+```
+
+**On BM25 build failure:**
+- Exception caught in `startup_event()` try-catch block
+- `hybrid_retriever_service` remains `None`
+- App continues startup and serves requests
+- All queries use dense-only path silently
+- Operators are alerted via `logger.error()` message with full traceback
+- No retry on startup (avoid hanging); operator must fix and restart
+
+**Failure scenarios covered:**
+| Failure | Effect | Recovery |
+|---------|--------|----------|
+| LanceDB table empty | Warn + skip BM25 (empty corpus is valid) | Auto-recover when data ingested + restart |
+| `rank_bm25` missing | Error + fallback to dense | Install dependency |
+| LanceDB scan timeout | Error + fallback to dense | Restart service |
+| `sparse_terms` column absent | Fallback to `text` field per-row | No action needed |
+
+---
+
+## Fusion Weights Configuration
+
+Currently, RRF fusion weights are **hardcoded** in `retriever.py` line 328:
+```python
+# retriever.py line 327-328 (current)
+fused_results = self._reciprocal_rank_fusion(
+    dense_results, sparse_ids, weight_dense=0.6, weight_sparse=0.4
+)
+```
+
+**Fix:** Wire `HYBRID_FUSION_DENSE_WEIGHT` and `HYBRID_FUSION_SPARSE_WEIGHT` from `settings` through the `retrieve()` call chain, so they can be tuned without code changes:
+
+```python
+# In HybridRetriever.retrieve() - use settings fields
+fused_results = self._reciprocal_rank_fusion(
+    dense_results,
+    sparse_ids,
+    weight_dense=self.settings.HYBRID_FUSION_DENSE_WEIGHT,   # 0.6 default
+    weight_sparse=self.settings.HYBRID_FUSION_SPARSE_WEIGHT,  # 0.4 default
+)
+```
+
+**Default values rationale:**
+- `dense=0.6, sparse=0.4` is the empirically established baseline from academic literature (Ma et al. 2022)
+- Vietnamese text has richer morphology → slightly prefer dense embeddings (Qwen3 trained multilingually)
+- Operators can tune via `.env` without code changes: `HYBRID_FUSION_DENSE_WEIGHT=0.5` for more balanced fusion
+
+---
+
 ## Risks & Mitigations
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| BM25 index build fails at startup | HIGH | Graceful fallback to dense-only, log warning |
-| Memory overhead for BM25 index | MEDIUM | Monitor memory usage, consider lazy loading |
-| Increased query latency | MEDIUM | Make hybrid retrieval opt-in via config flag |
-| Breaking existing dense-only path | HIGH | Preserve existing code path, add feature flag |
-| `sparse_terms` missing in some chunks | LOW | Fallback to `text` field for BM25 indexing |
+| BM25 index build fails at startup | HIGH | Try-catch in startup → log error → set `hybrid_retriever_service = None` → auto-fallback to dense-only. No service interruption. |
+| Memory overhead for BM25 index | MEDIUM | Monitor memory usage. BM25Okapi for 10k chunks ~50MB. Acceptable for modern servers (8GB+ RAM). |
+| Increased query latency | MEDIUM | Make hybrid retrieval opt-in via config flag. Measure p95 latency in staging before production rollout. |
+| Breaking existing dense-only path | HIGH | Preserve existing code path with `if hybrid_retriever_service else` branch. Feature flag defaults to `False`. |
+| `sparse_terms` missing in some chunks | LOW | Fallback to `text` field for BM25 indexing (per-row check in `load_corpus_for_bm25()`). |
+| BM25 index becomes stale after new chunks added | MEDIUM | Document manual rebuild requirement. Dense retrieval covers new chunks immediately. Consider v2 auto-rebuild endpoint. |
+| Fusion weights not tunable | LOW | Wire `HYBRID_FUSION_DENSE_WEIGHT` / `HYBRID_FUSION_SPARSE_WEIGHT` from settings. Operators can tune via `.env`. |
 
 ---
 
@@ -342,16 +480,22 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
 ## Open Questions
 
 1. **Q:** Should we persist BM25 index to disk to avoid rebuild on restart?
-   **A:** Not in v1. In-memory build is fast (<5s for 1000 chunks). Consider for v2 if corpus grows >10k chunks.
+   **A:** Not in v1. In-memory build is fast (<5s for 1000 chunks). `BM25_INDEX_PATH` added to settings for v2 extensibility, but defaults to `None`. Consider persistence in v2 if corpus grows >50k chunks and rebuild exceeds 30s.
 
 2. **Q:** Should hybrid retrieval be the default (`USE_HYBRID_RETRIEVAL=True`)?
-   **A:** No. Start with `False` for safety, enable after A/B testing validates improvement.
+   **A:** No. Start with `False` for safety, enable after A/B testing validates improvement. Gradual rollout: dev → staging → 10% prod → 100% prod.
 
 3. **Q:** What if `sparse_terms` field is missing in some chunks?
-   **A:** Fallback to `text` field. BM25 will tokenize on-the-fly (slightly slower but functional).
+   **A:** Fallback to `text` field. BM25 will tokenize on-the-fly (slightly slower but functional). `load_corpus_for_bm25()` handles this per-row.
 
 4. **Q:** Should we expose hybrid vs dense choice to end users?
    **A:** No. This is an internal optimization. Users should not need to know retrieval strategy.
+
+5. **Q:** How to keep BM25 index in sync when new chunks are added?
+   **A:** v1 accepts staleness (admission data updates infrequently). Dense retrieval covers new chunks immediately. Operators can restart service to rebuild BM25. v2 will add `POST /admin/hybrid/rebuild` endpoint for on-demand rebuild without restart.
+
+6. **Q:** What happens if BM25 build fails mid-startup?
+   **A:** Exception caught → `hybrid_retriever_service = None` → app continues → all queries use dense-only fallback → operator alerted via logs. No retry to avoid hanging startup.
 
 ---
 
@@ -360,13 +504,16 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
 | # | Decision | Alternatives considered | Reason chosen |
 |---|----------|-------------------------|---------------|
 | 1 | Reuse existing `HybridRetriever` class without modification | Build new hybrid retriever, modify LanceDBRetriever | `HybridRetriever` is already complete, tested, and well-designed. Minimal risk. |
-| 2 | Build BM25 index at startup from LanceDB corpus | Build on-demand per query, persist to disk | Startup build is fast (<5s) and simplifies query path. Persistence adds complexity for v1. |
+| 2 | Build BM25 index at startup from LanceDB corpus (in-memory only) | Build on-demand per query, persist to disk | Startup build is fast (<5s) and simplifies query path. Persistence adds complexity for v1. Corpus updates are infrequent. |
 | 3 | Use `sparse_terms` field for BM25, fallback to `text` | Always use `text`, re-extract sparse terms | `sparse_terms` already extracted during chunking. Reuse existing data. |
-| 4 | Make hybrid retrieval opt-in via `USE_HYBRID_RETRIEVAL` flag | Make it default, remove dense-only path | Preserve backward compatibility. Enable safe rollout with A/B testing. |
+| 4 | Make hybrid retrieval opt-in via `USE_HYBRID_RETRIEVAL` flag (default=False) | Make it default, remove dense-only path | Preserve backward compatibility. Enable safe rollout with A/B testing. |
 | 5 | Preserve existing dense-only path as fallback | Remove dense-only path entirely | Minimize risk. If hybrid fails, system degrades gracefully to dense-only. |
 | 6 | Create thin adapter wrappers (`VectorStore`, `EmbeddingService`) | Refactor `HybridRetriever` to accept `LanceDBRetriever` directly | Adapters isolate changes. `HybridRetriever` remains reusable across different backends. |
-| 7 | Use RRF fusion weights (0.6 dense, 0.4 sparse) from `HybridRetriever` | Tune weights via config | `HybridRetriever` already has proven weights. Avoid premature optimization. |
-| 8 | Load entire corpus into memory for BM25 | Use disk-based BM25 index | In-memory is faster for query time. Corpus size (<10k chunks) fits in memory. |
+| 7 | Make RRF fusion weights configurable via settings | Keep hardcoded 0.6/0.4 weights | Enable tuning without code changes. Operators can experiment with different weights via `.env`. |
+| 8 | Load entire corpus into memory for BM25 | Use disk-based BM25 index | In-memory is faster for query time. Corpus size (<10k chunks) fits in memory (~50MB). |
+| 9 | Accept BM25 index staleness when new chunks added | Auto-rebuild on every chunk addition | Admission data updates infrequently (1-2x per semester). Dense retrieval covers new chunks immediately. Manual rebuild acceptable for v1. |
+| 10 | Graceful fallback on BM25 build failure (no retry) | Retry build, fail fast and block startup | Avoid hanging startup. Dense-only fallback ensures service availability. Operators alerted via logs. |
+| 11 | Add `BM25_INDEX_PATH` setting but default to `None` (no persistence) | Omit setting entirely, always in-memory | Future-proof for v2 persistence. Setting exists but unused in v1. Clear migration path. |
 
 ---
 
