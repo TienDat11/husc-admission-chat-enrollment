@@ -381,6 +381,26 @@ If `top_k = 20` and 3 HYDE variants each return 20 chunks → after dedup ~50 un
 
 ## Risk Assessment
 
+### Blast Radius of `rerank()` Changes
+
+GitNexus impact analysis reports `rerank()` as **CRITICAL risk** with 2 direct callers (d=1) and 6 affected execution flows across the Services module.
+
+**Primary Caller (intentionally modified):**
+- `rag2025/src/main.py:query` — active production path; the `apply_lost_in_middle=True` argument is explicitly passed here.
+
+#### Secondary Callers
+
+**Backup Caller (silently affected):**
+- `rag2025/backup_mail_package_2026/python_project/rag2025/src/main.py:query`
+
+This backup file mirrors the active main.py from a prior package snapshot. It calls `reranker_service.rerank(query=..., chunks=..., top_k=...)` without the new `apply_lost_in_middle` parameter.
+
+**Effect:** Because the new parameter defaults to `apply_lost_in_middle=True`, the backup caller will silently activate lost-in-middle reordering without any code change on its side.
+
+**Assessment: Intentional and acceptable.** The backup directory (`backup_mail_package_2026/`) is not a production path — it is a historical snapshot used for reference and rollback only. Furthermore, lost-in-middle reordering is a quality improvement with no correctness downside; silently enabling it in backup code does not introduce any regression risk. No changes to the backup file are required.
+
+---
+
 ### Low Risk
 - **Algorithm correctness:** Pre-allocated list + two-pointer is O(N), no edge case for even/odd N
 - **Backwards compatibility:** `apply_lost_in_middle=True` is a default — no existing call sites break
