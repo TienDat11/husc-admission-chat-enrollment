@@ -107,7 +107,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from rank_bm25 import BM25Okapi
 
 from services.lancedb_retrieval import LanceDBRetriever, RetrievedDocument, RetrievalResult
-from config.settings import Settings
+from config.settings import RAGSettings
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ class HybridSearchService:
       3. await retrieve(query, query_vector, top_k) → RetrievalResult
     """
 
-    def __init__(self, lancedb_retriever: LanceDBRetriever, settings: Settings) -> None:
+    def __init__(self, lancedb_retriever: LanceDBRetriever, settings: RAGSettings) -> None:
         self._retriever = lancedb_retriever
         self._settings = settings
         self._bm25: Optional[BM25Okapi] = None
@@ -203,7 +203,11 @@ class HybridSearchService:
 
         Falls back to dense-only if BM25 index unavailable.
         """
-        # Dense retrieval (existing LanceDB path)
+        # Dense retrieval (existing LanceDB path).
+        # NOTE: `retrieve()` is async but calls sync LanceDB — no run_in_threadpool needed
+        # because LanceDB is embedded (in-process); there is no network or kernel I/O
+        # that would block the event loop.  Wrapping in a threadpool would add overhead
+        # for zero benefit.  If LanceDB is ever switched to a remote mode, revisit.
         dense_result: RetrievalResult = self._retriever.retrieve(
             query_vector=query_vector,
             top_k=top_k * 2,  # over-fetch for fusion
@@ -236,6 +240,9 @@ class HybridSearchService:
     def _bm25_search(self, query: str, top_k: int) -> List[RetrievedDocument]:
         """Return top-k docs from BM25 index as RetrievedDocument list."""
         tokens = query.lower().split()
+        if not tokens:
+            logger.warning("_bm25_search called with empty token list — returning []")
+            return []
         scores = self._bm25.get_scores(tokens)
 
         # Pair scores with docs, sort descending
@@ -573,7 +580,7 @@ When new chunks are added:
 ### Existing (already in codebase)
 - `rank_bm25` — `BM25Okapi` class (`requirements.txt`)
 - `LanceDBRetriever`, `RetrievedDocument`, `RetrievalResult` — `services/lancedb_retrieval.py`
-- `Settings` — `config/settings.py`
+- `RAGSettings` — `config/settings.py`
 - `sparse_terms` field in LanceDB table (extracted during chunking)
 
 ### New
