@@ -23,6 +23,11 @@ class RAGSettings(BaseSettings):
         "extra": "ignore",
     }
 
+    # ========== Runtime ==========
+    LOG_LEVEL: Literal["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="INFO", description="Application log level for loguru/uvicorn"
+    )
+
     # ========== Paths ==========
     INDEX_DIR: Path = Field(default=Path("./index"), description="Vector index storage directory")
     DATA_DIR: Path = Field(default=Path("./data"), description="Raw data directory")
@@ -30,24 +35,26 @@ class RAGSettings(BaseSettings):
 
     # ========== Embedding Model ==========
     EMBEDDING_MODEL: str = Field(
-        default="intfloat/e5-small-v2",
-        description="HuggingFace model name for embeddings (e5-small-v2: 384-dim, multilingual-e5: 768-dim, bge-m3: 1024-dim)",
+        default="Qwen/Qwen3-Embedding-8B",
+        description="HuggingFace model name for embeddings",
     )
-    EMBEDDING_DIM: int = Field(default=768, description="Embedding dimension (strict: 384/768/1024)")
-    EMBEDDING_BATCH_SIZE: int = Field(default=32, description="Batch size for encoding")
+    EMBEDDING_DIM: int = Field(default=4096, description="Embedding dimension")
+    EMBEDDING_BATCH_SIZE: int = Field(default=8, description="Batch size for encoding")
     EMBEDDING_NORMALIZE: bool = Field(default=True, description="L2-normalize embeddings")
 
-    # ========== BGE-M3 Configuration (Phase 7) ==========
-    BGE_MODEL: str = Field(
-        default="BAAI/bge-m3",
-        description="BGE-M3 model for multilingual embeddings (1024-dim)"
+    # ========== Qwen Embedding Configuration ==========
+    QWEN_EMBEDDING_MODEL: str = Field(
+        default="Qwen/Qwen3-Embedding-8B",
+        description="Qwen3 embedding model for multilingual retrieval",
     )
-    BGE_DIM: int = Field(default=1024, description="BGE-M3 embedding dimension")
+    QWEN_EMBEDDING_DIM: int = Field(default=4096, description="Qwen3 embedding dimension")
 
-    # ========== Reranker Model ==========
+    # ========== Reranker Configuration ==========
     RERANKER_MODEL: str = Field(
-        default="BAAI/bge-reranker-base", description="Cross-encoder reranker model"
+        default="Qwen/Qwen3-Reranker-8B", description="Cross-encoder reranker model"
     )
+    RERANKER_ENABLED: bool = Field(default=True, description="Enable reranker layer")
+    RERANKER_WEIGHT: float = Field(default=0.35, description="Weight of reranker score in fusion")
 
     # ========== Chunking Parameters ==========
     CHUNK_SIZE_TOKENS: int = Field(default=350, description="Default chunk size in tokens")
@@ -69,30 +76,83 @@ class RAGSettings(BaseSettings):
     TOP_K_DENSE: int = Field(default=20, description="Top-K for dense retrieval")
     TOP_K_SPARSE: int = Field(default=20, description="Top-K for BM25 sparse retrieval")
 
-    # ========== Qdrant Configuration ==========
-    QDRANT_URL: str = Field(default="http://localhost:6333", description="Qdrant server URL")
-    QDRANT_API_KEY: Optional[str] = Field(default=None, description="Qdrant API key (optional)")
-    QDRANT_COLLECTION: str = Field(
-        default="rag2025", description="Qdrant collection name (Phase 7 compliant)"
+    # ========== Hybrid Retrieval Configuration ==========
+    USE_HYBRID_RETRIEVAL: bool = Field(
+        default=False,
+        description="Enable hybrid retrieval (dense + BM25 sparse with RRF fusion)"
     )
-    QDRANT_MIN_VERSION: str = Field(
-        default="1.7.0", description="Minimum qdrant-client version"
+
+    HYBRID_FUSION_DENSE_WEIGHT: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Weight for dense retrieval in RRF fusion (0.0-1.0)"
     )
-    USE_QDRANT: bool = Field(
-        default=False, description="Enable Qdrant (False=use NumPy local store)"
+
+    HYBRID_FUSION_SPARSE_WEIGHT: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Weight for sparse (BM25) retrieval in RRF fusion (0.0-1.0)"
     )
-    QDRANT_TIMEOUT: int = Field(
-        default=30, description="Qdrant request timeout in seconds"
+
+    BM25_INDEX_PATH: Optional[str] = Field(
+        default=None,
+        description="Reserved for v2 BM25 persistence. None = in-memory only (v1)."
+    )
+
+    # ========== LanceDB Configuration ==========
+    LANCEDB_URI: str = Field(
+        default="./data/lancedb", description="LanceDB local URI (embedded)"
+    )
+    LANCEDB_TABLE: str = Field(
+        default="rag2025", description="LanceDB table name for chunks"
+    )
+    LANCEDB_ENTITY_TABLE: str = Field(
+        default="husc_entities", description="LanceDB table name for entities"
+    )
+    USE_LANCEDB: bool = Field(
+        default=True, description="Enable LanceDB embedded vector store"
     )
 
     # ========== LLM Configuration ==========
     GEMINI_API_KEY: Optional[str] = Field(default=None, description="Gemini API key")
-    OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI API key")
+    OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI-compat API key")
     ZAI_API_KEY: Optional[str] = Field(default=None, description="Z.AI API key (GLM-4.5)")
-    LLM_MODEL: str = Field(default="gemini-2.0-flash-exp", description="LLM model name")
+    LLM_MODEL: str = Field(default="gemini-2.5-flash", description="LLM model name")
     LLM_TEMPERATURE: float = Field(default=0.1, description="LLM temperature")
     FORCE_RAG_ONLY: bool = Field(
         default=False, description="Disable LLM fallback (RAG-only mode)"
+    )
+
+    # ========== RamClouds / OpenAI-compat Primary Provider ==========
+    RAMCLOUDS_API_KEY: Optional[str] = Field(
+        default=None,
+        description="API key for ramclouds.me (primary LLM provider, gemini-2.5-flash)"
+    )
+    RAMCLOUDS_BASE_URL: str = Field(
+        default="https://ramclouds.me/v1",
+        description="Base URL for OpenAI-compatible primary provider"
+    )
+    RAMCLOUDS_MODEL: str = Field(
+        default="gemini-2.5-flash",
+        description="Model name at the primary provider"
+    )
+    GROQ_API_KEY: Optional[str] = Field(default=None, description="Groq API key (LLM fallback)")
+    QWEN_API_KEY: Optional[str] = Field(default=None, description="Qwen API key (NER fallback)")
+
+    # ========== GraphRAG Configuration ==========
+    GRAPHRAG_ALPHA: float = Field(
+        default=0.6,
+        description="Fusion weight for vector/RRF score in GraphRAG (1-alpha = PPR weight)"
+    )
+    GRAPHRAG_PPR_ALPHA: float = Field(
+        default=0.85,
+        description="Damping factor for Personalized PageRank"
+    )
+    GRAPHRAG_SIMPLE_THRESHOLD: int = Field(
+        default=2,
+        description="Complexity score ≤ this routes to PaddedRAG; > this routes to GraphRAG"
     )
 
     # ========== Cache Configuration ==========
@@ -100,11 +160,16 @@ class RAGSettings(BaseSettings):
     REDIS_URL: str = Field(default="redis://localhost:6379", description="Redis URL")
     USE_REDIS_CACHE: bool = Field(default=False, description="Enable Redis caching")
 
-    # ========== Monitoring & Logging ==========
-    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
-        default="INFO", description="Logging level"
+    # ========== Guardrail & Error Exposure ==========
+    GUARDRAIL_ENABLED: bool = Field(default=True, description="Enable out-of-scope guardrail")
+    GUARDRAIL_MODEL: str = Field(
+        default="llama-3.1-8b-instant",
+        description="Small Groq model used for scope/no-result classification",
     )
-    ENABLE_OTEL: bool = Field(default=False, description="Enable OpenTelemetry tracing")
+    ERROR_EXPOSURE_MODE: Literal["dev", "prod"] = Field(
+        default="dev",
+        description="dev: expose detailed internal error codes; prod: expose only one public code",
+    )
 
     # ========== Validation ==========
     @field_validator("EMBEDDING_DIM", mode="before")
@@ -115,10 +180,9 @@ class RAGSettings(BaseSettings):
             v = int(v)
         except (ValueError, TypeError):
             pass
-        # Support: 384 (e5-small-v2), 768 (multilingual-e5), 1024 (bge-m3)
-        if v not in [384, 768, 1024]:
+        if v not in [1024, 2048, 3072, 4096]:
             raise ValueError(
-                "EMBEDDING_DIM must be 384 (e5-small-v2), 768 (multilingual-e5), or 1024 (bge-m3)"
+                "EMBEDDING_DIM must be one of 1024, 2048, 3072, 4096"
             )
         return v
 
