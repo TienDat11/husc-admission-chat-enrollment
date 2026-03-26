@@ -219,6 +219,9 @@ guardrail_service: GuardrailService | None = None
 # GraphRAG unified pipeline
 unified_pipeline = None
 
+# Hybrid search service (dense + BM25 + RRF)
+hybrid_search_service: Optional["HybridSearchService"] = None
+
 # Debug tools
 chunk_config: ChunkConfig | None = None
 chunker: Chunker | None = None
@@ -230,7 +233,7 @@ chunker: Chunker | None = None
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    global query_enhancer_service, lancedb_retriever_service, llm_generator_service, embedding_encoder, unified_pipeline, reranker_service, query_cache, guardrail_service
+    global query_enhancer_service, lancedb_retriever_service, llm_generator_service, embedding_encoder, unified_pipeline, reranker_service, query_cache, guardrail_service, hybrid_search_service
 
     logger.info("=" * 60)
     logger.info("Starting RAG API 2025 v3.0 - Unified PaddedRAG + GraphRAG")
@@ -294,6 +297,22 @@ async def startup_event():
         except Exception as e:
             logger.warning(f"GraphRAG pipeline init failed: {e} – graph routing disabled")
             unified_pipeline = None
+
+        # ── Hybrid Search (optional) ──────────────────────────────────────
+        if settings.USE_HYBRID_RETRIEVAL:
+            from services.hybrid_search import HybridSearchService as _HybridSearchService
+            hybrid_search_service = _HybridSearchService(
+                lancedb_retriever=lancedb_retriever_service,
+                settings=settings,
+            )
+            ok = hybrid_search_service.build_bm25_index()
+            if not ok:
+                logger.warning(
+                    "startup: BM25 index build failed — hybrid search disabled (dense-only fallback)"
+                )
+                hybrid_search_service = None
+            else:
+                logger.info("startup: HybridSearchService ready")
 
         logger.info("=" * 60)
         logger.info("API Ready! PaddedRAG + GraphRAG + SmartRouter")
@@ -508,19 +527,35 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
 
             logger.debug(f"Encoded variant {i+1}/{len(variants)}: {variant[:50]}...")
 
-            retrieval_result = lancedb_retriever_service.retrieve(
-                query_vector=query_vector,
-                top_k=retrieval_top_k,
-                metadata_filter=metadata_filter,
-            )
-
-            if retrieval_result.error_type is None and len(retrieval_result.documents) == 0 and metadata_filter is not None:
-                logger.warning(f"Variant {i+1}: filtered retrieval returned 0 docs, falling back to no-filter")
+            if hybrid_search_service:
+                retrieval_result = await hybrid_search_service.retrieve(
+                    query=variant,
+                    query_vector=query_vector,
+                    top_k=retrieval_top_k,
+                    metadata_filter=metadata_filter,
+                )
+            else:
                 retrieval_result = lancedb_retriever_service.retrieve(
                     query_vector=query_vector,
                     top_k=retrieval_top_k,
-                    metadata_filter=None,
+                    metadata_filter=metadata_filter,
                 )
+
+            if retrieval_result.error_type is None and len(retrieval_result.documents) == 0 and metadata_filter is not None:
+                logger.warning(f"Variant {i+1}: filtered retrieval returned 0 docs, falling back to no-filter")
+                if hybrid_search_service:
+                    retrieval_result = await hybrid_search_service.retrieve(
+                        query=variant,
+                        query_vector=query_vector,
+                        top_k=retrieval_top_k,
+                        metadata_filter=None,
+                    )
+                else:
+                    retrieval_result = lancedb_retriever_service.retrieve(
+                        query_vector=query_vector,
+                        top_k=retrieval_top_k,
+                        metadata_filter=None,
+                    )
 
             if retrieval_result.error_type is not None:
                 logger.warning(f"Variant {i+1} retrieval error: {retrieval_result.error_message}")

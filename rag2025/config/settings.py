@@ -76,6 +76,31 @@ class RAGSettings(BaseSettings):
     TOP_K_DENSE: int = Field(default=20, description="Top-K for dense retrieval")
     TOP_K_SPARSE: int = Field(default=20, description="Top-K for BM25 sparse retrieval")
 
+    # ========== Hybrid Retrieval Configuration ==========
+    USE_HYBRID_RETRIEVAL: bool = Field(
+        default=False,
+        description="Enable hybrid retrieval (dense + BM25 sparse with RRF fusion)"
+    )
+
+    HYBRID_FUSION_DENSE_WEIGHT: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Weight for dense retrieval in RRF fusion (0.0-1.0)"
+    )
+
+    HYBRID_FUSION_SPARSE_WEIGHT: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Weight for sparse (BM25) retrieval in RRF fusion (0.0-1.0)"
+    )
+
+    BM25_INDEX_PATH: Optional[str] = Field(
+        default=None,
+        description="Reserved for v2 BM25 persistence. None = in-memory only (v1)."
+    )
+
     # ========== LanceDB Configuration ==========
     LANCEDB_URI: str = Field(
         default="./data/lancedb", description="LanceDB local URI (embedded)"
