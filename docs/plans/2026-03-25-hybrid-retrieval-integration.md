@@ -90,6 +90,10 @@ from config.settings import RAGSettings
 
 Note: `rank_bm25` is already listed in `rag2025/requirements.txt`. Do not add it again.
 
+#### Module-level logger
+
+`logger = logging.getLogger(__name__)` is declared at **module level** (top of `hybrid_search.py`, immediately after the imports), not as an instance attribute. All log calls throughout the class (`logger.warning(...)`, `logger.info(...)`, `logger.error(...)`) reference this module-level variable. Do NOT add `self._logger` to `__init__`.
+
 #### `__init__` method
 
 ```python
@@ -98,7 +102,6 @@ def __init__(self, lancedb_retriever: LanceDBRetriever, settings: RAGSettings) -
     self._settings = settings
     self._bm25: Optional[BM25Okapi] = None
     self._corpus_docs: List[RetrievedDocument] = []  # parallel index to BM25
-    self._logger = logging.getLogger(__name__)
 ```
 
 #### `build_bm25_index` method
@@ -201,7 +204,13 @@ Use a string annotation to avoid a top-level import at module load time (the imp
 
 #### 3b. Add to `startup_event` (after GraphRAG pipeline init block)
 
-In `startup_event()`, extend the `global` declaration line to include `hybrid_search_service`. Then, after the GraphRAG block (around line 296), add:
+In `startup_event()`, replace the existing `global` declaration line (line 233) with the following exact line:
+
+```python
+global query_enhancer_service, lancedb_retriever_service, llm_generator_service, embedding_encoder, unified_pipeline, reranker_service, query_cache, guardrail_service, hybrid_search_service
+```
+
+Then, after the GraphRAG block (around line 296), add:
 
 ```python
 # Hybrid retrieval (dense + BM25 + RRF)
@@ -259,7 +268,37 @@ else:
     )
 ```
 
-Note: `hybrid_search_service.retrieve()` is `async`, so `await` is required. The existing fallback logic (no-filter retry on empty results, error logging) applies identically to both paths — no other changes needed in the loop.
+Note: `hybrid_search_service.retrieve()` is `async`, so `await` is required.
+
+The retrieval loop also contains a **no-filter fallback call** (around line 519) that fires when the filtered call returns 0 docs. This fallback must also be wrapped with the same hybrid branch. Replace:
+
+```python
+retrieval_result = lancedb_retriever_service.retrieve(
+    query_vector=query_vector,
+    top_k=retrieval_top_k,
+    metadata_filter=None,
+)
+```
+
+with:
+
+```python
+if hybrid_search_service:
+    retrieval_result = await hybrid_search_service.retrieve(
+        query=variant,
+        query_vector=query_vector,
+        top_k=retrieval_top_k,
+        metadata_filter=None,
+    )
+else:
+    retrieval_result = lancedb_retriever_service.retrieve(
+        query_vector=query_vector,
+        top_k=retrieval_top_k,
+        metadata_filter=None,
+    )
+```
+
+Both calls — the primary filtered call and the no-filter fallback — must use the hybrid path when `hybrid_search_service` is active. Leaving the fallback as dense-only would create an inconsistency where a filtered hybrid query that returns 0 results silently falls back to dense-only, bypassing the configured hybrid path.
 
 ---
 
