@@ -27,7 +27,13 @@ class EmbeddingService:
         self.normalize = settings.EMBEDDING_NORMALIZE
 
         logger.info(f"Loading embedding model: {self.model_name}")
-        self.model = SentenceTransformer(self.model_name)
+
+        # Load model with CPU optimization for Qwen3
+        self.model = SentenceTransformer(
+            self.model_name,
+            device="cpu",
+            model_kwargs={"torch_dtype": "auto"}
+        )
 
         self._validate_model_dimension()
 
@@ -65,15 +71,46 @@ class EmbeddingService:
         return self.encode_batch([text], show_progress=False)[0]
 
     def encode_query(self, query: str) -> np.ndarray:
-        prompt = (
-            "Instruct: Given a web search query, retrieve relevant passages that answer the query\n"
-            f"Query: {query}"
-        )
-        return self.encode_single(prompt)
+        """
+        Encode query with Qwen3 instruction prompt.
+
+        Uses built-in "query" prompt which applies:
+        "Instruct: {task}\nQuery: {query}"
+
+        This is CRITICAL for Qwen3 retrieval quality.
+        """
+        embedding = self.model.encode(
+            query,
+            prompt_name="query",  # CRITICAL for Qwen3
+            normalize_embeddings=self.normalize,
+            convert_to_numpy=True,
+        ).astype(np.float32)
+
+        return embedding
 
     def encode_documents(self, documents: List[str]) -> np.ndarray:
-        prompts = [f"Passage: {doc}" for doc in documents]
-        return self.encode_batch(prompts, show_progress=True)
+        """
+        Encode documents WITHOUT instruction (Qwen3 recommendation).
+
+        No prompt_name = default encoding (no instruction prefix).
+        """
+        if not documents:
+            return np.empty((0, self.expected_dim), dtype=np.float32)
+
+        embeddings = self.model.encode(
+            documents,
+            batch_size=self.batch_size,
+            normalize_embeddings=self.normalize,
+            show_progress_bar=True,
+            convert_to_numpy=True,
+        ).astype(np.float32)
+
+        if embeddings.shape[1] != self.expected_dim:
+            raise ValueError(
+                f"Embedding dimension mismatch: expected {self.expected_dim}, got {embeddings.shape[1]}"
+            )
+
+        return embeddings
 
     def save_embeddings(self, embeddings: np.ndarray, output_path: Path) -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)

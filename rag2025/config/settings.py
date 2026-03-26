@@ -35,19 +35,19 @@ class RAGSettings(BaseSettings):
 
     # ========== Embedding Model ==========
     EMBEDDING_MODEL: str = Field(
-        default="Qwen/Qwen3-Embedding-8B",
+        default="Qwen/Qwen3-Embedding-4B",
         description="HuggingFace model name for embeddings",
     )
-    EMBEDDING_DIM: int = Field(default=4096, description="Embedding dimension")
+    EMBEDDING_DIM: int = Field(default=2560, description="Embedding dimension")
     EMBEDDING_BATCH_SIZE: int = Field(default=8, description="Batch size for encoding")
     EMBEDDING_NORMALIZE: bool = Field(default=True, description="L2-normalize embeddings")
 
     # ========== Qwen Embedding Configuration ==========
     QWEN_EMBEDDING_MODEL: str = Field(
-        default="Qwen/Qwen3-Embedding-8B",
+        default="Qwen/Qwen3-Embedding-4B",
         description="Qwen3 embedding model for multilingual retrieval",
     )
-    QWEN_EMBEDDING_DIM: int = Field(default=4096, description="Qwen3 embedding dimension")
+    QWEN_EMBEDDING_DIM: int = Field(default=2560, description="Qwen3 embedding dimension")
 
     # ========== Reranker Configuration ==========
     RERANKER_MODEL: str = Field(
@@ -180,9 +180,9 @@ class RAGSettings(BaseSettings):
             v = int(v)
         except (ValueError, TypeError):
             pass
-        if v not in [1024, 2048, 3072, 4096]:
+        if v not in [1024, 2560, 4096]:
             raise ValueError(
-                "EMBEDDING_DIM must be one of 1024, 2048, 3072, 4096"
+                "EMBEDDING_DIM must be one of 1024, 2560, 4096 (Qwen3-Embedding variants)"
             )
         return v
 
