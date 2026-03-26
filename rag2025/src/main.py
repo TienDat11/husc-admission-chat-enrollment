@@ -299,20 +299,23 @@ async def startup_event():
             unified_pipeline = None
 
         # ── Hybrid Search (optional) ──────────────────────────────────────
-        if settings.USE_HYBRID_RETRIEVAL:
-            from services.hybrid_search import HybridSearchService as _HybridSearchService
-            hybrid_search_service = _HybridSearchService(
-                lancedb_retriever=lancedb_retriever_service,
-                settings=settings,
-            )
-            ok = hybrid_search_service.build_bm25_index()
-            if not ok:
-                logger.warning(
-                    "startup: BM25 index build failed — hybrid search disabled (dense-only fallback)"
+        if settings.USE_HYBRID_RETRIEVAL and lancedb_retriever_service:
+            try:
+                from services.hybrid_search import HybridSearchService as _HybridSearchService
+                hybrid_search_service = _HybridSearchService(
+                    lancedb_retriever=lancedb_retriever_service,
+                    settings=settings,
                 )
+                if not hybrid_search_service.build_bm25_index():
+                    logger.warning(
+                        "HybridSearchService: BM25 index build failed — disabling hybrid search"
+                    )
+                    hybrid_search_service = None
+                else:
+                    logger.info("HybridSearchService: BM25 index built successfully")
+            except Exception as e:
+                logger.error(f"HybridSearchService: startup init failed: {e}", exc_info=True)
                 hybrid_search_service = None
-            else:
-                logger.info("startup: HybridSearchService ready")
 
         logger.info("=" * 60)
         logger.info("API Ready! PaddedRAG + GraphRAG + SmartRouter")

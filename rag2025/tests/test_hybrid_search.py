@@ -99,6 +99,20 @@ class TestRetrieve(unittest.TestCase):
 
 
 class TestBm25Search(unittest.TestCase):
+    def test_bm25_search_returns_relevant(self):
+        docs = [
+            _make_doc("c1", "tuyển sinh đại học"),
+            _make_doc("c2", "học phí ngành công nghệ"),
+            _make_doc("c3", "thời gian nộp hồ sơ"),
+        ]
+        retriever = _make_retriever(docs)
+        svc = HybridSearchService(retriever, _make_settings())
+        svc.build_bm25_index()
+        result = svc._bm25_search("học phí", top_k=3)
+        # The doc containing "học phí" tokens should rank first
+        self.assertGreater(len(result), 0)
+        self.assertEqual(result[0].chunk_id, "c2")
+
     def test_bm25_search_empty_query_guard(self):
         docs = [_make_doc("c1", "tuyển sinh")]
         retriever = _make_retriever(docs)
@@ -121,6 +135,21 @@ class TestRrfFusion(unittest.TestCase):
         c2_idx = chunk_ids.index("c2")
         c2_score = fused[c2_idx].score
         self.assertGreater(c2_score, 0)
+        # Deduplication: c2 must appear exactly once even though it was in both lists
+        self.assertEqual(chunk_ids.count("c2"), 1)
+
+    def test_rrf_fusion_weights(self):
+        """dense_w=1.0, sparse_w=0.0 → ranking must match dense-only input order."""
+        dense = [_make_doc("c1", score=0.9), _make_doc("c2", score=0.7)]
+        sparse = [_make_doc("c2", score=5.0), _make_doc("c3", score=3.0)]
+        retriever = _make_retriever()
+        svc = HybridSearchService(retriever, _make_settings(dense_w=1.0, sparse_w=0.0))
+        fused = svc._rrf_fusion(dense, sparse, top_k=5)
+        chunk_ids = [d.chunk_id for d in fused]
+        # With sparse weight=0, only dense ranks matter: c1 (rank 1) > c2 (rank 2)
+        self.assertIn("c1", chunk_ids)
+        self.assertIn("c2", chunk_ids)
+        self.assertLess(chunk_ids.index("c1"), chunk_ids.index("c2"))
 
     def test_dense_only_when_flag_false(self):
         """When USE_HYBRID_RETRIEVAL=False, service should not be instantiated (integration guard)."""
