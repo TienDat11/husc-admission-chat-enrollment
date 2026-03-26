@@ -1,5 +1,8 @@
 """
-Ingest all chunked JSONL files into LanceDB using Qwen3-Embedding-8B.
+Ingest all chunked JSONL files into LanceDB using Qwen3-Embedding.
+
+Model is configured via settings.QWEN_EMBEDDING_MODEL (default: Qwen3-Embedding-4B).
+Uses EmbeddingService for consistent Qwen3 instruction-aware encoding.
 """
 from __future__ import annotations
 
@@ -10,12 +13,12 @@ from typing import Dict, List
 import lancedb
 from dotenv import load_dotenv
 from loguru import logger
-from sentence_transformers import SentenceTransformer
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import RAGSettings
+from src.services.embedding import EmbeddingService
 
 load_dotenv()
 
@@ -72,19 +75,14 @@ def ingest_lancedb() -> bool:
         return False
 
     logger.info(f"Loaded {len(chunks)} chunks")
-    logger.info(f"Loading embedding model: {settings.QWEN_EMBEDDING_MODEL}")
-    model = SentenceTransformer(settings.QWEN_EMBEDDING_MODEL)
+    logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL} (dim={settings.EMBEDDING_DIM})")
 
-    texts = [
-        "Passage: " + chunk["text"]
-        for chunk in chunks
-    ]
-    embeddings = model.encode(
-        texts,
-        normalize_embeddings=True,
-        batch_size=settings.EMBEDDING_BATCH_SIZE,
-        show_progress_bar=True,
-    )
+    # Use EmbeddingService for consistent Qwen3 instruction-aware encoding
+    # Documents are encoded WITHOUT instruction prefix (Qwen3 recommendation)
+    embedding_service = EmbeddingService(settings)
+
+    texts = [chunk["text"] for chunk in chunks]
+    embeddings = embedding_service.encode_documents(texts)
 
     records = []
     for chunk, vector in zip(chunks, embeddings):
