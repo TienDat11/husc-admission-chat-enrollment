@@ -2,6 +2,8 @@
 numpy==2.1.0
 sentence-transformers>=3.0.0
 rank-bm25==0.2.2
+pypdf>=5.0.0
+python-docx>=1.1.2
 
 # Web framework  
 fastapi>=0.100.0
@@ -36,7 +38,8 @@ requests==2.31.0
 # ========== RAG 2025 UPDATES ==========
 
 # Vector Database
-qdrant-client>=1.7.0
+lancedb>=0.20.0
+pyarrow>=18.0.0
 
 # LLM Providers
 google-generativeai>=0.3.0
@@ -53,3 +56,20 @@ python-dotenv>=1.0.0
 aiohttp>=3.9.0
 tenacity>=8.2.0  # For retry logic
 tqdm>=4.66.0  # Progress bars
+
+# ========== GRAPH & NLP DEPENDENCIES ==========
+
+# Graph processing for GraphRAG
+networkx>=3.0  # Knowledge graph construction and PPR
+
+# Vietnamese NLP (NER service uses underthesea for fallback tokenization)
+underthesea>=8.0.0  # Vietnamese word segmentation and NER
+
+# Async file I/O
+aiofiles>=23.0.0  # Async file operations for data pipeline
+
+# Nested async support
+nest-asyncio>=1.5.0  # Allow nested event loops in Jupyter/scripts
+
+# Machine learning utilities
+scikit-learn>=1.0.0  # For evaluation metrics and clustering
