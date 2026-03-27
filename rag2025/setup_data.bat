@@ -80,6 +80,25 @@ if not exist "venv\Scripts\activate.bat" (
 echo %BLUE%[INFO]%RESET% Activating virtual environment...
 call venv\Scripts\activate.bat
 echo %GREEN%[OK]%RESET% Virtual environment activated
+
+REM Ensure dependencies are installed (including lancedb)
+echo %BLUE%[INFO]%RESET% Installing/updating dependencies...
+python -m pip install --quiet --upgrade pip
+python -m pip install --quiet -r requirements.txt
+if !errorlevel! neq 0 (
+    echo %RED%[ERROR]%RESET% Failed to install dependencies
+    pause
+    exit /b 1
+)
+echo %GREEN%[OK]%RESET% Dependencies ready
+
+REM Load .env values if present
+if exist ".env" (
+    for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
+        if not "%%A"=="" if /i not "%%A:~0,1"=="#" set "%%A=%%B"
+    )
+    echo %GREEN%[OK]%RESET% Loaded .env values
+)
 echo.
 
 REM Create data directories
@@ -89,37 +108,40 @@ if not exist "data\raw" mkdir data\raw
 if not exist "data\normalized" mkdir data\normalized
 if not exist "data\validated" mkdir data\validated
 if not exist "data\chunked" mkdir data\chunked
+if not exist "data\graph" mkdir data\graph
+if not exist "data\lancedb" mkdir data\lancedb
 if not exist "index" mkdir index
 echo %GREEN%[OK]%RESET% Directories ready
 echo.
 
-REM Check for input file
-set "INPUT_FILE=..\2.jsonl"
+REM Check for input path (supports file or directory)
+set "INPUT_PATH=%~1"
+if "%INPUT_PATH%"=="" set "INPUT_PATH=data\raw"
 
-if not exist "%INPUT_FILE%" (
-    echo %YELLOW%[WARNING]%RESET% Input file not found: %INPUT_FILE%
-    echo %YELLOW%[INFO]%RESET% Looking for alternative locations...
+if not exist "%INPUT_PATH%" (
+    echo %YELLOW%[WARNING]%RESET% Input path not found: %INPUT_PATH%
+    echo %YELLOW%[INFO]%RESET% Looking for fallback locations...
 
-    REM Try data/raw/
-    if exist "data\raw\2.jsonl" (
-        set "INPUT_FILE=data\raw\2.jsonl"
-        echo %GREEN%[OK]%RESET% Found: data\raw\2.jsonl
+    if exist "data\raw" (
+        set "INPUT_PATH=data\raw"
+        echo %GREEN%[OK]%RESET% Found: data\raw
+    ) else if exist "..\2.jsonl" (
+        set "INPUT_PATH=..\2.jsonl"
+        echo %GREEN%[OK]%RESET% Found: ..\2.jsonl
     ) else if exist "2.jsonl" (
-        set "INPUT_FILE=2.jsonl"
+        set "INPUT_PATH=2.jsonl"
         echo %GREEN%[OK]%RESET% Found: 2.jsonl
     ) else (
-        echo %RED%[ERROR]%RESET% Cannot find input file 2.jsonl
-        echo %RED%[ERROR]%RESET% Please ensure 2.jsonl exists in one of:
-        echo               - ..\2.jsonl
-        echo               - data\raw\2.jsonl
-        echo               - 2.jsonl
+        echo %RED%[ERROR]%RESET% Cannot find input path
+        echo %RED%[ERROR]%RESET% Provide a file/folder path as first argument
+        echo               Example: setup_data.bat data\raw
         echo.
         pause
         exit /b 1
     )
 )
 
-echo %GREEN%[OK]%RESET% Input file found: %INPUT_FILE%
+echo %GREEN%[OK]%RESET% Input path found: %INPUT_PATH%
 echo.
 
 REM ========================================================================
@@ -133,10 +155,10 @@ echo.
 
 set "NORMALIZED_FILE=data\normalized\normalized_2.jsonl"
 
-echo Running: python src\normalize_data.py "%INPUT_FILE%" "%NORMALIZED_FILE%"
+echo Running: python src\normalize_data.py "%INPUT_PATH%" "%NORMALIZED_FILE%"
 echo.
 
-python src\normalize_data.py "%INPUT_FILE%" "%NORMALIZED_FILE%"
+python src\normalize_data.py "%INPUT_PATH%" "%NORMALIZED_FILE%"
 
 if !errorlevel! neq 0 (
     echo.
@@ -225,32 +247,101 @@ echo.
 echo %GREEN%[OK]%RESET% Chunking complete: %CHUNKED_FILE%
 echo.
 
+REM Normalize all chunked files to canonical object schema
+echo %BLUE%[INFO]%RESET% Normalizing all chunked_*.jsonl files...
+python src\normalize_chunks.py "data\chunked" --in-place
+if !errorlevel! neq 0 (
+    echo.
+    echo %RED%[ERROR]%RESET% Chunk normalization failed!
+    pause
+    exit /b 1
+)
+echo %GREEN%[OK]%RESET% Chunk files normalized
+
+echo.
+
 REM ========================================================================
-REM Step 4: Build Vector Index
+REM Step 4: Build LanceDB Vector Store
 REM ========================================================================
 
 echo %BLUE%========================================================================%RESET%
-echo %BLUE%[STEP 4]%RESET% Building vector index...
+echo %BLUE%[STEP 4]%RESET% Building LanceDB vector store...
 echo %BLUE%========================================================================%RESET%
 echo.
 
-set "INDEX_FILE=index\vector_store.npz"
-
-echo Running: python scripts\build_index.py "data\chunked" "%INDEX_FILE%"
+echo Running: python scripts\ingest_lancedb.py
 echo.
 
-python scripts\build_index.py "data\chunked" "%INDEX_FILE%"
+python scripts\ingest_lancedb.py
 
 if !errorlevel! neq 0 (
     echo.
-    echo %RED%[ERROR]%RESET% Index build failed!
+    echo %RED%[ERROR]%RESET% LanceDB ingestion failed!
     echo %RED%[ERROR]%RESET% Please check the errors above
     pause
     exit /b 1
 )
 
 echo.
-echo %GREEN%[OK]%RESET% Index build complete: %INDEX_FILE%
+echo %GREEN%[OK]%RESET% LanceDB vector store ready
+echo.
+
+REM ========================================================================
+REM Step 5: Build Knowledge Graph
+REM ========================================================================
+
+echo %BLUE%========================================================================%RESET%
+echo %BLUE%[STEP 5]%RESET% Building GraphRAG knowledge graph...
+echo %BLUE%========================================================================%RESET%
+echo.
+
+echo Running: python scripts\build_graph.py
+echo.
+
+python scripts\build_graph.py
+
+if !errorlevel! neq 0 (
+    echo.
+    echo %RED%[ERROR]%RESET% Graph build failed!
+    echo %RED%[ERROR]%RESET% Please check RAMCLOUDS_API_KEY / GROQ_API_KEY and the errors above
+    pause
+    exit /b 1
+)
+
+echo.
+echo %GREEN%[OK]%RESET% Knowledge graph ready
+echo.
+
+REM ========================================================================
+REM Step 6: Post-setup verification
+REM ========================================================================
+
+echo %BLUE%========================================================================%RESET%
+echo %BLUE%[STEP 6]%RESET% Verifying LanceDB + graph artifacts...
+echo %BLUE%========================================================================%RESET%
+echo.
+
+python scripts\check_lancedb.py
+if !errorlevel! neq 0 (
+    echo.
+    echo %RED%[ERROR]%RESET% LanceDB verification failed!
+    pause
+    exit /b 1
+)
+
+if not exist "data\graph\knowledge_graph.graphml" (
+    echo %RED%[ERROR]%RESET% Graph file missing: data\graph\knowledge_graph.graphml
+    pause
+    exit /b 1
+)
+
+if not exist "data\graph\entity_index.json" (
+    echo %RED%[ERROR]%RESET% Entity index missing: data\graph\entity_index.json
+    pause
+    exit /b 1
+)
+
+echo %GREEN%[OK]%RESET% Graph artifacts verified
 echo.
 
 REM ========================================================================
@@ -258,17 +349,19 @@ REM Summary
 REM ========================================================================
 
 echo %GREEN%========================================================================%RESET%
-echo %GREEN%   DATA INGESTION COMPLETE!%RESET%
+echo %GREEN%   DATA + DATABASE + GRAPH SETUP COMPLETE!%RESET%
 echo %GREEN%========================================================================%RESET%
 echo.
 echo %GREEN%Pipeline Results:%RESET%
 echo    1. Normalized: %NORMALIZED_FILE%
 echo    2. Validated:  %VALIDATED_FILE%
 echo    3. Chunked:    %CHUNKED_FILE%
-echo    4. Indexed:    %INDEX_FILE%
+echo    4. LanceDB:    data\lancedb\ (%LANCEDB_TABLE%)
+echo    5. Graph:      data\graph\knowledge_graph.graphml
+echo    6. Entities:   data\graph\entity_index.json
 echo.
 echo %BLUE%Next Steps:%RESET%
-echo    1. Run %GREEN%run_lab.bat%RESET% to start the API server
+echo    1. Run %GREEN%python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload%RESET%
 echo    2. Open http://localhost:8000/docs to test the API
 echo    3. Try querying your data!
 echo.

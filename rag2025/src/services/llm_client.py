@@ -71,13 +71,13 @@ def _build_providers() -> List[ProviderConfig]:
     """Build ordered provider list from environment variables.
 
     Provider priority (lower = higher priority):
-    0 → RAMCLOUDS (gemini-2.5-flash, primary)
-    1 → GROQ (llama-3.1-8b-instant, fast fallback)
+    0 → RAMCLOUDS (gemini model via ramclouds.me, primary - best quality for NER/GraphRAG)
+    1 → GROQ (llama-3.1-8b-instant, fallback - free)
     2 → OPENAI_COMPAT (any provider, last resort)
     """
     providers: List[ProviderConfig] = []
 
-    # Primary: ramclouds.me (gemini-2.5-flash)
+    # Primary: ramclouds.me (gemini model — highest quality for NER/GraphRAG)
     ramclouds_key = os.getenv("RAMCLOUDS_API_KEY") or os.getenv("OPENAI_API_KEY")
     ramclouds_url = os.getenv("RAMCLOUDS_BASE_URL", "https://ramclouds.me/v1")
     ramclouds_model = os.getenv("RAMCLOUDS_MODEL", "gemini-2.5-flash")

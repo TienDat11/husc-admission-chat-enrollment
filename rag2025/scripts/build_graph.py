@@ -20,6 +20,10 @@ Usage:
 """
 from __future__ import annotations
 
+# Load .env before any service imports (env vars needed by llm_client.py)
+from dotenv import load_dotenv
+load_dotenv()
+
 import argparse
 import asyncio
 import json
