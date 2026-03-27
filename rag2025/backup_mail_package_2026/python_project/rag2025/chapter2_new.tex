@@ -1,0 +1,242 @@
+% LƯU Ý: Để biên dịch các sơ đồ TikZ trong chương này, cần thêm \usepackage{tikz} và \usetikzlibrary{arrows.meta} vào phần preamble của tài liệu chính.
+
+\chapter{Kiến trúc GraphRAG và Nền tảng Lý thuyết}
+\label{chap:graphrag_theory}
+
+\section{Tổng quan Hệ sinh thái GraphRAG}
+\label{sec:graphrag_ecosystem}
+
+GraphRAG (Graph-based Retrieval-Augmented Generation) là một kiến trúc tiên tiến trong lĩnh vực xử lý ngôn ngữ tự nhiên, được thiết kế để khắc phục những hạn chế cơ bản của Naive RAG truyền thống. Trong khi Naive RAG biểu diễn tri thức dưới dạng các đoạn văn bản rời rạc (chunks) và thực hiện truy xuất dựa trên độ tương đồng vector, GraphRAG tổ chức thông tin theo cấu trúc đồ thị tri thức (knowledge graph), duy trì mối liên kết ngữ nghĩa giữa các thực thể. Sự khác biệt cốt lõi nằm ở khả năng suy luận đa bước (multi-hop reasoning): Naive RAG thường thất bại khi cần kết nối thông tin từ nhiều nguồn khác nhau do hiện tượng phân mảnh ngữ cảnh (context fragmentation), trong khi GraphRAG tận dụng cấu trúc topo của đồ thị để duy trì tính liên tục của thông tin.
+
+Hệ sinh thái GraphRAG đã phát triển mạnh mẽ với nhiều biến thể kiến trúc, mỗi loại tập trung vào những khía cạnh cụ thể của bài toán truy xuất và sinh văn bản. Microsoft GraphRAG \cite{edge2024graphrag} nổi bật với cách tiếp cận dựa trên cộng đồng (community-based approach), sử dụng thuật toán phát hiện cộng đồng Leiden để nhóm các thực thể liên quan và tạo ra các bản tóm tắt cộng đồng phục vụ cho truy vấn toàn cục. HippoRAG \cite{gutierrez2024hipporag} lấy cảm hứng từ mô hình trí nhớ sinh học của con người, áp dụng Personalized PageRank (PPR) để thực hiện truy xuất đa bước trong một thao tác đơn lẻ, mang lại hiệu quả vượt trội về tốc độ và chi phí so với các phương pháp lặp lại truyền thống. LightRAG \cite{guo2024lightrag} tập trung vào khả năng cập nhật thời gian thực, với cơ chế cập nhật tăng dần (incremental update) cho phép tích hợp dữ liệu mới mà không cần xây dựng lại toàn bộ đồ thị. SubgraphRAG \cite{subgraphrag2025} lại đề cao sự đơn giản, sử dụng truy xuất dựa trên bộ ba (triplet-based retrieval) mà không cần đến các thuật toán phát hiện cộng đồng phức tạp, chứng minh rằng đôi khi giải pháp đơn giản lại mang lại hiệu quả cao.
+
+Bảng \ref{tab:graphrag_variants_comparison} dưới đây so sánh bốn biến thể chính của kiến trúc GraphRAG dựa trên các tiêu chí cốt lõi.
+
+\begin{table}[htbp]
+\centering
+\caption{So sánh các biến thể kiến trúc GraphRAG}
+\label{tab:graphrag_variants_comparison}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\textbf{Biến thể} & \textbf{Cơ chế cốt lõi} & \textbf{Suy luận đa bước} & \textbf{Cập nhật thời gian thực} & \textbf{Độ phức tạp} \\
+\hline
+Microsoft GraphRAG & Dựa trên cộng đồng & Có & Không & Cao \\
+\hline
+HippoRAG & PPR sinh học & Có & Không & Trung bình \\
+\hline
+LightRAG & Truy xuất hai cấp & Có & Có & Trung bình \\
+\hline
+SubgraphRAG & Bộ ba đơn giản & Có & Có & Thấp \\
+\hline
+\end{tabular}
+\end{table}
+
+Việc lựa chọn biến thể phù hợp phụ thuộc vào yêu cầu cụ thể của từng ứng dụng. Đối với các hệ thống cần xử lý câu hỏi tổng hợp trên toàn bộ kho dữ liệu, Microsoft GraphRAG là lựa chọn lý tưởng. Trong khi đó, các ứng dụng yêu cầu phản hồi nhanh với dữ liệu thay đổi liên tục sẽ được hưởng lợi từ LightRAG hoặc SubgraphRAG. HippoRAG cung cấp một giải pháp cân bằng giữa hiệu năng và chi phí cho các tác vụ suy luận đa bước phức tạp.
+
+Sự phát triển của hệ sinh thái GraphRAG phản ánh xu hướng chuyển dịch từ các phương pháp truy xuất dựa trên vector thuần túy sang các phương pháp kết hợp cấu trúc đồ thị. Điều này cho phép hệ thống không chỉ truy xuất thông tin dựa trên độ tương đồng ngữ nghĩa mà còn dựa trên mối quan hệ logic giữa các thực thể. Trong bối cảnh tiếng Việt, việc áp dụng GraphRAG mang lại lợi ích đặc biệt trong việc xử lý các thực thể có nhiều cách viết khác nhau như tên trường đại học, tên ngành học, và các thuật ngữ chuyên ngành. GraphRAG giúp duy trì tính nhất quán của thông tin thông qua cấu trúc đồ thị, đồng thời cung cấp khả năng suy luận đa bước để trả lời các câu hỏi phức tạp đòi hỏi kết nối thông tin từ nhiều nguồn khác nhau.
+
+\section{Pipeline Xây dựng Đồ thị Tri thức}
+\label{sec:kg_pipeline}
+
+Quá trình xây dựng một đồ thị tri thức (Knowledge Graph - KG) chất lượng cao là nền tảng then chốt cho hiệu quả của bất kỳ hệ thống GraphRAG nào. Pipeline này bao gồm ba giai đoạn chính: trích xuất thực thể và quan hệ, giải quyết thực thể (entity resolution), và thiết kế lược đồ (schema design) cho cơ sở dữ liệu đồ thị.
+
+\subsection{Trích xuất Thực thể và Quan hệ}
+\label{subsec:ner_relation_extraction}
+
+Giai đoạn đầu tiên trong pipeline là chuyển đổi dữ liệu văn bản phi cấu trúc thành các cấu trúc đồ thị có ý nghĩa. Điều này được thực hiện thông qua hai nhiệm vụ chính: trích xuất thực thể đặt tên (trích xuất thực thể - Named Entity Recognition, NER) và trích xuất quan hệ (Relation Extraction - RE). Có ba phương pháp chính được sử dụng:
+
+Phương pháp dựa trên luật (rule-based NER) sử dụng các biểu thức chính quy và từ điển để nhận diện thực thể. Phương pháp này có độ chính xác cao đối với các mẫu cố định nhưng thiếu khả năng tổng quát hóa và khó mở rộng. Phương pháp tinh chỉnh mô hình (fine-tuned NER) sử dụng các mô hình ngôn ngữ trước như PhoBERT hoặc VinAI, được huấn luyện đặc biệt trên tập dữ liệu tiếng Việt. Cách tiếp cận này đạt được sự cân bằng tốt giữa độ chính xác và khả năng tổng quát. Cuối cùng, phương pháp dựa trên LLM (LLM-based extraction) sử dụng các mô hình ngôn ngữ lớn để trực tiếp trích xuất thực thể và quan hệ từ văn bản. Mặc dù linh hoạt và mạnh mẽ, phương pháp này có thể gặp phải vấn đề ảo giác (hallucination) và chi phí tính toán cao.
+
+Hiệu quả của quá trình NER thường được đánh giá bằng điểm F1, được tính theo công thức sau:
+\begin{equation}
+F1 = 2 \times \frac{\text{precision} \times \text{recall}}{\text{precision} + \text{recall}}
+\label{eq:f1_ner}
+\end{equation}
+Trong đó, precision đo lường tỷ lệ thực thể được trích xuất chính xác, còn recall đo lường tỷ lệ thực thể trong dữ liệu gốc được tìm thấy. Việc lựa chọn phương pháp trích xuất phụ thuộc vào sự đánh đổi giữa độ chính xác, recall và chi phí tính toán cho từng ngữ cảnh ứng dụng cụ thể.
+
+\subsection{Entity Resolution và Coreference}
+\label{subsec:entity_resolution}
+
+Một thách thức lớn trong việc xây dựng đồ thị tri thức từ dữ liệu thực tế là vấn đề đồng nhất thực thể (entity resolution). Trong văn bản tuyển sinh của Trường Đại Học Khoa Học – Đại Học Huế, cùng một thực thể có thể được đề cập dưới nhiều hình thức khác nhau, ví dụ: "ĐHKH", "Trường ĐHKH", và "Đại Học Khoa Học" đều chỉ cùng một trường đại học. Nếu không được giải quyết, vấn đề này sẽ dẫn đến việc tạo ra nhiều node riêng lẻ cho cùng một thực thể, làm suy yếu cấu trúc đồ thị và giảm hiệu quả truy xuất.
+
+Các phương pháp giải quyết bao gồm: so khớp chuỗi (string matching) dựa trên khoảng cách chỉnh sửa (edit distance); so sánh độ tương đồng embedding (embedding similarity) bằng cách tính cosine similarity giữa các vector biểu diễn của các đề cập; và liên kết dựa trên LLM (LLM-based linking) nơi mô hình ngôn ngữ lớn được sử dụng để phán đoán xem hai đề cập có cùng chỉ một thực thể hay không. Một ngưỡng độ tương đồng được thiết lập để quyết định việc hợp nhất các đề cập:
+\begin{equation}
+\text{nếu } \text{similarity}(e_1, e_2) > \theta \text{ thì } e_1 \equiv e_2
+\label{eq:entity_resolution}
+\end{equation}
+Với $\theta$ là ngưỡng được điều chỉnh dựa trên dữ liệu và yêu cầu của hệ thống. Công thức tính cosine similarity được định nghĩa như sau:
+\begin{equation}
+\text{cosine}(\mathbf{v}_1, \mathbf{v}_2) = \frac{\mathbf{v}_1 \cdot \mathbf{v}_2}{\|\mathbf{v}_1\| \|\mathbf{v}_2\|}
+\label{eq:cosine_similarity}
+\end{equation}
+Trong đó $\mathbf{v}_1$ và $\mathbf{v}_2$ là các vector embedding của hai thực thể cần so sánh. Việc xây dựng từ điển thực thể toàn diện cho miền ứng dụng tiếng Việt là một yếu tố then chốt để cải thiện độ chính xác của quá trình này \cite{tran2024vietnamese}.
+
+\subsection{Thiết kế Schema Neo4j cho Dữ liệu Tuyển sinh}
+\label{subsec:neo4j_schema}
+
+Lược đồ (schema) của đồ thị tri thức Neo4j cho dữ liệu tuyển sinh được thiết kế dựa trên các khuyến nghị từ tài liệu Essential GraphRAG \cite{neo4j2024essential}. Các nhãn node (node labels) chính bao gồm \texttt{__Entity__}, \texttt{__Chunk__}, và \texttt{__Community__}. Node \texttt{__Entity__} chứa các thuộc tính như \texttt{name}, \texttt{description}, và \texttt{embedding}. Node \texttt{__Chunk__} lưu trữ văn bản gốc, trong khi node \texttt{__Community__} giữ các bản tóm tắt cộng đồng.
+
+Các loại mối quan hệ (relationship types) được định nghĩa rõ ràng: \texttt{RELATIONSHIP} cho các liên kết giữa các thực thể, \texttt{HAS\_ENTITY} để liên kết chunk với các thực thể mà nó đề cập, và \texttt{IN\_COMMUNITY} để gán thực thể vào các cộng đồng của chúng. Chiến lược lập chỉ mục (index strategy) bao gồm: vector index trên thuộc tính \texttt{embedding} của các thực thể để hỗ trợ truy xuất vector, text index trên thuộc tính \texttt{name} để hỗ trợ tìm kiếm từ khóa, và composite index để tối ưu hóa các truy vấn phức tạp.
+
+Sơ đồ đầy đủ của lược đồ Neo4j được minh họa trong Hình \ref{fig:neo4j_schema}.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=1.8cm,
+    entity/.style={ellipse, draw, fill=blue!20, minimum width=2.5cm, font=\small},
+    chunk/.style={rectangle, draw, fill=green!20, minimum width=2cm, minimum height=1cm, font=\small},
+    community/.style={diamond, draw, fill=orange!20, minimum size=1.8cm, font=\small},
+    rel/.style={font=\tiny}
+]
+% Nodes
+\node[entity] (university) {Đại Học Huế};
+\node[entity, below left=of university] (faculty) {Khoa CNTT};
+\node[entity, below right=of university] (major) {CNTT};
+\node[chunk, below=of faculty] (chunk1) {Chunk 1\\(text)};
+\node[chunk, below=of major] (chunk2) {Chunk 2\\(text)};
+\node[community, below=3cm of university] (community1) {Cộng đồng\\CNTT};
+
+% Relationships
+\draw[-Stealth] (university) -- node[rel, left] {THUỘC\_TRƯỜNG} (faculty);
+\draw[-Stealth] (faculty) -- node[rel, above] {CÓ\_NGÀNH} (major);
+\draw[-Stealth] (chunk1) -- node[rel, left] {HAS\_ENTITY} (faculty);
+\draw[-Stealth] (chunk2) -- node[rel, right] {HAS\_ENTITY} (major);
+\draw[-Stealth] (faculty) -- node[rel, left] {IN\_COMMUNITY} (community1);
+\draw[-Stealth] (major) -- node[rel, right] {IN\_COMMUNITY} (community1);
+\end{tikzpicture}
+\caption{Lược đồ Neo4j cho hệ thống tư vấn tuyển sinh HUSC. Các thực thể được liên kết với nhau và với các chunk văn bản gốc, đồng thời được gán vào các cộng đồng.}
+\label{fig:neo4j_schema}
+\end{figure}
+
+\section{Các Biến thể Kiến trúc GraphRAG}
+\label{sec:graphrag_variants}
+
+Như đã đề cập trong Bảng \ref{tab:graphrag_variants_comparison}, hệ sinh thái GraphRAG bao gồm nhiều biến thể kiến trúc, mỗi biến thể giải quyết những thách thức cụ thể trong bài toán truy xuất và sinh văn bản.
+
+\subsection{Microsoft GraphRAG: Community-Based Approach}
+\label{subsec:microsoft_graphrag}
+
+Microsoft GraphRAG \cite{edge2024graphrag} là một trong những triển khai đầu tiên và toàn diện nhất của kiến trúc GraphRAG. Cốt lõi của hệ thống này là việc sử dụng thuật toán phát hiện cộng đồng Leiden để phân nhóm các thực thể liên quan chặt chẽ trong đồ thị tri thức. Chất lượng của một phân hoạch cộng đồng được đo lường bởi độ đo modularity, được định nghĩa như sau:
+\begin{equation}
+Q = \frac{1}{2m} \sum_{ij} \left[ A_{ij} - \frac{k_i k_j}{2m} \right] \delta(c_i, c_j)
+\label{eq:modularity}
+\end{equation}
+Trong đó, $A_{ij}$ là phần tử của ma trận kề, $k_i$ và $k_j$ là bậc của các node $i$ và $j$, $m$ là tổng số cạnh, và $\delta(c_i, c_j)$ là hàm delta Kronecker bằng 1 nếu $i$ và $j$ thuộc cùng một cộng đồng. Thuật toán Leiden tìm cách tối đa hóa $Q$ để có được phân hoạch cộng đồng tối ưu.
+
+Sau khi phát hiện cộng đồng, hệ thống sử dụng LLM để tạo ra các bản tóm tắt cộng đồng (community summaries), ghi lại các chủ đề chính và mối quan hệ quan trọng trong mỗi nhóm. Kiến trúc này hỗ trợ hai chế độ truy vấn: chế độ cục bộ (Local query mode) dành cho các câu hỏi tập trung vào một thực thể cụ thể, kết hợp kết quả từ truy xuất vector và duyệt đồ thị; và chế độ toàn cục (Global query mode) dành cho các câu hỏi tổng hợp, sử dụng một quy trình map-reduce để tổng hợp thông tin từ tất cả các bản tóm tắt cộng đồng. Toàn bộ pipeline được minh họa trong sơ đồ luồng ở Hình \ref{fig:microsoft_graphrag_pipeline}.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=1.2cm,
+    box/.style={rectangle, rounded corners, draw, fill=blue!10, minimum height=0.8cm, align=center, font=\small},
+    arrow/.style={-Stealth, thick}
+]
+% Local Query Path
+\node[box] (local_query) {Truy vấn cục bộ};
+\node[box, right=of local_query] (entity_retrieval) {Truy xuất\\thực thể};
+\node[box, right=of entity_retrieval] (graph_traversal) {Duyệt đồ thị\\(k-hop)};
+\node[box, right=of graph_traversal] (local_context) {Ngữ cảnh cục bộ};
+
+% Global Query Path
+\node[box, below=1.5cm of local_query] (global_query) {Truy vấn toàn cục};
+\node[box, right=of global_query] (community_summaries) {Tất cả bản tóm tắt\\cộng đồng};
+\node[box, right=of community_summaries] (map_reduce) {Map-Reduce\\tổng hợp};
+\node[box, right=of map_reduce] (global_context) {Ngữ cảnh toàn cục};
+
+% Common Path
+\node[box, below=1.5cm of local_context] (llm) {LLM Generator};
+\node[box, right=of llm] (answer) {Câu trả lời};
+
+% Arrows
+\draw[arrow] (local_query) -- (entity_retrieval);
+\draw[arrow] (entity_retrieval) -- (graph_traversal);
+\draw[arrow] (graph_traversal) -- (local_context);
+\draw[arrow] (global_query) -- (community_summaries);
+\draw[arrow] (community_summaries) -- (map_reduce);
+\draw[arrow] (map_reduce) -- (global_context);
+\draw[arrow] (local_context) |- (llm);
+\draw[arrow] (global_context) |- (llm);
+\draw[arrow] (llm) -- (answer);
+\end{tikzpicture}
+\caption{Pipeline xử lý truy vấn của Microsoft GraphRAG, bao gồm hai luồng xử lý song song cho truy vấn cục bộ và toàn cục.}
+\label{fig:microsoft_graphrag_pipeline}
+\end{figure}
+
+\subsection{HippoRAG: Biologically-Inspired Retrieval}
+\label{subsec:hipporag}
+
+HippoRAG \cite{gutierrez2024hipporag} đề xuất một cách tiếp cận độc đáo, lấy cảm hứng từ mô hình trí nhớ của vùng hải mã (hippocampus) trong não người. Thay vì thực hiện truy xuất đa bước một cách lặp đi lặp lại—mỗi bước truy xuất một tập thực thể mới rồi dùng chúng để truy xuất bước tiếp theo—HippoRAG nén toàn bộ quá trình này thành một thao tác đơn lẻ bằng cách sử dụng Personalized PageRank (PPR).
+
+Khác với PageRank chuẩn vốn phân phối mức độ quan trọng đều khắp đồ thị, PPR tập trung sự phân phối vào một tập các node "seed"—ở đây là các thực thể được trích xuất từ truy vấn người dùng. Công thức cập nhật PPR được định nghĩa là:
+\begin{equation}
+\mathbf{p} = \alpha \mathbf{A}^\top \mathbf{D}^{-1} \mathbf{p} + (1 - \alpha) \mathbf{s}
+\label{eq:hipporag_ppr}
+\end{equation}
+Trong đó, $\mathbf{p}$ là vector mức độ quan trọng, $\mathbf{A}$ là ma trận kề, $\mathbf{D}$ là ma trận bậc đường chéo, $\alpha$ là hệ số giảm dần (damping factor), và $\mathbf{s}$ là vector hạt nhân (seed vector) được khởi tạo từ truy vấn. Bằng cách này, HippoRAG có thể nhanh chóng xác định các thực thể liên quan trong toàn bộ mạng lưới, ngay cả khi chúng cách xa các seed ban đầu, từ đó cải thiện đáng kể hiệu suất và giảm chi phí tính toán so với các phương pháp lặp lại.
+
+\subsection{LightRAG: Real-time Graph Updates}
+\label{subsec:lightrag}
+
+LightRAG \cite{guo2024lightrag} giải quyết một trong những điểm yếu lớn của các hệ thống GraphRAG hiện tại: khả năng thích ứng với dữ liệu mới. Trong nhiều ứng dụng thực tế, cơ sở tri thức liên tục được cập nhật, và việc xây dựng lại toàn bộ đồ thị là một quá trình tốn kém và không thực tế.
+
+LightRAG giới thiệu một cơ chế cập nhật tăng dần (incremental update algorithm) cho phép hệ thống tích hợp dữ liệu mới một cách hiệu quả. Khi một tài liệu mới được thêm vào, hệ thống chỉ trích xuất các thực thể và quan hệ mới từ tài liệu đó, sau đó cập nhật đồ thị bằng cách chèn, xóa hoặc sửa đổi các node và cạnh tương ứng. Đồng thời, LightRAG sử dụng chiến lược truy xuất hai cấp (dual-level retrieval): ở cấp độ thấp, hệ thống truy xuất các thực thể và các node lân cận của chúng; ở cấp độ cao, hệ thống khám phá tri thức thông qua các mối quan hệ phức tạp trong đồ thị. So sánh về độ trễ (latency) cho thấy phương pháp cập nhật tăng dần nhanh hơn hàng bậc so với việc xây dựng lại toàn bộ, giúp hệ thống duy trì tính cập nhật mà không ảnh hưởng đáng kể đến hiệu năng.
+
+\subsection{SubgraphRAG: Simplicity as Strength}
+\label{subsec:subgraphrag}
+
+SubgraphRAG \cite{subgraphrag2025} đưa ra một quan điểm triết học khác trong thiết kế hệ thống: sự đơn giản thường là chìa khóa cho hiệu quả. Thay vì triển khai các thành phần phức tạp như phát hiện cộng đồng hay bản tóm tắt cộng đồng, SubgraphRAG chỉ tập trung vào việc truy xuất các đồ thị con (subgraphs) liên quan trực tiếp đến truy vấn.
+
+Hệ thống này dựa trên nguyên tắc rằng các mối quan hệ ngữ nghĩa cốt lõi có thể được biểu diễn đầy đủ thông qua các bộ ba chủ thể-quan hệ-đối tượng (subject-relation-object triplets). Bằng cách truy xuất một tập hợp các bộ ba liên quan và xây dựng một đồ thị con từ chúng, SubgraphRAG cung cấp đủ ngữ cảnh cho LLM để tạo ra câu trả lời chính xác. Phân tích từ nghiên cứu của Li và cộng sự cho thấy rằng, đối với nhiều tác vụ, sự phức tạp bổ sung từ các thành phần như cộng đồng không mang lại lợi ích đáng kể so với chi phí tính toán và độ phức tạp triển khai mà nó gây ra. Do đó, SubgraphRAG là một lựa chọn hấp dẫn cho các ứng dụng cần sự đơn giản, hiệu quả và dễ bảo trì.
+
+\section{Chiến lược Truy xuất Lai (Hybrid Retrieval)}
+\label{sec:hybrid_retrieval}
+
+Một trong những điểm mạnh cốt lõi của các hệ thống GraphRAG hiện đại là khả năng kết hợp nhiều chiến lược truy xuất khác nhau thông qua cơ chế truy xuất lai (Hybrid Retrieval). Điều này cho phép hệ thống tận dụng ưu điểm của cả truy xuất từ khóa (keyword-based), truy xuất vector (dense retrieval), và truy xuất đồ thị (graph traversal).
+
+Một thành phần quan trọng trong chiến lược này là việc tạo ra các truy vấn Cypher từ ngôn ngữ tự nhiên. Có hai cách tiếp cận chính: dựa trên mẫu (template-based) và dựa trên LLM (LLM-generated). Cách tiếp cận dựa trên mẫu sử dụng các quy tắc cú pháp cố định để chuyển đổi các mẫu câu hỏi phổ biến thành truy vấn Cypher. Cách tiếp cận dựa trên LLM linh hoạt hơn, cho phép xử lý các câu hỏi phức tạp và đa dạng, nhưng có nguy cơ tạo ra cú pháp Cypher không hợp lệ.
+
+Một kỹ thuật truy xuất đồ thị phổ biến là mở rộng lân cận k-bước (k-hop neighborhood expansion). Từ một tập các node seed, hệ thống duyệt qua tất cả các node có thể đến được trong vòng k bước. Độ phức tạp của thao tác này có thể được biểu diễn bằng công thức:
+\begin{equation}
+O(|V| \cdot \text{branching}^k)
+\label{eq:khop_complexity}
+\end{equation}
+Trong đó, $|V|$ là số lượng node seed và $\text{branching}$ là hệ số phân nhánh trung bình của đồ thị. Việc lựa chọn $k$ phù hợp là rất quan trọng để cân bằng giữa độ bao phủ và hiệu suất.
+
+Để kết hợp kết quả từ các nguồn truy xuất khác nhau, thuật toán Reciprocal Rank Fusion (RRF) được sử dụng rộng rãi. RRF gán điểm cho mỗi tài liệu dựa trên thứ hạng của nó trong từng danh sách kết quả, sau đó tổng hợp các điểm này. Công thức hợp nhất có trọng số được định nghĩa như sau:
+\begin{equation}
+\text{score}(d) = w_{\text{bm25}} \cdot \text{score}_{\text{bm25}}(d) + w_{\text{dense}} \cdot \text{score}_{\text{dense}}(d) + w_{\text{graph}} \cdot \text{score}_{\text{graph}}(d)
+\label{eq:weighted_fusion}
+\end{equation}
+Trong đó $w_{\text{bm25}} + w_{\text{dense}} + w_{\text{graph}} = 1$ và các trọng số được điều chỉnh dựa trên loại truy vấn. Việc điều chỉnh trọng số cho từng thành phần (BM25, Dense, Graph) trong công thức hợp nhất có trọng số \eqref{eq:weighted_fusion} là chìa khóa để tối ưu hóa hiệu suất cho từng loại truy vấn cụ thể. Bảng \ref{tab:retrieval_strategies} so sánh hiệu quả tương đối của các thành phần này trong các kịch bản khác nhau.
+
+\begin{table}[htbp]
+\centering
+\caption{So sánh hiệu quả của các thành phần truy xuất lai}
+\label{tab:retrieval_strategies}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Loại truy vấn} & \textbf{BM25} & \textbf{Dense} & \textbf{Graph} \\
+\hline
+Truy vấn từ khóa đơn giản & Cao & Trung bình & Thấp \\
+\hline
+Truy vấn ngữ nghĩa & Thấp & Cao & Trung bình \\
+\hline
+Truy vấn đa bước & Thấp & Thấp & Cao \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Vấn đề Kỹ thuật và Giải pháp}
+\label{sec:technical_challenges}
+
+Việc triển khai một hệ thống GraphRAG trong thực tế đi kèm với nhiều thách thức kỹ thuật cần được giải quyết.
+
+Đầu tiên là vấn đề lỗi thời của đồ thị (graph staleness). Khi cơ sở tri thức liên tục được cập nhật, đồ thị tri thức có thể nhanh chóng trở nên lỗi thời nếu không được đồng bộ. LightRAG đã đề xuất một giải pháp cập nhật tăng dần hiệu quả, nhưng đối với các hệ thống không có cơ chế này, việc lên lịch xây dựng lại định kỳ là cần thiết, mặc dù tốn kém về tài nguyên.
+
+Thứ hai, ảo giác trong LLM (LLM hallucination) là một rủi ro nghiêm trọng trong quá trình trích xuất thực thể và quan hệ. Một LLM có thể tạo ra các thực thể hoặc quan hệ không tồn tại trong dữ liệu gốc. Để giảm thiểu điều này, các cơ chế phát hiện và sửa lỗi cần được triển khai, chẳng hạn như xác thực chéo (cross-validation) với các nguồn dữ liệu đáng tin cậy hoặc sử dụng các mô hình nhỏ hơn, chuyên biệt hơn cho tác vụ trích xuất.
+
+Thứ ba, các nút cổ chai về khả năng mở rộng (scalability bottleneck) có thể phát sinh từ trình lập kế hoạch truy vấn (query planner) của Neo4j, đặc biệt là với các đồ thị rất lớn. Việc tối ưu hóa chỉ mục, như sử dụng chỉ mục vector chuyên dụng cho các truy vấn tương đồng, và viết các truy vấn Cypher hiệu quả là rất quan trọng để đảm bảo hiệu suất.
+
+Cuối cùng, việc giải quyết thực thể (entity resolution) có thể dẫn đến các lỗi hợp nhất sai (false positive merges), nơi hai thực thể khác nhau bị coi là một. Điều này làm méo mó cấu trúc đồ thị và dẫn đến kết quả truy xuất không chính xác. Để giải quyết vấn đề này, cần sử dụng các ngưỡng tương đồng thận trọng và kết hợp nhiều đặc trưng (features) khác nhau (ví dụ: cả tên và mô tả) trong quá trình so sánh.

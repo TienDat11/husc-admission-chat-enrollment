@@ -1,0 +1,1415 @@
+\documentclass[12pt,a4paper]{report}
+
+% ============================================================================
+% PACKAGES
+% ============================================================================
+
+\usepackage[T5]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[vietnamese]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{placeins}
+\usepackage{geometry}
+\geometry{
+	top=3cm,
+	bottom=3cm,
+	left=3.5cm,
+	right=2.5cm
+}
+\usepackage{setspace}
+\onehalfspacing
+
+\clubpenalty=10000
+\widowpenalty=10000
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}
+
+\usepackage{booktabs}
+\usepackage{adjustbox}
+\usepackage{multirow}
+\usepackage{array}
+
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\captionsetup{font=small, labelfont=bf}
+
+\usepackage[colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue]{hyperref}
+
+\usepackage{indentfirst}
+\usepackage{enumitem}
+\usepackage{tocbibind}
+
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit,
+	backgrounds, calc, decorations.pathreplacing}
+
+% ============================================================================
+% GLOBAL TIKZ DEFAULTS
+% ============================================================================
+\tikzset{
+	every picture/.style={line width=0.8pt}
+}
+
+% ============================================================================
+% THEOREM DEFINITIONS
+% ============================================================================
+
+\theoremstyle{plain}
+\newtheorem{dinhnghia}{Định nghĩa}[chapter]
+\newtheorem{dinhly}{Định lý}[chapter]
+\newtheorem{baitoan}{Bài toán}[chapter]
+
+\theoremstyle{definition}
+\newtheorem{vidu}{Ví dụ}[chapter]
+
+% ============================================================================
+% MATHEMATICAL COMMANDS
+% ============================================================================
+
+\DeclareMathOperator*{\argmax}{argmax}
+\DeclareMathOperator*{\argmin}{argmin}
+\DeclareMathOperator*{\sigmoid}{sigmoid}
+
+% ============================================================================
+% DOCUMENT INFORMATION
+% ============================================================================
+
+\title{Báo Cáo Nghiên Cứu Kỹ Thuật AI: Bước Dịch Chuyển Từ Naive RAG
+	Sang GraphRAG Dựa Trên Nguyên Lý Đồ Thị Của Neo4j}
+\author{Ngô Đức Phan Tiến Đạt}
+\date{2026}
+
+% ============================================================================
+% BEGIN DOCUMENT
+% ============================================================================
+
+\begin{document}
+	
+	\newcommand{\frontmatter}{\pagenumbering{roman}}
+	\pagestyle{plain}
+	
+	% ============================================================================
+	% FRONT MATTER — Title Page
+	% ============================================================================
+	
+	\begin{titlepage}
+		\centering
+		\vspace*{1cm}
+		
+		\textbf{TRƯỜNG ĐẠI HỌC KHOA HỌC}\\
+		\textbf{ĐẠI HỌC HUẾ}
+		
+		\vspace{2cm}
+		
+		\textbf{\Large KHOA CÔNG NGHỆ THÔNG TIN}
+		
+		\vspace{1.5cm}
+		
+		\includegraphics[width=2.5cm, keepaspectratio]{logo.png}\\[0.3cm]
+		{\small\textit{Trường Đại Học Khoa Học -- Đại Học Huế}}
+		
+		\vspace{1.5cm}
+		
+		\textbf{\LARGE BÁO CÁO NGHIÊN CỨU KỸ THUẬT AI}
+		
+		\vspace{1cm}
+		
+		\textbf{\Large Bước Dịch Chuyển Từ Naive RAG Sang GraphRAG\\
+			Dựa Trên Nguyên Lý Đồ Thị Của Neo4j}
+		
+		\vspace{2cm}
+		
+		\textbf{Sinh Viên:}\\[0.3cm]
+		Ngô Đức Phan Tiến Đạt
+		
+		\vspace{1cm}
+		
+		\textbf{Năm:} 2026
+		
+		\vfill
+	\end{titlepage}
+	
+	% ============================================================================
+	% FRONT MATTER — Declaration
+	% ============================================================================
+	
+	\thispagestyle{empty}
+	\vspace*{3cm}
+	
+	\section*{LỜI CAM ĐOAN}
+	
+	\vspace{1cm}
+	
+	Em xin cam đoan rằng nội dung của báo cáo này là hoàn toàn nguyên bản và được
+	thực hiện dưới sự hướng dẫn của giảng viên hướng dẫn trong lĩnh vực Trí Tuệ Nhân Tạo.
+	
+	Em xác nhận rằng:
+	\begin{itemize}
+		\item Không có phần nào của báo cáo này được sao chép từ các công trình đã công
+		bố mà không có trích dẫn thích hợp.
+		\item Tất cả các tham chiếu và trích dẫn đều được ghi rõ nguồn gốc.
+		\item Các kết quả nghiên cứu được trình bày là trung thực và khách quan.
+	\end{itemize}
+	
+	\vspace{2cm}
+	
+	\begin{flushright}
+		Thành phố Huế, ngày \quad tháng \quad năm 2026\\[1cm]
+		\textbf{Ngô Đức Phan Tiến Đạt}
+	\end{flushright}
+	
+	\clearpage
+	
+	% ============================================================================
+	% FRONT MATTER — Acknowledgment
+	% ============================================================================
+	
+	\thispagestyle{empty}
+	\vspace*{3cm}
+	
+	\section*{LỜI CẢM ƠN}
+	
+	\vspace{1cm}
+	
+	Em xin bày tỏ lòng biết ơn sâu sắc nhất đến các thầy giáo, cô Đoàn Thị Hồng
+	Phước, khoa Công Nghệ Thông Tin, chuyên ngành Khoa Học Máy Tính, Trường Đại
+	Học Khoa Học -- Đại Học Huế đã tận tình hướng dẫn và truyền đạt kiến thức
+	trong suốt quá trình nghiên cứu.
+	
+	Đặc biệt, Em xin cảm ơn:
+	\begin{itemize}
+		\item Các nhà nghiên cứu hàng đầu trong cộng đồng GraphRAG và Neo4j đã mở ra
+		hướng đi mới cho việc ứng dụng đồ thị tri thức trong hệ thống truy xuất
+		và sinh văn bản.
+		\item Các đồng nghiệp trong phòng thí nghiệm đã có những thảo luận giá trị
+		và đóng góp ý kiến xây dựng.
+		\item Gia đình và bạn bè đã luôn đồng hành và hỗ trợ trong suốt hành trình
+		nghiên cứu.
+	\end{itemize}
+	
+	Cuối cùng, Em xin cảm ơn tất cả những người đã gián tiếp và trực tiếp giúp đỡ
+	Em hoàn thành báo cáo này.
+	
+	\vspace{2cm}
+	
+	\begin{flushright}
+		Thành phố Huế, ngày \quad tháng \quad năm 2026
+	\end{flushright}
+	
+	\clearpage
+	
+	% ============================================================================
+	% FRONT MATTER — Abstract
+	% ============================================================================
+	
+	\thispagestyle{empty}
+	\vspace*{3cm}
+	
+	\section*{TÓM TẮT (Abstract)}
+	\addcontentsline{toc}{section}{Tóm tắt (Abstract)}
+	
+	\vspace{1cm}
+	
+	Báo cáo kỹ thuật AI cấp độ tốt nghiệp này trình bày quá trình nghiên cứu hệ
+	thống tư vấn tuyển sinh thông minh cho Trường Đại Học Khoa Học -- Đại Học Huế,
+	sử dụng kiến trúc GraphRAG (Graph Retrieval-Augmented Generation) dựa trên
+	sách đọc trên nền tảng neo4j là Essential GraphRAG của tác giả Tomaž Bratanič
+	và các đồng nghiệp của mình được xuất bản.
+	
+	\textbf{Câu hỏi nghiên cứu:} Liệu việc thay thế kiến trúc Naive RAG truyền
+	thống bằng GraphRAG có cải thiện đáng kể độ chính xác và khả năng suy luận
+	đa bước trong bài toán hỏi đáp tuyển sinh đại học hay không?
+	
+	\textbf{Đóng góp chính của nghiên cứu:}
+	\begin{enumerate}
+		\item Phân tích toán học hệ thống về giới hạn của Naive RAG trong bài toán
+		truy xuất thông tin đa bước (multi-hop retrieval).
+		\item Thiết kế kiến trúc GraphRAG hoàn chỉnh cho dữ liệu tuyển sinh tiếng
+		Việt với đồ thị tri thức Neo4j.
+		\item Xây dựng bộ thực nghiệm so sánh định lượng giữa Naive RAG và GraphRAG
+		trên bộ dữ liệu tuyển sinh HUSC.
+	\end{enumerate}
+	
+	\textbf{Từ khóa:} GraphRAG, Neo4j, Knowledge Graph, Tư vấn tuyển sinh,
+	Multi-hop Reasoning, Hybrid Retrieval.
+	
+	\clearpage
+	
+	% ============================================================================
+	% FRONT MATTER — Table of Contents / Lists
+	% ============================================================================
+	
+	\tableofcontents
+	\clearpage
+	
+	\listoffigures
+	\addcontentsline{toc}{section}{Danh mục hình vẽ}
+	\clearpage
+	
+	\listoftables
+	\addcontentsline{toc}{section}{Danh mục bảng biểu}
+	\clearpage
+	
+	% ============================================================================
+	% FRONT MATTER — Abbreviations
+	% [FIX 5-minor] Xóa KNN khỏi bảng vì không xuất hiện trong nội dung 2 chương
+	% ============================================================================
+	
+	\section*{DANH MỤC CÁC KÝ HIỆU VÀ CHỮ VIẾT TẮT}
+	\addcontentsline{toc}{section}{Danh mục các ký hiệu và chữ viết tắt}
+	
+	\begin{table}[h]
+		\centering
+		\begin{tabular}{ll}
+			\toprule
+			\textbf{Ký hiệu / Viết tắt} & \textbf{Giải thích}                        \\
+			\midrule
+			RAG                         & Retrieval-Augmented Generation             \\
+			GraphRAG                    & Graph-based Retrieval-Augmented Generation \\
+			LLM                         & Large Language Model                       \\
+			KG                          & Knowledge Graph (Đồ thị Tri thức)          \\
+			RRF                         & Reciprocal Rank Fusion                     \\
+			PPR                         & Personalized PageRank                      \\
+			NER                         & Named Entity Recognition                   \\
+			RE                          & Relation Extraction                        \\
+			MRR                         & Mean Reciprocal Rank                       \\
+			NDCG                        & Normalized Discounted Cumulative Gain      \\
+			BM25                        & Best Matching 25                           \\
+			NLP                         & Natural Language Processing                \\
+			HUSC                        & Trường Đại Học Khoa Học -- Đại Học Huế    \\
+			\bottomrule
+		\end{tabular}
+	\end{table}
+	
+	\clearpage
+	
+	% ============================================================================
+	% MAIN BODY
+	% ============================================================================
+	
+	\newcommand{\mainmatter}{\pagenumbering{arabic}}
+	
+	% ============================================================================
+	% CHAPTER 1 — Naive RAG
+	% ============================================================================
+	
+	\chapter{Cơ sở lý thuyết và Giới hạn của Naive RAG}
+	\label{chap:naive_rag}
+	
+	\section{Động lực: Hạn chế Cốt lõi của Mô hình Ngôn ngữ Lớn}
+	\label{sec:llm_limitations}
+	
+	Trước khi phân tích kỹ thuật của Naive RAG, cần thiết lập nền tảng động lực
+	căn bản: tại sao các kiến trúc tăng cường truy xuất lại trở thành một hướng
+	nghiên cứu tất yếu? Câu trả lời nằm ở bốn hạn chế cố hữu của chính LLM ---
+	những hạn chế mà không thể khắc phục bằng cách mở rộng quy mô mô hình hay
+	kéo dài thời gian huấn luyện~\cite{neo4j2024essential}.
+	
+	\textbf{Ngưỡng kiến thức (Knowledge Cutoff).} LLM được huấn luyện trên tập
+	dữ liệu tĩnh được thu thập đến một thời điểm nhất định. Mọi thông tin phát
+	sinh sau thời điểm đó --- chính sách tuyển sinh mới nhất, quy chế sửa đổi,
+	chỉ tiêu cập nhật --- đều hoàn toàn nằm ngoài tầm nhận thức của mô hình, bất
+	kể độ lớn hay kiến trúc của nó.
+	
+	\textbf{Thông tin lỗi thời.} Ngay trong vùng thời gian trước ngưỡng kiến thức,
+	tri thức của mô hình vẫn có thể không còn phản ánh thực tế do sự thay đổi liên
+	tục của môi trường: nhân sự biến động, quy định được điều chỉnh, số liệu thống
+	kê được cập nhật theo từng năm học.
+	
+	\textbf{Ảo giác (Hallucination).} Khác với cơ sở dữ liệu truyền thống vốn tra
+	cứu bản ghi thực, LLM mã hóa tri thức dưới dạng phân phối xác suất trên không
+	gian ngôn ngữ. Hệ quả là mô hình có thể tự tin sản sinh ra thông tin hoàn toàn
+	bịa đặt --- từ trích dẫn học thuật không tồn tại đến tên ngành học hay mã ngành
+	sai lệch --- mà không có bất kỳ tín hiệu cảnh báo nào gửi đến người dùng.
+	
+	\textbf{Thiếu dữ liệu nội bộ.} Thông tin đặc thù của từng tổ chức --- tài liệu
+	tuyển sinh, quy chế nội bộ, cơ sở dữ liệu sinh viên --- chưa bao giờ là một
+	phần của tập huấn luyện công khai, khiến LLM hoàn toàn không có khả năng lý
+	luận trực tiếp trên những nguồn dữ liệu này.
+	
+	Phương án fine-tuning --- huấn luyện lại mô hình trên tập dữ liệu đặc thù ---
+	thoạt nhìn có vẻ là giải pháp tự nhiên nhưng lại không thực tế: chi phí tính
+	toán lớn, chu kỳ triển khai dài, và không có gì đảm bảo mô hình sẽ thực sự ghi
+	nhớ thông tin mới theo cách có thể kiểm soát và kiểm chứng. RAG ra đời như một
+	giải pháp bổ sung tri thức \emph{tại thời điểm suy luận} (inference-time), tách
+	biệt hoàn toàn vòng đời của mô hình và vòng đời của dữ liệu: khi tri thức thay
+	đổi, ta chỉ cần cập nhật knowledge base, không cần chạm vào mô hình.
+	
+	Trong kiến trúc RAG cơ bản (Naive RAG), tri thức đầu vào được xử lý dưới dạng
+	các đoạn văn bản độc lập (chunks) và được biểu diễn qua các vector nhúng
+	(embeddings) trong một không gian liên tục. Nghiên cứu của Grossmann và cộng
+	sự~\cite{docgraphrag2025} về Document GraphRAG cho thấy, giả sử $\mathcal{T}$
+	là tập hợp các đoạn văn bản, ta có ánh xạ từ không gian ngữ nghĩa sang không
+	gian vector $\mathbb{R}^d$ qua bộ mã hóa $\phi$:
+	
+	\begin{equation}
+		\phi: \mathcal{T} \to \mathbb{R}^d
+		\label{eq:embedding_map}
+	\end{equation}
+	
+	Khi hệ thống tiếp nhận một truy vấn $q$, nó tiến hành tìm kiếm $k$ lân cận
+	gần nhất (k-NN) dựa trên độ tương đồng Cosine (Cosine Similarity) giữa vector
+	truy vấn $\mathbf{v}_q = \phi(q)$ và các vector tài liệu $\mathbf{v}_d = \phi(d)$
+	theo công thức~\eqref{eq:cosine_similarity}:
+	
+	\begin{equation}
+		S_C(\mathbf{v}_q, \mathbf{v}_d)
+		= \frac{\mathbf{v}_q \cdot \mathbf{v}_d}
+		{\|\mathbf{v}_q\|_2\,\|\mathbf{v}_d\|_2}
+		= \cos(\theta)
+		\label{eq:cosine_similarity}
+	\end{equation}
+	
+	Nghiên cứu của Edge và cộng sự tại Microsoft~\cite{edge2024local} chỉ ra Naive
+	RAG bộc lộ điểm yếu cốt lõi khi đối mặt với các truy vấn cần suy luận đa bước
+	(multi-hop reasoning). Khi chia nhỏ tài liệu, cấu trúc ngữ nghĩa ban đầu bị
+	phá vỡ, tạo ra hiện tượng phân mảnh ngữ cảnh (context fragmentation). Hệ thống
+	lưu giữ từng đoạn thông tin rời rạc nhưng đánh mất sợi dây liên kết mạch lạc
+	giữa chúng. Hình~\ref{fig:naive_rag_fragmentation} minh họa hiện tượng này.
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{adjustbox}{max width=\linewidth}
+			\begin{tikzpicture}[
+				node distance=1.2cm,
+				box/.style={rectangle, rounded corners=3pt, draw=black!70,
+					fill=blue!10, minimum width=2.2cm, minimum height=0.8cm,
+					align=center, font=\small},
+				arrow/.style={-Stealth, thick}
+				]
+				\node[box, fill=orange!20] (doc1) at (0,0)    {Doc A};
+				\node[box, fill=orange!20] (doc2) at (0,-1.2) {Doc B};
+				\node[box, fill=orange!20] (doc3) at (0,-2.4) {Doc C};
+				\node[box, fill=orange!20] (doc4) at (0,-3.6) {Doc D};
+				
+				\node[box, fill=green!15]  (vec1) at (3.5,0)    {$\mathbf{v}_A$};
+				\node[box, fill=green!15]  (vec2) at (3.5,-1.2) {$\mathbf{v}_B$};
+				\node[box, fill=green!15]  (vec3) at (3.5,-2.4) {$\mathbf{v}_C$};
+				\node[box, fill=green!15]  (vec4) at (3.5,-3.6) {$\mathbf{v}_D$};
+				
+				\draw[arrow] (doc1) -- node[above,font=\tiny]{$\phi$} (vec1);
+				\draw[arrow] (doc2) -- (vec2);
+				\draw[arrow] (doc3) -- (vec3);
+				\draw[arrow] (doc4) -- (vec4);
+				
+				\node[box, fill=yellow!20] (query) at (6.5,-1.8) {$\mathbf{v}_q$};
+				
+				\draw[arrow, dashed, gray] (query) -- (vec1);
+				\draw[arrow, dashed, gray] (query) -- (vec2);
+				\draw[arrow, dashed, gray] (query) -- (vec3);
+				
+				\node[above, font=\footnotesize\bfseries] at (0,0.5)   {Tài liệu};
+				\node[above, font=\footnotesize\bfseries] at (3.5,0.5) {Embedding};
+				\node[above, font=\footnotesize\bfseries] at (6.5,0.5) {Truy vấn};
+				
+				\begin{scope}[on background layer]
+					\node[draw=orange!60, dashed, rounded corners,
+					fit=(doc1)(doc2)(doc3)(doc4),
+					label={[font=\tiny,text=orange!80]above:Chunks độc lập}] {};
+				\end{scope}
+			\end{tikzpicture}
+		\end{adjustbox}
+		\caption{Sự đứt gãy ngữ nghĩa khi chia nhỏ tài liệu trong Naive RAG. Mỗi
+			chunk được biểu diễn độc lập trong không gian vector; không có kết nối ngữ
+			nghĩa nào được duy trì giữa chúng.}
+		\label{fig:naive_rag_fragmentation}
+	\end{figure}
+	
+	% -----------------------------------------------------------------------
+	% [FIX 1 & 2] Sửa công thức isotropic limit (định nghĩa sigma^2 tường minh)
+	% và thay thế công thức multi-hop decay sai bằng giới hạn góc đúng
+	% -----------------------------------------------------------------------
+	
+	Hạn chế toán học sâu xa của Naive RAG xuất phát từ hai tính chất của không
+	gian vector nhúng chiều cao. Tính chất thứ nhất là \emph{giới hạn đẳng hướng}
+	(isotropic concentration). Giả sử các thành phần của mỗi vector nhúng
+	$\mathbf{v}_i \in \mathbb{R}^d$ là độc lập và đồng phân phối (i.i.d.) với
+	trung bình $\mu = 0$ và phương sai $\sigma^2 > 0$ trên mỗi chiều. Khi đó,
+	theo Luật Số Lớn, khoảng cách bình phương kỳ vọng giữa hai vector bất kỳ hội
+	tụ theo~\cite{ethayarajh2019contextual}:
+	
+	\begin{equation}
+		\mathbb{E}\!\left[\|\mathbf{v}_i - \mathbf{v}_j\|^2\right]
+		= 2d\sigma^2
+		\;\longrightarrow\; \infty
+		\quad\text{khi } d \to \infty
+		\label{eq:isotropic_limit}
+	\end{equation}
+	
+	Hệ quả là sau khi chuẩn hóa về vector đơn vị, mọi cặp vector có xu hướng
+	phân bố đồng đều trên mặt cầu $S^{d-1}$, khiến phần lớn giá trị cosine tập
+	trung gần $0$. Độ tương đồng cosine do đó dần mất khả năng phân biệt.
+	
+	Tính chất thứ hai --- nghiêm trọng hơn cho bài toán suy luận đa bước ---
+	là \emph{sự thiếu bắc cầu} (non-transitivity) của cosine similarity.
+	Đây là hạn chế cấu trúc: ngay cả khi mọi cặp thực thể liền kề trong chuỗi
+	$A \to B \to C \to \cdots \to N$ có độ tương đồng cao, không có bảo đảm nào
+	rằng $A$ và $N$ sẽ gần nhau trong không gian vector.
+	
+	Phân tích hình học cho thấy điều này rõ ràng. Với các vector đơn vị, góc
+	$\theta_{ij} = \arccos\!\bigl(S_C(\mathbf{v}_i, \mathbf{v}_j)\bigr)$ chính là
+	khoảng cách trắc địa (geodesic distance) trên mặt cầu đơn vị $S^{d-1}$ và
+	thỏa mãn bất đẳng thức tam giác. Do đó, góc tích lũy sau $n$ bước nhảy bị
+	chặn trên bởi tổng các góc thành phần:
+	
+	\begin{equation}
+		\theta_{A,\,A+n}
+		\;\leq\;
+		\sum_{k=0}^{n-1} \theta_{A+k,\,A+k+1}
+		\label{eq:angle_triangle}
+	\end{equation}
+	
+	Đặt $\rho = \min_{k}\, S_C(\mathbf{v}_{A+k},\,\mathbf{v}_{A+k+1})$ là độ
+	tương đồng bước nhảy nhỏ nhất, và $\theta_0 = \arccos(\rho)$ là góc lệch
+	tương ứng. Từ~\eqref{eq:angle_triangle} và tính đơn điệu giảm của hàm
+	$\cos(\cdot)$ trên $[0,\pi]$, ta suy ra giới hạn dưới sau:
+	
+	\begin{equation}
+		S_C(\mathbf{v}_A,\,\mathbf{v}_{A+n})
+		\;\geq\;
+		\cos\!\bigl(n \cdot \arccos(\rho)\bigr)
+		\label{eq:multi_hop_lower_bound}
+	\end{equation}
+	
+	Công thức~\eqref{eq:multi_hop_lower_bound} cho thấy giới hạn dưới này suy
+	giảm theo $n$ và trở về $0$ (rồi âm) ngay khi $n > \frac{\pi/2}{\arccos(\rho)}$.
+	Điều này có nghĩa là kể cả trong trường hợp tốt nhất, hệ thống không còn có
+	bảo đảm dương nào về sự tương đồng sau đủ nhiều bước nhảy. Với $\rho = 0{,}95$
+	(độ tương đồng bước rất cao), ngưỡng này là $n^* = \lfloor\pi/(2\arccos(0{,}95))\rfloor
+	\approx 5$ bước --- một con số rất nhỏ so với các chuỗi suy luận thực tế.
+	Hình~\ref{fig:cosine_decay} minh họa sự suy giảm này.
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{tikzpicture}
+			\begin{axis}[
+				width=9cm, height=5.5cm,
+				xlabel={Số bước nhảy ($n$)},
+				ylabel={Giới hạn dưới của $S_C$},
+				xlabel style={font=\small},
+				ylabel style={font=\small},
+				ymin=-0.15, ymax=1.05,
+				xmin=0, xmax=5,
+				legend style={at={(0.97,0.97)}, anchor=north east, font=\small},
+				grid=major,
+				grid style={draw=gray!20},
+				mark size=3pt,
+				ytick={-0.1, 0, 0.2, 0.4, 0.6, 0.8, 1.0},
+				]
+				% Dữ liệu tính từ công thức lý thuyết: cos(n * arccos(0.95))
+				% n=0: 1.000; n=1: 0.950; n=2: 0.802; n=3: 0.573; n=4: 0.296; n=5: -0.021
+				\addplot[blue!70, mark=*, thick, mark options={fill=blue!70}]
+				coordinates {(0,1.000)(1,0.950)(2,0.802)(3,0.573)(4,0.296)(5,-0.021)};
+				\addlegendentry{$\cos(n\cdot\arccos(\rho))$ ($\rho=0.95$)}
+			\end{axis}
+		\end{tikzpicture}
+		\caption{Suy giảm giới hạn dưới của độ tương đồng Cosine theo số bước nhảy
+			trong truy xuất đa bước, tính theo công thức lý thuyết
+			$\cos(n\cdot\arccos(\rho))$ với $\rho = 0{,}95$
+			(xem công thức~\eqref{eq:multi_hop_lower_bound}).
+			Đây là minh họa định lượng của kịch bản tốt nhất: ngay cả với độ tương đồng
+			bước rất cao ($\rho=0{,}95$), giới hạn dưới đã xuống dưới $0$ tại $n=5$,
+			chứng tỏ không gian vector mất hoàn toàn khả năng định hướng sau đủ nhiều bước.}
+		\label{fig:cosine_decay}
+	\end{figure}
+	
+	Khi giới hạn dưới $\cos(n\cdot\arccos(\rho))$ trở thành âm, vector không gian
+	không còn cung cấp bất kỳ tín hiệu định hướng có ý nghĩa nào. Điều này lý giải
+	tại sao Naive RAG thường thất bại khi phải tổng hợp thông tin từ nhiều nguồn để
+	giải quyết các câu hỏi phức hợp: sự phi-bắc-cầu của cosine similarity là một
+	giới hạn cấu trúc không thể khắc phục bằng cách tinh chỉnh mô hình hay tăng
+	chiều không gian nhúng.
+	
+	% -------------------------------------------------------------------
+	\section{Chiến lược Phân đoạn Văn bản: Đánh đổi Giữa Độ chính xác và Ngữ cảnh}
+	\label{sec:chunking_tradeoffs}
+	
+	Một nguồn hạn chế thực tiễn quan trọng của Naive RAG nằm ngay ở bước tiền xử
+	lý đầu tiên: phân đoạn văn bản (text chunking). Hai mục tiêu mâu thuẫn định
+	hình mọi chiến lược phân đoạn: \emph{độ chính xác của vector nhúng} và
+	\emph{tính đầy đủ của ngữ cảnh}. Đoạn văn bản càng ngắn, vector nhúng càng
+	tập trung phản ánh một ý tưởng cục bộ --- và do đó tìm kiếm độ tương đồng cho
+	kết quả sắc nét hơn. Nhưng đoạn quá ngắn sẽ cắt đứt ngữ cảnh mà LLM cần để
+	tổng hợp câu trả lời ở bước tạo sinh. Ngược lại, đoạn dài bảo tồn tính mạch
+	lạc ngữ cảnh nhưng làm loãng tín hiệu embedding, dẫn đến truy xuất kém phân
+	biệt hơn.
+	
+	% -----------------------------------------------------------------------
+	% [FIX 3] Thay ký hiệu tỷ lệ thuận ∝ bằng mô tả đơn điệu chính xác hơn
+	% [FIX 4] Đổi tên tham số trọng số thành λ để tránh xung đột với α của PPR
+	% -----------------------------------------------------------------------
+	
+	Gọi $f(\ell)$ và $g(\ell)$ lần lượt là Retrieval Precision và Context
+	Completeness theo kích thước chunk $\ell$ (tính theo số token). Hai hàm này
+	thể hiện quan hệ đơn điệu nghịch chiều nhau:
+	\begin{equation}
+		f'(\ell) < 0
+		\quad\text{và}\quad
+		g'(\ell) > 0
+		\qquad \forall\,\ell > 0
+		\label{eq:chunking_monotone}
+	\end{equation}
+	Mối quan hệ đơn điệu này được xác nhận qua thực nghiệm nhưng \emph{không}
+	tuyến tính: dạng hàm cụ thể phụ thuộc vào phân phối nội dung corpus. Hàm
+	mục tiêu hợp nhất với tham số trọng số $\lambda \in (0,1)$ là:
+	\begin{equation}
+		\mathcal{L}(\ell)
+		= \lambda \cdot f(\ell) + (1-\lambda) \cdot g(\ell)
+		\label{eq:chunking_objective}
+	\end{equation}
+	Điểm tối ưu $\ell^*$ thỏa mãn điều kiện bậc nhất
+	$\lambda f'(\ell^*) + (1-\lambda)g'(\ell^*) = 0$ và phụ thuộc vào cả phân
+	phối corpus lẫn tham số $\lambda$ phản ánh ưu tiên của ứng dụng.
+	
+	Một chiến lược tinh vi hơn nhằm phá vỡ sự đánh đổi cứng nhắc trên là kỹ thuật
+	\emph{Parent Document Retriever}~\cite{neo4j2024essential}: duy trì hai cấp biểu
+	diễn song song cho cùng một tài liệu. \emph{Child chunks} có kích thước nhỏ
+	được dùng để tìm kiếm chính xác, nhưng khi kết quả được xác định, hệ thống trả
+	về \emph{parent document} --- đoạn cha lớn hơn bao hàm chunk con đó --- để cung
+	cấp ngữ cảnh đầy đủ cho tầng tạo sinh. Kỹ thuật này thừa nhận một nguyên lý
+	quan trọng: đơn vị tối ưu cho \emph{truy xuất} và đơn vị tối ưu cho \emph{sinh
+		văn bản} không nhất thiết trùng nhau.
+	
+	Trong bối cảnh hệ thống baseline PaddedRAG được đánh giá tại
+	Chương~\ref{chap:experiments}, chiến lược phân đoạn cố định
+	$\texttt{chunk\_size}=350$, $\texttt{overlap}=70$ là một xấp xỉ thực dụng nhưng
+	không giải quyết được mâu thuẫn nêu trên. Đây là một điểm yếu cấu trúc cần
+	được khắc phục khi chuyển sang kiến trúc GraphRAG --- nơi thông tin không còn
+	bị ràng buộc trong ranh giới phân đoạn tùy tiện mà được tổ chức theo quan hệ
+	ngữ nghĩa tường minh trong đồ thị tri thức.
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{adjustbox}{max width=0.88\linewidth}
+			\begin{tikzpicture}
+				\begin{axis}[
+					width=10cm, height=6.5cm,
+					xlabel={Kích thước chunk $\ell$ (tokens)},
+					ylabel={Chất lượng tương đối},
+					xlabel style={font=\small},
+					ylabel style={font=\small},
+					xmin=0, xmax=10,
+					ymin=0, ymax=1.1,
+					xtick={1,3,5,7,9},
+					xticklabels={Rất nhỏ, Nhỏ, Trung bình, Lớn, Rất lớn},
+					xticklabel style={font=\footnotesize},
+					yticklabel style={font=\footnotesize},
+					legend style={at={(0.5,1.05)}, anchor=south, legend columns=2,
+						font=\small},
+					grid=major,
+					grid style={draw=gray!20},
+					]
+					\addplot[blue!70, thick, smooth]
+					coordinates {(1,1.0)(2,0.88)(3,0.72)(4,0.56)(5,0.42)
+						(6,0.30)(7,0.20)(8,0.13)(9,0.08)};
+					\addlegendentry{$f(\ell)$: Độ chính xác truy xuất (giảm đơn điệu)}
+					
+					\addplot[orange!80, thick, smooth, dashed]
+					coordinates {(1,0.05)(2,0.14)(3,0.30)(4,0.48)(5,0.63)
+						(6,0.75)(7,0.85)(8,0.92)(9,0.97)};
+					\addlegendentry{$g(\ell)$: Tính đầy đủ ngữ cảnh (tăng đơn điệu)}
+					
+					\addplot[green!40, fill=green!15, opacity=0.5]
+					coordinates {(4,0)(4,1.1)(6,1.1)(6,0)} \closedcycle;
+					
+					\addplot[mark=star, mark size=5pt, only marks,
+					mark options={fill=yellow!80, draw=black}]
+					coordinates {(5,0.42)};
+					\node[font=\footnotesize, above right] at (axis cs:5,0.42)
+					{$\ell^*$};
+					
+					\node[font=\tiny, text=green!60!black, rotate=90]
+					at (axis cs:5,0.85) {Vùng khuyến nghị};
+				\end{axis}
+			\end{tikzpicture}
+		\end{adjustbox}
+		\caption{Đánh đổi giữa độ chính xác truy xuất $f(\ell)$ (đơn điệu giảm)
+			và tính đầy đủ ngữ cảnh $g(\ell)$ (đơn điệu tăng) theo kích thước chunk
+			$\ell$. Điểm tối ưu $\ell^*$ nằm tại vùng giao thoa (nền xanh lá) --- nơi
+			cả hai mục tiêu đạt mức chấp nhận được đồng thời.
+			Các đường cong là minh họa định tính; dạng hàm cụ thể phụ thuộc vào corpus.}
+		\label{fig:chunking_tradeoff}
+	\end{figure}
+	
+	% ============================================================================
+	% CHAPTER 2 — GraphRAG
+	% ============================================================================
+	
+	\chapter{Kiến trúc GraphRAG và Nền tảng Lý thuyết}
+	\label{chap:graphrag_theory}
+	
+	% ============================================================================
+	% [FIX 5] Gộp mục 2.1 (Tổng quan) và mục 2.3 (Các biến thể) thành một mục
+	% duy nhất, loại bỏ phần giới thiệu lặp lại
+	% ============================================================================
+	
+	\section{Các Biến thể Kiến trúc GraphRAG và Hệ sinh thái}
+	\label{sec:graphrag_ecosystem}
+	
+	GraphRAG (Graph-based Retrieval-Augmented Generation) là một kiến trúc tiên
+	tiến trong lĩnh vực xử lý ngôn ngữ tự nhiên (NLP), được thiết kế để khắc phục
+	những hạn chế cơ bản của Naive RAG đã phân tích tại Chương~\ref{chap:naive_rag}.
+	Trong khi Naive RAG biểu diễn tri thức dưới dạng các đoạn văn bản rời rạc và
+	thực hiện truy xuất dựa trên độ tương đồng vector, GraphRAG tổ chức thông tin
+	theo cấu trúc đồ thị tri thức (Knowledge Graph -- KG), duy trì mối liên kết ngữ
+	nghĩa giữa các thực thể. Sự khác biệt cốt lõi nằm ở khả năng suy luận đa bước:
+	đồ thị tri thức duy trì các cạnh có hướng giữa các thực thể, cho phép hệ thống
+	duyệt tường minh chuỗi liên kết $A \to B \to C$ thay vì dựa vào cosine
+	similarity --- vốn bị chứng minh là phi-bắc-cầu ở Chương~\ref{chap:naive_rag}.
+	
+	Hệ sinh thái GraphRAG đã phát triển mạnh mẽ với nhiều biến thể kiến trúc, mỗi
+	loại tập trung vào những khía cạnh cụ thể của bài toán. Bảng~\ref{tab:graphrag_variants_comparison}
+	tóm tắt bốn biến thể chính trước khi đi vào phân tích từng loại.
+	
+	\begin{table}[htbp]
+		\centering
+		\caption{So sánh các biến thể kiến trúc GraphRAG}
+		\label{tab:graphrag_variants_comparison}
+		\begin{adjustbox}{max width=\linewidth}
+			\begin{tabular}{lcccc}
+				\toprule
+				\textbf{Biến thể}
+				& \textbf{Cơ chế cốt lõi}
+				& \textbf{Suy luận đa bước}
+				& \textbf{Cập nhật thời gian thực}
+				& \textbf{Độ phức tạp}         \\
+				\midrule
+				Microsoft GraphRAG & Cộng đồng (Leiden) & Có & Không & Cao         \\
+				HippoRAG           & PPR sinh học       & Có & Không & Trung bình  \\
+				LightRAG           & Truy xuất hai cấp  & Có & Có    & Trung bình  \\
+				SubgraphRAG        & Bộ ba đơn giản     & Có & Có    & Thấp        \\
+				\bottomrule
+			\end{tabular}
+		\end{adjustbox}
+	\end{table}
+	
+	\subsection{Microsoft GraphRAG: Community-Based Approach}
+	\label{subsec:microsoft_graphrag}
+	
+	Microsoft GraphRAG~\cite{edge2024local} sử dụng thuật toán phát hiện cộng đồng
+	Leiden để phân nhóm các thực thể liên quan chặt chẽ trong đồ thị tri thức. Chất
+	lượng phân hoạch cộng đồng được đo lường bởi độ đo modularity $Q$ theo
+	công thức~\eqref{eq:modularity}:
+	\begin{equation}
+		Q = \frac{1}{2m}
+		\sum_{ij}\!\left[
+		A_{ij} - \frac{k_i\,k_j}{2m}
+		\right]\delta(c_i,\,c_j)
+		\label{eq:modularity}
+	\end{equation}
+	trong đó $A_{ij}$ là phần tử ma trận kề, $k_i$ là bậc của đỉnh $i$,
+	$m = \frac{1}{2}\sum_{ij}A_{ij}$ là tổng số cạnh, và $\delta(c_i, c_j)$ là
+	hàm delta Kronecker bằng $1$ khi $i$ và $j$ thuộc cùng một cộng đồng.
+	
+	Sau khi phát hiện cộng đồng, LLM được sử dụng để tạo ra các bản tóm tắt cộng
+	đồng (community summaries). Kiến trúc này hỗ trợ hai chế độ truy vấn:
+	\emph{Local query mode} dành cho câu hỏi tập trung vào một thực thể cụ thể,
+	kết hợp truy xuất vector và duyệt đồ thị; và \emph{Global query mode} dành cho
+	câu hỏi tổng hợp, sử dụng quy trình map-reduce trên tất cả bản tóm tắt cộng
+	đồng. Hình~\ref{fig:microsoft_graphrag_pipeline} minh họa pipeline xử lý.
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{adjustbox}{max width=\linewidth}
+			\begin{tikzpicture}[
+				node distance=0.8cm and 1.6cm,
+				box/.style={rectangle, rounded corners=3pt, draw=black!65,
+					fill=blue!10, minimum height=0.85cm,
+					minimum width=2.6cm, align=center, font=\small},
+				ans/.style={rectangle, rounded corners=3pt, draw=green!70,
+					fill=green!15, minimum height=0.85cm,
+					minimum width=2cm, align=center, font=\small},
+				arrow/.style={-Stealth, thick}
+				]
+				\node[box, fill=blue!20]  (lq)  at (0,0)    {Truy vấn\\cục bộ};
+				\node[box]                (er)  at (3.2,0)   {Truy xuất\\thực thể};
+				\node[box]                (gt)  at (6.4,0)   {Duyệt đồ thị\\(k-hop)};
+				\node[box]                (lc)  at (9.6,0)   {Ngữ cảnh\\cục bộ};
+				
+				\node[box, fill=orange!15] (gq)  at (0,-2)  {Truy vấn\\toàn cục};
+				\node[box]                 (cs)  at (3.2,-2) {Tóm tắt\\cộng đồng};
+				\node[box]                 (mr)  at (6.4,-2) {Map-Reduce\\tổng hợp};
+				\node[box]                 (gc)  at (9.6,-2) {Ngữ cảnh\\toàn cục};
+				
+				\node[box, fill=red!10]   (llm) at (12,-1)  {LLM\\Generator};
+				\node[ans]                (out) at (14.4,-1) {Câu trả\\lời};
+				
+				\draw[arrow] (lq) -- (er);
+				\draw[arrow] (er) -- (gt);
+				\draw[arrow] (gt) -- (lc);
+				\draw[arrow] (gq) -- (cs);
+				\draw[arrow] (cs) -- (mr);
+				\draw[arrow] (mr) -- (gc);
+				\draw[arrow] (lc) -| (llm);
+				\draw[arrow] (gc) -| (llm);
+				\draw[arrow] (llm) -- (out);
+			\end{tikzpicture}
+		\end{adjustbox}
+		\caption{Pipeline xử lý truy vấn của Microsoft GraphRAG. Hai luồng xử lý
+			song song --- cục bộ (trên) và toàn cục (dưới) --- hội tụ tại LLM Generator để
+			tổng hợp câu trả lời cuối cùng.}
+		\label{fig:microsoft_graphrag_pipeline}
+	\end{figure}
+	
+	\subsection{HippoRAG: Biologically-Inspired Retrieval}
+	\label{subsec:hipporag}
+	
+	HippoRAG~\cite{gutierrez2024hipporag} đề xuất cách tiếp cận lấy cảm hứng từ
+	mô hình trí nhớ vùng hải mã (hippocampus). Thay vì thực hiện truy xuất đa bước
+	lặp đi lặp lại, HippoRAG nén toàn bộ quá trình thành một thao tác đơn lẻ bằng
+	Personalized PageRank (PPR). Công thức cập nhật PPR được định nghĩa theo
+	\eqref{eq:hipporag_ppr}:
+	
+	% -----------------------------------------------------------------------
+	% [FIX 4] Ký hiệu α (damping factor) trong PPR — tách biệt khỏi λ (chunking)
+	% [FIX minor] Giải thích lý do chọn chuẩn hóa row-stochastic D^{-1}A
+	% -----------------------------------------------------------------------
+	\begin{equation}
+		\mathbf{p}^{(t+1)}
+		= \alpha\,\hat{\mathbf{A}}\,\mathbf{p}^{(t)}
+		+ (1-\alpha)\,\mathbf{s}
+		\label{eq:hipporag_ppr}
+	\end{equation}
+	trong đó $\hat{\mathbf{A}} = \mathbf{D}^{-1}\mathbf{A}$ là ma trận chuyển tiếp
+	(transition matrix) được chuẩn hóa theo hàng (row-stochastic), đảm bảo tổng mỗi
+	hàng bằng $1$ và giữ cho $\mathbf{p}^{(t)}$ là một phân phối xác suất hợp lệ
+	qua các bước lặp. Dạng chuẩn hóa này được chọn thay vì dạng đối xứng
+	$\mathbf{D}^{-1/2}\mathbf{A}\mathbf{D}^{-1/2}$ vì PPR mô phỏng quá trình
+	\emph{random walk} có hướng: xác suất chuyển tiếp từ $i$ đến $j$ chỉ phụ
+	thuộc vào bậc của $i$. Tham số $\alpha \in (0,1)$ là hệ số giảm dần
+	(damping factor, thường $\alpha = 0{,}85$), và $\mathbf{s}$ là vector hạt
+	nhân (seed vector) được khởi tạo từ các thực thể trích xuất của truy vấn $q$.
+	
+	\subsection{LightRAG: Real-time Graph Updates}
+	\label{subsec:lightrag}
+	
+	LightRAG~\cite{guo2024lightrag} giải quyết điểm yếu quan trọng của các hệ
+	thống GraphRAG thế hệ đầu: khả năng thích ứng với dữ liệu mới. Việc xây dựng
+	lại toàn bộ đồ thị mỗi khi có tài liệu mới có chi phí $\mathcal{O}(|D|)$ tỷ
+	lệ với tổng kích thước tập tài liệu, không thực tế với các hệ thống cập nhật
+	liên tục.
+	
+	LightRAG giới thiệu cơ chế cập nhật tăng dần (incremental update): khi tài
+	liệu mới được thêm vào, hệ thống chỉ trích xuất các thực thể và quan hệ mới,
+	sau đó cập nhật đồ thị bằng cách chèn, xóa hoặc sửa đổi các node và cạnh
+	tương ứng, giảm độ phức tạp từ $\mathcal{O}(|E|\log|V|)$ xuống
+	$\mathcal{O}(|\Delta E|\log|V|)$ với $|\Delta E|$ là số cạnh thay đổi. Đồng
+	thời, LightRAG sử dụng chiến lược truy xuất hai cấp (dual-level retrieval):
+	ở cấp độ thấp (local), hệ thống truy xuất các thực thể và $k$-lân cận trực
+	tiếp; ở cấp độ cao (global), hệ thống khám phá tri thức qua các mối quan hệ
+	cộng đồng phức tạp.
+	
+	\subsection{SubgraphRAG: Simplicity as Strength}
+	\label{subsec:subgraphrag}
+	
+	SubgraphRAG~\cite{subgraphrag2025} đưa ra quan điểm rằng sự đơn giản là chìa
+	khóa cho hiệu quả. Thay vì triển khai các thành phần phức tạp như phát hiện
+	cộng đồng hay bản tóm tắt cộng đồng, SubgraphRAG chỉ tập trung vào việc truy
+	xuất các đồ thị con (subgraphs) liên quan trực tiếp đến truy vấn thông qua các
+	bộ ba chủ thể-quan hệ-đối tượng (subject-relation-object triplets). Phân tích
+	của Li và cộng sự cho thấy, đối với nhiều tác vụ, sự phức tạp bổ sung từ các
+	thành phần cộng đồng không mang lại lợi ích đáng kể so với chi phí triển khai.
+	SubgraphRAG vì vậy là lựa chọn hấp dẫn cho các ứng dụng cần sự đơn giản, hiệu
+	quả, và dễ bảo trì.
+	
+	\subsection{Kiến trúc Agentic RAG: Linh hoạt qua Điều phối Công cụ}
+	\label{subsec:agentic_rag}
+	
+	Các biến thể GraphRAG ở trên đều hoạt động theo một pipeline truy xuất tương
+	đối cố định: câu hỏi $\to$ truy xuất $\to$ tạo sinh. Kiến trúc Agentic
+	RAG~\cite{neo4j2024essential} phá vỡ sự tuyến tính này bằng cách đặt LLM vào
+	vai trò agent có khả năng quan sát, lập kế hoạch và tự quyết định chiến lược
+	truy xuất tối ưu cho từng câu hỏi cụ thể.
+	
+	Ba thành phần cốt lõi bao gồm:
+	
+	\textbf{Retriever Router.} LLM phân tích đặc điểm câu hỏi và lựa chọn công
+	cụ phù hợp: vector search cho câu hỏi ngữ nghĩa, full-text search cho tên
+	riêng, Cypher query cho câu hỏi có cấu trúc số học, hoặc kết hợp nhiều công
+	cụ cho câu hỏi phức hợp.
+	
+	\textbf{Answer Critic.} Sau khi tạo ra câu trả lời sơ bộ, một LLM thứ hai
+	(hoặc cùng LLM trong một prompt khác) đánh giá chất lượng câu trả lời. Nếu
+	chưa đủ căn cứ, vòng lặp truy xuất mới được kích hoạt.
+	
+	\textbf{Vòng lặp phản hồi.} Toàn bộ quy trình: Lập kế hoạch $\to$ Truy xuất
+	$\to$ Tạo sinh $\to$ Đánh giá $\to$ (Lặp lại nếu cần). Số vòng lặp tối đa
+	được giới hạn để kiểm soát chi phí tính toán.
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{adjustbox}{max width=0.88\linewidth}
+			\begin{tikzpicture}[
+				node distance=1.5cm,
+				box/.style={
+					rectangle, rounded corners=5pt, draw=black!60,
+					minimum height=1.0cm, minimum width=3.4cm,
+					align=center, font=\small, text width=3.2cm
+				},
+				arrow/.style={-Stealth, thick, draw=black!70},
+				rarrow/.style={-Stealth, thick, draw=red!65, dashed},
+				garrow/.style={-Stealth, thick, draw=green!55!black, line width=1.2pt}
+				]
+				\node[box, fill=purple!15, draw=purple!50]
+				(query) at (0, 0)
+				{Truy vấn\\người dùng $q$};
+				
+				\node[box, fill=green!20, draw=green!55!black, line width=1.2pt]
+				(out) at (0, -7.5)
+				{Câu trả lời\\cuối cùng};
+				
+				\node[box, fill=blue!12, draw=blue!50]
+				(router) at (5, 0)
+				{Retriever Router\\{\footnotesize LLM phân tích $q$}};
+				
+				\node[box, fill=orange!18, draw=orange!60]
+				(critic) at (5, -5.0)
+				{Answer Critic\\{\footnotesize Đánh giá chất lượng}};
+				
+				\node[box, fill=green!10, draw=green!50, text width=3.4cm]
+				(tools) at (10, 0)
+				{Tool Execution\\{\footnotesize Vector / BM25 / Cypher}};
+				
+				\node[box, fill=yellow!20, draw=yellow!60!black]
+				(gen) at (10, -5.0)
+				{LLM Generator\\{\footnotesize Tạo câu trả lời}};
+				
+				\draw[gray!50, dashed, rounded corners=8pt, line width=0.9pt]
+				(3.2, 0.7) rectangle (11.8, -5.8);
+				\node[font=\footnotesize\itshape, text=gray!70]
+				at (7.5, -6.2) {Vòng lặp thích nghi};
+				
+				\draw[arrow] (query)  -- (router);
+				\draw[arrow] (router) -- (tools);
+				\draw[arrow] (tools)  -- (gen);
+				\draw[arrow] (gen)    -- (critic);
+				
+				\draw[rarrow]
+				(critic.west) -- ++(-0.8, 0)
+				|- node[pos=0.25, left, font=\footnotesize, text=red!65]
+				{Chưa đủ}
+				node[pos=0.25, left, yshift=-0.4cm, font=\footnotesize, text=red!65]
+				{-- thử lại}
+				(router.west);
+				
+				\draw[garrow]
+				(critic.south) -- ++(0, -0.8)
+				-| node[pos=0.2, below, font=\footnotesize, text=green!55!black]
+				{Đạt yêu cầu}
+				(out.east);
+			\end{tikzpicture}
+		\end{adjustbox}
+		\caption{Kiến trúc Agentic RAG với vòng lặp thích nghi. LLM đóng vai trò
+			agent điều phối, tự động lựa chọn công cụ truy xuất phù hợp và đánh giá
+			chất lượng câu trả lời; nếu chưa đạt ngưỡng, vòng lặp được kích hoạt lại
+			với chiến lược điều chỉnh.}
+		\label{fig:agentic_rag}
+	\end{figure}
+	
+	% -------------------------------------------------------------------
+	\section{Pipeline Xây dựng Đồ thị Tri thức}
+	\label{sec:kg_pipeline}
+	
+	Quá trình xây dựng một đồ thị tri thức chất lượng cao là nền tảng then chốt
+	cho hiệu quả của bất kỳ hệ thống GraphRAG nào. Pipeline này bao gồm ba giai
+	đoạn chính: trích xuất thực thể và quan hệ, giải quyết thực thể (entity
+	resolution), và thiết kế lược đồ (schema design) cho cơ sở dữ liệu đồ thị.
+	
+	\subsection{Trích xuất Thực thể và Quan hệ}
+	\label{subsec:ner_relation_extraction}
+	
+	Giai đoạn đầu tiên trong pipeline là chuyển đổi dữ liệu văn bản phi cấu trúc
+	thành các cấu trúc đồ thị có ý nghĩa thông qua hai nhiệm vụ chính: trích xuất
+	thực thể đặt tên (Named Entity Recognition -- NER) và trích xuất quan hệ
+	(Relation Extraction -- RE). Có ba phương pháp chính được sử dụng trong thực tế:
+	
+	Phương pháp dựa trên luật (rule-based NER) sử dụng các biểu thức chính quy
+	và từ điển để nhận diện thực thể. Phương pháp này có độ chính xác cao đối với
+	các mẫu cố định nhưng thiếu khả năng tổng quát hóa. Phương pháp tinh chỉnh mô
+	hình (fine-tuned NER) sử dụng các mô hình ngôn ngữ như PhoBERT hoặc VinAI được
+	huấn luyện đặc biệt trên tập dữ liệu tiếng Việt, đạt được sự cân bằng tốt giữa
+	độ chính xác và khả năng tổng quát. Phương pháp dựa trên LLM (LLM-based
+	extraction) sử dụng trực tiếp các mô hình ngôn ngữ lớn để trích xuất thực thể
+	và quan hệ; mặc dù linh hoạt và mạnh mẽ, phương pháp này có thể gặp phải vấn
+	đề ảo giác (hallucination) và chi phí tính toán cao.
+	
+	Hiệu quả của quá trình NER thường được đánh giá bằng chỉ số $F_1$:
+	\begin{equation}
+		F_1 = \frac{2 \times \text{Precision} \times \text{Recall}}
+		{\text{Precision} + \text{Recall}}
+		= \frac{2\,TP}{2\,TP + FP + FN}
+		\label{eq:f1_ner}
+	\end{equation}
+	trong đó $TP$, $FP$, $FN$ lần lượt là số thực thể được nhận diện đúng (True
+	Positive), nhận diện sai (False Positive), và bị bỏ sót (False Negative).
+	
+	\subsection{Entity Resolution và Coreference}
+	\label{subsec:entity_resolution}
+	
+	Một thách thức lớn trong việc xây dựng đồ thị tri thức từ dữ liệu thực tế là
+	vấn đề đồng nhất thực thể (entity resolution). Trong văn bản tuyển sinh của
+	Trường Đại Học Khoa Học -- Đại Học Huế, cùng một thực thể có thể xuất hiện
+	dưới nhiều hình thức: ``ĐHKH'', ``Trường ĐHKH'', và ``Đại Học Khoa Học'' đều
+	chỉ cùng một trường đại học. Nếu không được giải quyết, vấn đề này sẽ dẫn đến
+	việc tạo ra nhiều node riêng lẻ cho cùng một thực thể, làm suy yếu cấu trúc
+	đồ thị và giảm hiệu quả truy xuất.
+	
+	Các phương pháp giải quyết bao gồm so khớp chuỗi (string matching) dựa trên
+	khoảng cách chỉnh sửa (edit distance), so sánh độ tương đồng nhúng (embedding
+	similarity), và liên kết dựa trên LLM. Ngưỡng tương đồng được áp dụng theo:
+	\begin{equation}
+		\text{merge}(e_i, e_j)
+		= \mathbb{1}\!\left[
+		S_C\!\left(\phi(e_i),\,\phi(e_j)\right) \geq \tau
+		\right]
+		\label{eq:entity_resolution}
+	\end{equation}
+	trong đó $\phi(\cdot)$ là hàm nhúng thực thể, $S_C$ là độ tương đồng Cosine
+	theo~\eqref{eq:cosine_similarity}, và $\tau \in [0,1]$ là ngưỡng phân giải.
+	Trong thực nghiệm của nghiên cứu này, giá trị $\tau = 0{,}92$ được chọn dựa
+	trên bước kiểm thử (ablation study) trên tập xác thực của bộ dữ liệu tuyển
+	sinh HUSC; giá trị cao phản ánh sự thận trọng cần thiết trước mật độ từ viết
+	tắt lớn trong văn bản hành chính tiếng Việt.
+	
+	\subsection{Thiết kế Schema Neo4j cho Dữ liệu Tuyển sinh}
+	\label{subsec:neo4j_schema}
+	
+	% -----------------------------------------------------------------------
+	% [FIX minor] Cập nhật mô tả schema để nhất quán với hình vẽ:
+	% phân biệt meta-relationships (HAS_ENTITY, IN_COMMUNITY) và
+	% domain relationships (THUỘC_TRƯỜNG, CÓ_NGÀNH, ...) là các instance
+	% của relationship type trong đồ thị
+	% -----------------------------------------------------------------------
+	
+	Lược đồ (schema) của đồ thị tri thức Neo4j cho dữ liệu tuyển sinh được thiết
+	kế dựa trên các khuyến nghị từ Essential GraphRAG~\cite{neo4j2024essential}.
+	Các nhãn node (node labels) chính bao gồm \texttt{\_\_Entity\_\_},
+	\texttt{\_\_Chunk\_\_}, và \texttt{\_\_Community\_\_}.
+	
+	Về kiểu quan hệ (relationship types), hệ thống phân biệt hai lớp rõ ràng:
+	\begin{itemize}
+		\item \textbf{Quan hệ meta-cấu trúc:} \texttt{HAS\_ENTITY} liên kết node
+		\texttt{\_\_Chunk\_\_} với các thực thể nó đề cập; \texttt{IN\_COMMUNITY}
+		gán thực thể vào cộng đồng tương ứng.
+		\item \textbf{Quan hệ ngữ nghĩa miền:} là các cạnh nối giữa các thực thể,
+		được đặt tên theo ngữ nghĩa của dữ liệu tuyển sinh, ví dụ:
+		\texttt{THUỘC\_TRƯỜNG} nối Khoa vào Trường, \texttt{CÓ\_NGÀNH} nối Khoa
+		với các ngành đào tạo. Các kiểu quan hệ này thuộc về lớp \texttt{RELATIONSHIP}
+		trong schema tổng quát và được định nghĩa cụ thể trong quá trình xây dựng đồ thị.
+	\end{itemize}
+	
+	Chiến lược lập chỉ mục (index strategy) bao gồm: vector index trên thuộc
+	tính \texttt{embedding}, text index trên \texttt{name}, và composite index
+	để tối ưu hóa các truy vấn phức tạp. Sơ đồ đầy đủ được minh họa trong
+	Hình~\ref{fig:neo4j_schema}.
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{adjustbox}{max width=0.85\linewidth}
+			\begin{tikzpicture}[
+				node distance=1.6cm and 2.2cm,
+				entity/.style={ellipse, draw=blue!70, fill=blue!15,
+					minimum width=2.4cm, minimum height=0.9cm,
+					align=center, font=\small},
+				chunk/.style={rectangle, draw=green!70, fill=green!10,
+					minimum width=2cm, minimum height=0.8cm,
+					rounded corners=2pt, align=center, font=\small},
+				community/.style={rectangle, draw=orange!70, fill=orange!10,
+					rounded corners=6pt, minimum width=2.2cm,
+					minimum height=0.8cm, align=center, font=\small},
+				arrow/.style={-Stealth, thick, draw=black!60},
+				rlabel/.style={font=\tiny, fill=white, inner sep=1pt}
+				]
+				\node[entity]    (univ)  at (0,0)     {Đại Học Huế};
+				\node[entity]    (fac)   at (-2.5,-2) {Khoa CNTT};
+				\node[entity]    (maj)   at (2.5,-2)  {Ngành CNTT};
+				\node[chunk]     (ch1)   at (-2.5,-4) {Chunk 1};
+				\node[chunk]     (ch2)   at (2.5,-4)  {Chunk 2};
+				\node[community] (comm)  at (0,-3)    {Cộng đồng\\CNTT};
+				
+				% Quan hệ ngữ nghĩa miền (domain relationships)
+				\draw[arrow] (fac) -- node[rlabel,above left]
+				{THUỘC\_TRƯỜNG {\tiny[domain]}} (univ);
+				\draw[arrow] (fac) -- node[rlabel,above]
+				{CÓ\_NGÀNH {\tiny[domain]}} (maj);
+				% Quan hệ meta-cấu trúc
+				\draw[arrow] (ch1) -- node[rlabel,left]
+				{HAS\_ENTITY {\tiny[meta]}} (fac);
+				\draw[arrow] (ch2) -- node[rlabel,right]
+				{HAS\_ENTITY {\tiny[meta]}} (maj);
+				\draw[arrow] (fac) -- node[rlabel,left]
+				{IN\_COMMUNITY {\tiny[meta]}} (comm);
+				\draw[arrow] (maj) -- node[rlabel,right]
+				{IN\_COMMUNITY {\tiny[meta]}} (comm);
+			\end{tikzpicture}
+		\end{adjustbox}
+		\caption{Lược đồ Neo4j cho hệ thống tư vấn tuyển sinh HUSC. Các thực thể
+			(ellipse xanh) được liên kết với chunk văn bản gốc (hình chữ nhật xanh lá)
+			qua quan hệ meta-cấu trúc \texttt{HAS\_ENTITY}, được gán vào cộng đồng
+			(hình chữ nhật cam) qua \texttt{IN\_COMMUNITY}, và kết nối với nhau qua
+			các quan hệ ngữ nghĩa miền như \texttt{THUỘC\_TRƯỜNG}, \texttt{CÓ\_NGÀNH}.}
+		\label{fig:neo4j_schema}
+	\end{figure}
+	
+	\subsection{Truy vấn Có cấu trúc qua Text2Cypher}
+	\label{subsec:text2cypher}
+	
+	Sau khi đồ thị tri thức được xây dựng và lưu trữ trong Neo4j, kỹ thuật
+	Text2Cypher giải quyết bài toán giao diện người dùng bằng cách đặt LLM vào
+	vai trò tầng dịch thuật trung gian --- chuyển đổi câu hỏi ngôn ngữ tự nhiên
+	thành câu lệnh Cypher khả thi trên cơ sở dữ liệu đồ thị.
+	
+	Các thực hành tốt nhất trong triển khai Text2Cypher~\cite{neo4j2024essential}
+	bao gồm bốn yếu tố then chốt: (1)~\emph{Few-shot examples} --- cung cấp từ 3
+	đến 10 cặp ví dụ (câu hỏi tự nhiên, câu lệnh Cypher) trong prompt; (2)~\emph{Schema
+		injection} --- đưa đầy đủ mô tả lược đồ đồ thị vào prompt; (3)~\emph{Terminology
+		mapping} --- xây dựng bảng ánh xạ từ vựng người dùng sang tên kỹ thuật trong
+	schema, ví dụ: ``ngành'' $\to$ nhãn node \texttt{Major}, ``chỉ tiêu'' $\to$
+	thuộc tính \texttt{quota}; (4)~\emph{Output constraints} --- chỉ định định dạng
+	đầu ra thuần Cypher để tạo điều kiện cho bước hậu xử lý tự động.
+	
+	Tầm quan trọng của Text2Cypher nằm ở khả năng xử lý các truy vấn yêu cầu lọc
+	và so sánh trên thuộc tính có cấu trúc. Câu hỏi ``Ngành nào trong khoa Công
+	nghệ Thông tin có điểm chuẩn năm 2024 cao hơn 24?'' đòi hỏi so sánh số học
+	trên thuộc tính node --- điểm mạnh của Cypher nhưng nằm ngoài khả năng của
+	cosine similarity.
+	
+	% -------------------------------------------------------------------
+	\section{Chiến lược Truy xuất Lai (Hybrid Retrieval)}
+	\label{sec:hybrid_retrieval}
+	
+	Một trong những điểm mạnh cốt lõi của các hệ thống GraphRAG hiện đại là khả
+	năng kết hợp nhiều chiến lược truy xuất qua cơ chế truy xuất lai (Hybrid
+	Retrieval), tận dụng ưu điểm của truy xuất từ khóa (BM25), truy xuất vector
+	dày đặc (dense retrieval), và duyệt đồ thị (graph traversal).
+	
+	% -----------------------------------------------------------------------
+	% [FIX minor] Thêm giả thiết "local tree-like structure" cho k-hop complexity
+	% -----------------------------------------------------------------------
+	
+	Một kỹ thuật quan trọng là mở rộng lân cận $k$-bước ($k$-hop neighborhood
+	expansion). Từ tập node hạt nhân (seed nodes), hệ thống duyệt qua tất cả các
+	node có thể đến được trong vòng $k$ bước. Dưới giả thiết cấu trúc cây cục bộ
+	(local tree-like structure, tức là ít chu trình ngắn), độ phức tạp của thao
+	tác này được biểu diễn theo:
+	\begin{equation}
+		\mathcal{O}\!\left(|V_s| \cdot b^k\right)
+		\label{eq:khop_complexity}
+	\end{equation}
+	trong đó $|V_s|$ là số node hạt nhân và $b$ là hệ số phân nhánh trung bình
+	(average branching factor). Với đồ thị có chu trình, số node thực sự duyệt
+	nhỏ hơn giới hạn này khi áp dụng đánh dấu ``đã thăm'' (visited marking).
+	Đối với đồ thị tuyển sinh HUSC với $|V| \approx 2500$ và $b \approx 3$,
+	truy xuất $k=3$ bước có độ phức tạp thô $\approx 67{,}500$ phép duyệt trước
+	khi tỉa.
+	
+	Để kết hợp kết quả từ nhiều nguồn, thuật toán Reciprocal Rank Fusion
+	(RRF)~\cite{cormack2009reciprocal} được sử dụng:
+	\begin{equation}
+		\text{RRF}(d) = \sum_{m \in M} \frac{1}{k_0 + r_m(d)}
+		\label{eq:rrf}
+	\end{equation}
+	trong đó $r_m(d)$ là thứ hạng của tài liệu $d$ trong danh sách $m$ và $k_0$
+	là hằng số điều chỉnh (thường $k_0 = 60$). Điểm tổng hợp có trọng số cuối
+	cùng:
+	\begin{equation}
+		S_{\text{final}}(d,q)
+		= w_{\text{BM25}}\,S_{\text{BM25}}
+		+ w_{\text{Dense}}\,S_{\text{Dense}}
+		+ w_{\text{Graph}}\,S_{\text{Graph}}
+		\label{eq:weighted_fusion}
+	\end{equation}
+	trong đó $w_{\text{BM25}} + w_{\text{Dense}} + w_{\text{Graph}} = 1$.
+	Bảng~\ref{tab:retrieval_strategies} so sánh hiệu quả tương đối của từng thành
+	phần theo loại truy vấn.
+	
+	\begin{table}[htbp]
+		\centering
+		\caption{Hiệu quả tương đối của các thành phần truy xuất lai theo loại truy vấn}
+		\label{tab:retrieval_strategies}
+		\begin{tabular}{lccc}
+			\toprule
+			\textbf{Loại truy vấn} & \textbf{BM25} & \textbf{Dense} & \textbf{Graph} \\
+			\midrule
+			Từ khóa đơn giản      & Cao           & Trung bình     & Thấp           \\
+			Ngữ nghĩa             & Thấp          & Cao            & Trung bình     \\
+			Đa bước (multi-hop)   & Thấp          & Thấp           & Cao            \\
+			\bottomrule
+		\end{tabular}
+	\end{table}
+	
+	\subsection{Truy vấn Lùi Bước (Step-back Prompting)}
+	\label{subsec:stepback_prompting}
+	
+	Một điểm yếu tinh tế của truy xuất vector trực tiếp là hiện tượng \emph{độ
+		đặc thù quá cao} (over-specificity): câu hỏi người dùng thường rất cụ thể,
+	trong khi thông tin nền tảng để trả lời lại nằm ở mức độ trừu tượng cao hơn.
+	
+	Kỹ thuật Step-back Prompting~\cite{neo4j2024essential} giải quyết vấn đề này
+	bằng cách bổ sung một bước tiền truy xuất: LLM tự động sinh ra câu hỏi tổng
+	quát hơn $\hat{q}$ từ câu hỏi gốc $q$, sau đó thực hiện song song hai lần
+	truy xuất:
+	\begin{equation}
+		C_{\text{final}} = \text{Retrieve}(q) \cup \text{Retrieve}(\hat{q})
+		\label{eq:stepback_retrieval}
+	\end{equation}
+	trong đó $C_{\text{final}}$ là tập ngữ cảnh hợp nhất (sau loại trùng lặp)
+	được cung cấp cho LLM sinh văn bản.
+	
+	Kỹ thuật này đặc biệt hiệu quả trong GraphRAG nhờ sự phân tách tự nhiên giữa
+	Global Search (phù hợp với $\hat{q}$ tổng quát, dựa trên community summaries)
+	và Local Search (phù hợp với $q$ cụ thể, dựa trên entity traversal). Trong
+	ngữ cảnh tuyển sinh HUSC, ví dụ điển hình: câu hỏi gốc ``Ngành Công Nghệ
+	Thông Tin có xét tuyển A00 không?'' được bổ sung bởi câu hỏi lùi bước ``Các
+	phương thức xét tuyển áp dụng tại HUSC là gì?'' --- khai thác hai lớp tri
+	thức bổ trợ nhau trong đồ thị.
+	
+		\begin{figure}[htbp]
+		\centering
+		\includegraphics[width=0.95\textwidth]{step_backprompt.png}
+		\caption{Luồng xử lý của kỹ thuật Step-back Prompting.
+			Câu hỏi gốc $q$ và câu hỏi lùi bước $\hat{q}$ được truy xuất
+			song song qua hai chế độ bổ trợ nhau; tập ngữ cảnh hợp nhất
+			$C_{\mathrm{final}}$ cho phép LLM tổng hợp câu trả lời với
+			nền tảng tri thức đầy đủ hơn so với truy xuất đơn lẻ.}
+		\label{fig:stepback_prompting}
+	\end{figure}
+	\FloatBarrier
+	% -------------------------------------------------------------------
+	\section{Vấn đề Kỹ thuật và Giải pháp}
+	\label{sec:technical_challenges}
+	
+	Việc triển khai hệ thống GraphRAG trong thực tế đi kèm với bốn thách thức
+	kỹ thuật chính.
+	
+	\textbf{Lỗi thời của đồ thị (graph staleness).} Khi cơ sở tri thức liên tục
+	được cập nhật, đồ thị có thể nhanh chóng trở nên lỗi thời. LightRAG đề xuất
+	cập nhật tăng dần; đối với các hệ thống không có cơ chế này, việc lên lịch
+	xây dựng lại định kỳ là cần thiết nhưng tốn kém.
+	
+	\textbf{Ảo giác trong LLM (LLM hallucination).} LLM có thể tạo ra các thực
+	thể hoặc quan hệ không tồn tại trong dữ liệu gốc khi thực hiện trích xuất.
+	Để giảm thiểu, cần triển khai các cơ chế xác thực chéo (cross-validation)
+	với nguồn dữ liệu đáng tin cậy.
+	
+	\textbf{Nút cổ chai về khả năng mở rộng (scalability bottleneck).} Trình lập
+	kế hoạch truy vấn của Neo4j có thể gặp khó khăn với các đồ thị rất lớn. Việc
+	tối ưu hóa chỉ mục vector chuyên dụng và viết các truy vấn Cypher hiệu quả là
+	bắt buộc để đảm bảo hiệu suất.
+	
+	\textbf{Lỗi hợp nhất sai (false positive merges) trong entity resolution.}
+	Khi ngưỡng $\tau$ trong~\eqref{eq:entity_resolution} được đặt quá thấp, hai
+	thực thể khác nhau có thể bị coi là một, làm méo mó cấu trúc đồ thị. Giải
+	pháp là kết hợp nhiều đặc trưng (tên, mô tả, ngữ cảnh) trong quá trình so
+	sánh và sử dụng ngưỡng thận trọng.
+	
+	% -------------------------------------------------------------------
+	% [FIX 7] Khung đánh giá vẫn đặt tại Chương 2 nhưng được đóng khung rõ ràng
+	% là thiết kế đề xuất sẽ được kiểm chứng tại Chương 3
+	% -------------------------------------------------------------------
+	\section[Khung Đánh giá Đề xuất cho Hệ thống GraphRAG]
+	{Khung Đánh giá Đề xuất cho Hệ thống \linebreak GraphRAG}
+		
+	Phần này trình bày \emph{thiết kế} khung đánh giá sẽ được áp dụng tại
+	Chương 3. Mục đích việc này là xác lập các chỉ số và phương pháp
+	đo lường trước khi tiến hành thực nghiệm, đảm bảo tính hệ thống và khả năng
+	so sánh.
+	
+	Essential GraphRAG~\cite{neo4j2024essential} đề xuất ba chỉ số độc lập, mỗi
+	chỉ số phản ánh một tầng khác nhau trong pipeline truy xuất--tạo sinh.
+	
+	\textbf{Context Recall (Độ bao phủ ngữ cảnh)} đo lường liệu bộ truy xuất có
+	thực sự tìm được toàn bộ thông tin cần thiết để trả lời câu hỏi hay không.
+	Chỉ số này thấp khi retriever bỏ sót các chunk, node hoặc subgraph quan trọng.
+	
+	\textbf{Faithfulness (Độ trung thực)} kiểm tra xem câu trả lời do LLM tạo ra
+	có bám sát vào tập ngữ cảnh đã được truy xuất hay LLM đã bổ sung nội dung nằm
+	ngoài nguồn cung cấp. Faithfulness có thể được ước lượng bằng độ tương đồng
+	Cosine (theo~\eqref{eq:cosine_similarity}) giữa embedding của câu trả lời và
+	embedding của tập ngữ cảnh; giá trị thấp chỉ ra ảo giác xảy ra ngay cả khi
+	retrieval hoạt động tốt.
+	
+	\textbf{Answer Correctness (Độ chính xác câu trả lời)} đánh giá câu trả lời
+	cuối cùng có đúng so với ground truth hay không --- chỉ số đầu cuối
+	(end-to-end) quan trọng nhất từ góc độ người dùng.
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{tikzpicture}[
+			font=\small,
+			tier/.style={
+				rectangle, rounded corners=6pt, draw,
+				minimum width=11.0cm, minimum height=1.05cm,
+				align=center, text width=10.8cm
+			},
+			hdr/.style={
+				rectangle, rounded corners=4pt, draw=black!40,
+				fill=gray!12, minimum width=3.2cm, minimum height=0.75cm,
+				align=center, font=\footnotesize, text width=3.0cm
+			},
+			cell/.style={
+				rectangle, rounded corners=4pt, draw,
+				minimum width=3.2cm, minimum height=0.75cm,
+				align=center, font=\footnotesize, text width=3.0cm
+			},
+			dcell/.style={
+				rectangle, rounded corners=4pt, draw,
+				minimum width=4.4cm, minimum height=0.75cm,
+				align=center, font=\footnotesize, text width=4.2cm
+			}
+			]
+			\node[tier, fill=blue!10, draw=blue!50!black] (t1) at (0, 0)
+			{\textbf{Tầng 1 — Context Recall:}\quad
+				Bộ truy xuất có tìm đủ thông tin cần thiết không?};
+			
+			\node[tier, fill=orange!13, draw=orange!55!black] (t2) at (0,-1.45)
+			{\textbf{Tầng 2 — Faithfulness:}\quad
+				Câu trả lời có bám sát ngữ cảnh đã truy xuất không?};
+			
+			\node[tier, fill=green!10, draw=green!50!black] (t3) at (0,-2.90)
+			{\textbf{Tầng 3 — Answer Correctness:}\quad
+				Câu trả lời cuối cùng có đúng không?};
+			
+			\draw[-Stealth, thick, gray!55]
+			(-6.2,-3.35) -- (-6.2, 0.50)
+			node[midway, left, font=\tiny\itshape, gray!65,
+			align=center, text width=1.1cm]
+			{Mức độ\\trừu tượng\\tăng dần};
+			
+			\node[font=\small\bfseries] at (0,-3.75) {Ma trận chẩn đoán (sẽ điền kết quả tại Chương 3};
+			\draw[gray!40, dashed] (-5.8,-3.42) -- (5.8,-3.42);
+			
+			\node[hdr] at (-3.4,-4.60) {Context Recall};
+			\node[hdr] at ( 0.3,-4.60) {Faithfulness};
+			\node[dcell, fill=gray!12, draw=black!40]
+			at ( 4.2,-4.60) {Chẩn đoán};
+			
+			\node[cell, fill=green!18, draw=green!55!black]
+			at (-3.4,-5.55) {Cao \checkmark};
+			\node[cell, fill=green!18, draw=green!55!black]
+			at ( 0.3,-5.55) {Cao \checkmark};
+			\node[dcell, fill=yellow!22, draw=yellow!65!black]
+			at ( 4.2,-5.55) {Lỗi schema /\\entity resolution};
+			
+			\node[cell, fill=red!16, draw=red!50!black]
+			at (-3.4,-6.50) {Thấp $\times$};
+			\node[cell, fill=green!18, draw=green!55!black]
+			at ( 0.3,-6.50) {Cao \checkmark};
+			\node[dcell, fill=red!18, draw=red!50!black]
+			at ( 4.2,-6.50) {LLM đang ảo giác\\(hallucination)};
+			
+			\node[cell, fill=green!18, draw=green!55!black]
+			at (-3.4,-7.45) {Cao \checkmark};
+			\node[cell, fill=red!16, draw=red!50!black]
+			at ( 0.3,-7.45) {Thấp $\times$};
+			\node[dcell, fill=orange!20, draw=orange!60!black]
+			at ( 4.2,-7.45) {Lỗi tầng generation\\(temperature)};
+		\end{tikzpicture}
+		\caption{Khung đánh giá ba tầng đề xuất cho hệ thống GraphRAG. Mỗi chỉ số
+			phản ánh một giai đoạn độc lập trong pipeline; ma trận chẩn đoán phía dưới
+			cho phép xác định chính xác tầng nào gây ra suy giảm chất lượng tổng thể.
+			Kết quả thực nghiệm cụ thể sẽ được trình bày tại Chương 3.}
+		\label{fig:evaluation_3metrics}
+	\end{figure}
+	
+	Quy trình đánh giá thực nghiệm cho bài toán HUSC, dựa trên khung ba chiều này,
+	sẽ được triển khai tại Chương 3 trên bộ câu hỏi được cô Phước phân
+	tầng theo loại truy vấn.
+	
+	\clearpage
+	\addcontentsline{toc}{chapter}{Tài liệu tham khảo}
+	
+	\begin{thebibliography}{99}
+		
+		\bibitem{vaswani2017attention}
+		Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.~N.,
+		\ldots{} \& Polosukhin, I. (2017).
+		\textit{Attention is all you need}.
+		In \textit{Advances in Neural Information Processing Systems} (NeurIPS), 30,
+		5998--6008.
+		
+		\bibitem{lewis2020retrieval}
+		Lewis, P., Perez, E., Piktus, A., Petroni, F., Karpukhin, V., Goyal, N.,
+		\& Kiela, D. (2020).
+		\textit{Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks}.
+		In \textit{Advances in Neural Information Processing Systems} (NeurIPS), 33,
+		9459--9474.
+		
+		\bibitem{edge2024local}
+		Edge, D., Trivedi, H., Monga, V., Ordun, G., Bastian, M., Lally, J.,
+		\& Korreck, J. (2024).
+		\textit{From Local to Global: A GraphRAG Approach to Query-Focused Summarization}.
+		arXiv preprint arXiv:2404.16130.
+		
+		\bibitem{blondel2008fast}
+		Blondel, V.~D., Guillaume, J.~L., Lambiotte, R., \& Lefebvre, E. (2008).
+		\textit{Fast unfolding of communities in large networks}.
+		\textit{Journal of Statistical Mechanics: Theory and Experiment}, 2008(10), P10008.
+		
+		\bibitem{manning2008introduction}
+		Manning, C.~D., Raghavan, P., \& Schütze, H. (2008).
+		\textit{Introduction to Information Retrieval}.
+		Cambridge University Press.
+		
+		\bibitem{neo4j2024essential}
+		Neo4j Inc. (2024).
+		\textit{Essential GraphRAG}. Technical Report.
+		\url{https://go.neo4j.com/rs/710-RRC-335/images/Essential-GraphRAG.pdf}
+		
+		\bibitem{docgraphrag2025}
+		Grossmann, D., Caymazer, O., \& Knollmeyer, S. (2025).
+		\textit{Document GraphRAG: Knowledge Graph Enhanced Retrieval Augmented Generation
+			for Document Question Answering Within the Manufacturing Domain}.
+		\textit{MDPI Electronics}, 14(11), 2102.
+		
+		\bibitem{subgraphrag2025}
+		Li, M., Miao, S., \& Li, P. (2025).
+		\textit{Simple is Effective: The Roles of Graphs and Large Language Models in
+			Knowledge-Graph-Based Retrieval-Augmented Generation}.
+		In \textit{Proceedings of ICLR 2025}.
+		
+		\bibitem{grag2025}
+		Hu, Y., et al. (2025).
+		\textit{GRAG: Graph Retrieval-Augmented Generation}.
+		In \textit{Findings of NAACL 2025}, 4145--4157.
+		
+		\bibitem{ethayarajh2019contextual}
+		Ethayarajh, K. (2019).
+		\textit{How Contextual are Contextualized Word Representations?}
+		In \textit{Proceedings of EMNLP-IJCNLP 2019}, 55--65.
+		
+		\bibitem{robertson2009bm25}
+		Robertson, S., \& Zaragoza, H. (2009).
+		\textit{The Probabilistic Relevance Framework: BM25 and Beyond}.
+		\textit{Foundations and Trends in Information Retrieval}, 3(4), 333--389.
+		
+		\bibitem{cormack2009reciprocal}
+		Cormack, G.~V., Clarke, C.~L.~A., \& Buettcher, S. (2009).
+		\textit{Reciprocal rank fusion outperforms Condorcet and individual rank learning methods}.
+		In \textit{Proceedings of SIGIR 2009}, 758--759.
+		
+		\bibitem{chen2020simple}
+		Chen, D. (2020).
+		\textit{A Simple Yet Tough-to-Beat Baseline for Non-English Dense Retrieval}.
+		arXiv preprint arXiv:2012.15516.
+		
+		\bibitem{gutierrez2024hipporag}
+		Gutierrez, B.~J., et al. (2024).
+		\textit{HippoRAG: Neurobiologically Inspired Long-Term Memory for Large Language Models}.
+		arXiv preprint arXiv:2405.14831.
+		
+		\bibitem{guo2024lightrag}
+		He, H., et al. (2024).
+		\textit{LightRAG: Simple and Fast Retrieval-Augmented Generation}.
+		arXiv preprint arXiv:2410.05779.
+		
+	\end{thebibliography}
+	
+\end{document}

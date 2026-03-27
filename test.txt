@@ -1,0 +1,456 @@
+\documentclass[12pt,a4paper]{report}
+
+% ============================================================================
+% PACKAGES
+% ============================================================================
+
+% Font & Encoding (Vietnamese support)
+\usepackage[T5]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[vietnamese]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% Layout & Spacing
+\usepackage{geometry}
+\geometry{
+    top=3cm,
+    bottom=3cm,
+    left=3.5cm,
+    right=2.5cm
+}
+\usepackage{setspace}
+\onehalfspacing
+
+% Prevent orphan/widow lines
+\clubpenalty=10000
+\widowpenalty=10000
+
+% Mathematics
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}
+
+% Hyperref
+\usepackage[colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue]{hyperref}
+
+% Additional packages
+\usepackage{indentfirst}
+\usepackage{enumitem}
+\usepackage{tocbibind}
+
+% ============================================================================
+% THEOREM DEFINITIONS
+% ============================================================================
+
+\theoremstyle{plain}
+\newtheorem{dinhnghia}{Định nghĩa}[chapter]
+\newtheorem{dinhly}{Định lý}[chapter]
+\newtheorem{baitoan}{Bài toán}[chapter]
+
+\theoremstyle{definition}
+\newtheorem{vidu}{Ví dụ}[chapter]
+
+% ============================================================================
+% MATHEMATICAL COMMANDS
+% ============================================================================
+
+\DeclareMathOperator*{\argmax}{argmax}
+\DeclareMathOperator*{\argmin}{argmin}
+\DeclareMathOperator*{\sigmoid}{sigmoid}
+
+% ============================================================================
+% DOCUMENT INFORMATION
+% ============================================================================
+
+\title{Báo Cáo Nghiên Cứu Kỹ Thuật AI: Bước Dịch Chuyển Từ Naive RAG Sang GraphRAG Dựa Trên Nguyên Lý Đồ Thị Của Neo4j}
+\author{Nghiên Cứu Sinh AI Engineering}
+\date{2025}
+
+% ============================================================================
+% BEGIN DOCUMENT
+% ============================================================================
+
+\begin{document}
+
+% ============================================================================
+% FRONT MATTER - Title Page
+% ============================================================================
+
+\begin{titlepage}
+    \centering
+    \vspace*{1cm}
+    
+    \textbf{TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN}\\
+    \textbf{THÀNH PHỐ HỒ CHÍ MINH}
+    
+    \vspace{2cm}
+    
+    \textbf{\Large VIỆN NGHIÊN CỨU TRÍ TUỆ NHÂN TẠO}
+    
+    \vspace{2cm}
+    
+    \begin{figure}[htbp]
+        \centering
+        \rule{3cm}{3cm} % Logo placeholder -- thay bang \includegraphics{logo.png} khi co file thuc te
+        \caption*{[Logo Placeholder]}
+    \end{figure}
+    
+    \vspace{2cm}
+    
+    \textbf{\LARGE BÁO CÁO NGHIÊN CỨU KỸ THUẬT AI}
+    
+    \vspace{1cm}
+    
+    \textbf{\Large Bước Dịch Chuyển Từ Naive RAG Sang GraphRAG Dựa Trên Nguyên Lý Đồ Thị Của Neo4j}
+    
+    \vspace{2cm}
+    
+    \textbf{Nghiên Cứu Sinh:}\
+    Nghiên Cứu Sinh AI Engineering
+    
+    \vspace{1cm}
+    
+    \textbf{Năm:} 2025
+    
+    \vspace{3cm}
+    
+\end{titlepage}
+
+% ============================================================================
+% FRONT MATTER - Declaration Page
+% ============================================================================
+
+\thispagestyle{empty}
+\vspace*{3cm}
+
+\section*{LỜI CAM ĐOAN}
+
+\vspace{1cm}
+
+Tôi xin cam đoan rằng nội dung của báo cáo này là hoàn toàn nguyên bản và được thực hiện dưới sự hướng dẫn của giảng viên hướng dẫn trong lĩnh vực Trí Tuệ Nhân Tạo. 
+
+Tôi xác nhận rằng:
+\begin{itemize}
+    \item Không có phần nào của báo cáo này được sao chép từ các công trình đã công bố mà không có trích dẫn thích hợp.
+    \item Tất cả các tham chiếu và trích dẫn đều được ghi rõ nguồn gốc.
+    \item Các kết quả nghiên cứu được trình bày là trung thực và khách quan.
+\end{itemize}
+
+\vspace{2cm}
+
+\begin{flushright}
+    Thành phố Hồ Chí Minh, ngày 22 tháng 02 năm 2026
+    
+    \vspace{1cm}
+    
+    \textbf{Sinh viên AI Engineering}
+\end{flushright}
+
+% ============================================================================
+% FRONT MATTER - Acknowledgment Page
+% ============================================================================
+
+\thispagestyle{empty}
+\vspace*{3cm}
+
+\section*{LỜI CẢM ƠN}
+
+\vspace{1cm}
+
+Tôi xin bày tỏ lòng biết ơn sâu sắc nhất đến các thầy giáo, cô giáo trong Viện Nghiên Cứu Trí Tuệ Nhân Tạo, Trường Đại Học Khoa Học Tự Nhiên Thành phố Hồ Chí Minh đã tận tình hướng dẫn và truyền đạt kiến thức trong suốt quá trình nghiên cứu.
+
+Đặc biệt, tôi xin cảm ơn:
+\begin{itemize}
+    \item Các nhà nghiên cứu hàng đầu trong cộng đồng GraphRAG và Neo4j đã mở ra hướng đi mới cho việc ứng dụng đồ thị tri thức trong hệ thống truy xuất và sinh văn bản.
+    \item Các đồng nghiệp trong phòng thí nghiệm đã có những thảo luận giá trị và đóng góp ý kiến xây dựng.
+    \item Gia đình và bạn bè đã luôn đồng hành và hỗ trợ trong suốt hành trình nghiên cứu.
+\end{itemize}
+
+Cuối cùng, tôi xin cảm ơn tất cả những người đã gián tiếp và trực tiếp giúp đỡ tôi hoàn thành báo cáo này.
+
+\vspace{2cm}
+
+\begin{flushright}
+    Thành phố Hồ Chí Minh, ngày 22 tháng 02 năm 2026
+\end{flushright}
+
+% ============================================================================
+% FRONT MATTER - Abstract
+% ============================================================================
+
+\thispagestyle{empty}
+\vspace*{3cm}
+
+\section*{TÓM TẮT (Abstract)}
+
+\vspace{1cm}
+
+\addcontentsline{toc}{section}{Tóm tắt (Abstract)}
+
+Báo cáo kỹ thuật AI cấp độ tốt nghiệp này trình bày nền tảng toán học toàn diện về sự chuyển dịch từ hệ thống truy xuất và sinh văn bản cơ bản (Naive RAG) sang mô hình tăng cường qua đồ thị tri thức (GraphRAG), lấy nền tảng từ kiến trúc GraphRAG cốt lõi của Neo4j. Báo cáo tập trung hoàn toàn vào nền tảng toán học của các đường ống (pipelines) học máy: từ giới hạn của không gian vector đẳng hướng (isotropic limits) ở các mô hình Naive RAG, phương pháp tối ưu hóa cấu trúc liên kết đồ thị (graph topology), thuật toán truy xuất lai (hybrid retrieval) dung hợp RRF, cho đến các phương pháp đo lường đánh giá mô hình bằng xác suất hậu nghiệm. Các kỹ sư AI và nhà nghiên cứu có thể dùng tài liệu này làm khuôn khổ lý thuyết để triển khai các hệ thống GraphRAG cấp doanh nghiệp phục vụ suy luận logic đa bước.
+
+\vspace{1cm}
+
+\textbf{Từ khóa:} Retrieval-Augmented Generation, GraphRAG, Knowledge Graph, Neo4j, Multi-hop Reasoning, Hybrid Retrieval, Information Retrieval.
+
+% ============================================================================
+% FRONT MATTER - Table of Contents
+% ============================================================================
+
+\thispagestyle{empty}
+\tableofcontents
+
+% ============================================================================
+% FRONT MATTER - List of Abbreviations
+% ============================================================================
+
+\thispagestyle{empty}
+\section*{DANH MỤC CÁC KÝ HIỆU VÀ CHỮ VIẾT TẮT}
+
+\addcontentsline{toc}{section}{Danh mục các ký hiệu và chữ viết tắt}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|l|}
+        \hline
+        \textbf{Ký hiệu/Viết tắt} & \textbf{Giải thích} \\
+        \hline
+        RAG & Retrieval-Augmented Generation \\
+        \hline
+        GraphRAG & Graph-based Retrieval-Augmented Generation \\
+        \hline
+        LLM & Large Language Model \\
+        \hline
+        RRF & Reciprocal Rank Fusion \\
+        \hline
+        KNN & K-Nearest Neighbors \\
+        \hline
+        MRR & Mean Reciprocal Rank \\
+        \hline
+        NDCG & Normalized Discounted Cumulative Gain \\
+        \hline
+        BM25 & Best Matching 25 \\
+        \hline
+        KL & Kullback-Leibler (Divergence) \\
+        \hline
+        AST & Abstract Syntax Tree \\
+        \hline
+        NLP & Natural Language Processing \\
+        \hline
+        NER & Named Entity Recognition \\
+        \hline
+    \end{tabular}
+\end{table}
+
+% ============================================================================
+% FRONT MATTER - Pagination
+% ============================================================================
+
+\clearpage
+\pagenumbering{roman}
+\pagestyle{plain}
+
+% ============================================================================
+% MAIN BODY - 3 CHAPTER PLACEHOLDERS
+% ============================================================================
+
+\pagenumbering{arabic}
+
+% --- REPLACED ---
+
+\section{Thuật toán Cốt lõi của Kiến trúc GraphRAG}
+
+Paradigm GraphRAG của Neo4j xử lý dòng dữ liệu thông qua ba thuật toán cốt lõi trong đường ống (pipeline), cho phép giải quyết triệt để các hạn chế của Naive RAG \cite{neo4j2024essential}. Hệ thống mới nhất kế thừa các đặc tính từ SubgraphRAG và GRAG \cite{subgraphrag2025, grag2025}, tối ưu hóa việc trích xuất các cấu trúc đồ thị con và quan hệ thực thể.
+
+\subsection{Khử Trùng Lặp Thực Thể (Entity Resolution) thông qua Leiden/Louvain}
+
+Để tổng hợp và cô đọng không gian trạng thái $\mathcal{G}$, các thuật toán phân cụm (Clustering/Community Detection) được áp dụng. Tối ưu hóa mô-đun hóa (Modularity Optimization) thông qua thuật toán Louvain hoặc Leiden liên tục phân chia đồ thị thành các cộng đồng thực thể ngữ nghĩa đồng nhất:
+
+\begin{equation}
+    \Delta Q = \frac{1}{2m} \sum_{i,j} \left[ A_{ij} - \gamma \frac{k_i k_j}{2m} \right] \delta(c_i, c_j)
+\end{equation}
+
+Trong đó $m = \frac{1}{2} \sum_{ij} A_{ij}$ là tổng số cạnh, $k_i$ là bậc (degree) của đỉnh $i$, $\gamma$ là hệ số độ phân giải (resolution parameter), và $\delta$ là hàm Kronecker phân định sự cùng cụm. Bằng cách gộp (collapse) các cộng đồng $c_i$ thành các Meta-Nodes, hệ thống nén topo cấu trúc, tối ưu cho ngữ cảnh có độ dài giới hạn (Context Window Limit) của LLM.
+
+\subsection{Ánh Xạ Không Gian Tiềm Ẩn LLM (LLM Latent Space) Thành Cypher AST}
+
+Việc chuyển đổi trực tiếp Natural Language $q \to$ Đồ thị con được thực hiện thông qua ánh xạ nội hàm (latent mapping) từ không gian tiềm ẩn của LLM sang Cây Cú Pháp Trừu Tượng (AST - Abstract Syntax Tree) của ngôn ngữ truy vấn Cypher. Bài toán này quy về tối ưu hàm ước lượng hợp lý cực đại (Maximum Likelihood Estimation - MLE) của chuỗi từ vựng Cypher $Y = (y_1, ..., y_m)$:
+
+\begin{equation}
+    \max_{\theta} \sum_{t=1}^m \log P(y_t | y_{<t}, q; \theta)
+\end{equation}
+
+Việc giải mã tự hồi quy (autoregressive decoding) này bắt buộc phải chịu sự kiềm chế ngữ nghĩa để đảm bảo tính hợp lệ topo của cấu trúc AST đầu ra đối với lược đồ (schema) hiện tại của Neo4j.
+
+\subsection{Tìm Kiếm Đồ Thị Con: PageRank / K-Hop Đối Ngẫu Với Cosine}
+
+So với tìm kiếm KNN bằng khoảng cách Cosine $\arg \max_{v \in V} S_C(v_q, v)$, GraphRAG tìm kiếm đồ thị con kết hợp với phương pháp truyền lan độ tin cậy. Nếu quá trình ánh xạ nhận diện được tập đỉnh hạt giống (seed nodes) $S_0$, phân phối tầm quan trọng (importance distribution) của các node xung quanh được hội tụ bằng Random Walk hoặc Thuật toán \textbf{PageRank cá nhân hóa} (Personalized PageRank) với hệ số suy giảm (damping factor) $\alpha$:
+
+\begin{equation}
+    \mathbf{p} = \alpha \mathbf{A}^\top \mathbf{D}^{-1} \mathbf{p} + (1 - \alpha) \mathbf{v}_q
+\end{equation}
+
+Quá trình truyền qua $K$-hop (k-hop traversal) thu thập toàn bộ các lân cận của hạt giống. Giống như việc bạn nhỏ một giọt mực lên tâm của một chiếc mạng nhện. Mực sẽ từ từ lan ra các sợi tơ xung quanh (các node lân cận). Những điểm nằm gần tâm hoặc có nhiều sợi tơ nối về nhất sẽ đậm màu nhất. Nhờ cách lan tỏa sự chú ý này, hệ thống nhanh chóng khoanh vùng được một mạng lưới thông tin liên quan mật thiết nhất với điểm xuất phát ban đầu, thay vì mò mẫm khắp nơi.
+
+\section{Công Thức Truy Xuất Lai Cấu Trúc (Hybrid Retrieval Formulation)}
+
+Sức mạnh thực sự của hệ thống Neo4j GraphRAG nằm ở khả năng tổng hợp vector dày đặc (Dense), thưa thớt (Sparse) và tri thức topo (Graph) \cite{neo4j2024essential}. 
+
+\subsection{Giới hạn Dung Hợp Hạng Nghịch Đảo (Reciprocal Rank Fusion - RRF)}
+
+Để gộp kết quả từ các bộ tìm kiếm khác biệt về bản chất không gian, mô hình sử dụng thuật toán RRF:
+
+\begin{equation}
+    \text{RRF}(d) = \sum_{m \in M} \frac{1}{k + r_m(d)}
+\end{equation}
+
+Với hằng số điều chỉnh $k$ (thường chọn $k=60$).
+
+\begin{figure}[htbp]
+    \centering
+    \rule{8cm}{5cm} % Placeholder cho ảnh
+    \caption{Luồng xử lý truy xuất lai (Hybrid Retrieval) kết hợp giữa Dense Vector Search, Keyword Search (BM25) và duyệt đồ thị PageRank K-hop thông qua cơ chế RRF.}
+\end{figure}
+
+\subsection{Tích Hợp Điểm Đa Chiều và Tối Ưu Hóa Siêu Phẳng}
+
+Quá trình truy xuất lai đưa ra một hàm cho điểm chung kết (final score) kết hợp sức mạnh phân tích từ vựng, ngữ nghĩa và topo đồ thị tri thức:
+
+\begin{equation}
+    S_{final}(d, q) = w_{BM25} S_{BM25} + w_{Dense} S_{Dense} + w_{Graph} S_{Graph}
+\end{equation}
+
+Trọng số tổng hợp được tối ưu hóa qua hàm suy giảm hồi quy Logistic:
+
+\begin{equation}
+    \mathcal{L}(\mathbf{w}) = - \sum_{i} \left[ y_i \log \sigma(S_{final}^{(i)}) + (1 - y_i) \log(1 - \sigma(S_{final}^{(i)})) \right]
+\end{equation}
+
+Và được cập nhật liên tục qua học máy bằng suy giảm Gradient:
+
+\begin{equation}
+    \mathbf{w}^{(t+1)} = \mathbf{w}^{(t)} - \eta \nabla_{\mathbf{w}} \mathcal{L}(\mathbf{w}^{(t)})
+\end{equation}
+
+% --- CHAPTER 3 ---
+
+\chapter{Đo lường và Đánh giá Hiệu năng AI}
+
+Đánh giá hệ thống truy xuất và sinh văn bản yêu cầu các độ đo vượt qua kiểu so sánh từ vựng truyền thống. Việc kiểm chứng hiệu năng không chỉ nằm ở tính chính xác của câu chữ khi triển khai mô hình đồ thị. Chúng thực lượng mức độ liên kết cấu trúc, khả năng bám sát tri thức gốc và nguy cơ sinh ra ảo giác của hệ thống.
+
+\section{Graph-constrained MRR và NDCG}
+
+Hiệu quả truy xuất tri thức được đo lường thông qua phiên bản tùy chỉnh của chỉ số NDCG. Công thức tính toán tích hợp trực tiếp khoảng cách không gian như sau:
+
+\begin{equation}
+    \text{GC-NDCG@K} = \frac{1}{\text{IDCG}} \sum_{k=1}^K \frac{2^{rel_k \cdot \exp(-\lambda \cdot d(v_k, v_{truth}))} - 1}{\log_2(k + 1)}
+\end{equation}
+
+Mỗi biến số trong phương trình đóng một vai trò cụ thể trong quá trình đánh giá thực tế. 
+
+Đại lượng $rel_k$ đại diện cho mức độ liên quan cốt lõi của đỉnh đồ thị thứ $k$ được gọi lên. Biến này phản ánh điểm số do chuyên gia đánh giá hoặc hệ thống nhãn dữ liệu xác định trước. Một hệ thống máy học sẽ gán giá trị cao cho đỉnh chứa chính xác thông tin cần tìm.
+
+Tham số $d(v_k, v_{truth})$ thể hiện khoảng cách topo giữa đỉnh được mô hình chọn $v_k$ và đỉnh sự thật $v_{truth}$. Quá trình đánh giá đếm số bước nhảy giữa hai đỉnh thay vì chỉ đo khoảng cách vector thuần túy. Điểm số khích lệ vẫn được cộng thêm nếu công cụ tìm kiếm nhầm lẫn nhưng lại chọn đúng đỉnh liền kề với đáp án thật. 
+
+Hệ số $\lambda$ kiểm soát hình phạt khoảng cách. Giá trị này quyết định độ gắt gao khi trừ điểm các kết quả nằm quá xa trọng tâm thông tin.
+
+Chỉ số GC-NDCG nâng cấp phương pháp tính toán cũ bằng cách cộng gộp hình học đồ thị. Một tài liệu sai trong kiến trúc cơ bản bị loại bỏ hoàn toàn khỏi bảng xếp hạng. Ngược lại, mạng lưới tri thức ghi nhận nỗ lực của phần mềm khi tìm được vùng không gian lân cận chứa dữ liệu hữu ích. Cách chấm điểm này mô phỏng rất sát quá trình con người tự tìm kiếm và suy luận kiến thức mới.
+
+\section{Định lượng độ trung thành (Faithfulness Quantification)}
+
+Thước đo tiếp theo tập trung vào khả năng sinh văn bản từ chính dữ kiện có sẵn.
+
+\begin{equation}
+    \text{Faithfulness}(O) = \mathbb{P}(O | \mathcal{C}, \mathcal{G}_c) = \prod_{e \in \mathcal{E}_{O}} \mathbb{P}(e \in \mathcal{G}_c)
+\end{equation}
+
+Các thành phần của công thức mang nhiều tầng ý nghĩa. Biến $O$ là toàn bộ câu trả lời do máy tính xuất ra. Tập hợp $\mathcal{C}$ biểu thị khối ngữ cảnh người dùng cung cấp ban đầu. Cấu trúc $\mathcal{G}_c$ đóng vai trò là đồ thị con chứa các nút và cạnh đã lấy về từ cơ sở dữ liệu. Nhóm $\mathcal{E}_O$ tập hợp tất cả thực thể và mối quan hệ cấu thành nên văn bản đích. Xác suất $\mathbb{P}(e \in \mathcal{G}_c)$ xác nhận một sự kiện $e$ có thực sự tồn tại bên trong đồ thị gốc hay không.
+
+Quá trình định lượng độ trung thành bắt đầu bằng việc tính toán xác suất hậu nghiệm của văn bản trả về. Câu trả lời dài được chẻ nhỏ thành nhiều mệnh đề ngắn. Từng khẳng định này phải trải qua bước đối chiếu chéo với mạng lưới đỉnh và cạnh trong bản đồ nền. Tích các xác suất sẽ đạt mức tối đa bằng một nếu từng chi tiết nhỏ đều trùng khớp với sự thật. Mọi mệnh đề chứa thông tin bịa đặt sẽ kéo xác suất tiến thẳng về không, khiến tổng điểm bị đánh tụt nghiêm trọng. Chỉ số đo lường này mang tính quyết định đối với các lĩnh vực nhạy cảm, nơi sai sót dữ liệu thường dẫn đến hậu quả khó lường.
+
+\section{Định lượng mức độ ảo giác (Hallucination Quantification)}
+
+Sự sai lệch thông tin của thuật toán có thể được đo đếm chuẩn xác nhờ phép phân kỳ xác suất.
+
+\begin{equation}
+    D_{KL}(P_{\text{LLM}} \| P_{\text{Graph}}) = \sum_{x \in \mathcal{X}} P_{\text{LLM}}(x) \log \frac{P_{\text{LLM}}(x)}{P_{\text{Graph}}(x)}
+\end{equation}
+
+Hàm lượng thông tin chia nhỏ thành hai nhóm phân phối riêng biệt. Biến $P_{\text{LLM}}(x)$ đại diện cho tập hợp xác suất của những khái niệm do phần mềm tự do nội suy. Phân phối $P_{\text{Graph}}(x)$ biểu diễn giá trị chuẩn mực trích xuất thẳng từ biểu đồ tri thức khép kín. Khối $\mathcal{X}$ chứa toàn bộ các biến thể khái niệm có khả năng xuất hiện trong bối cảnh hỏi đáp hiện tại.
+
+KL Divergence lúc này đóng vai trò là một người chấm điểm. Đo lường xem bản đồ vẽ tay kia (đại diện cho mô hình LLM tự suy đoán câu trả lời) 'lệch pha' bao nhiêu phần trăm so với bản đồ vệ tinh chính thức (Knowledge Graph thực tế). Nếu AI tự vẽ thêm một con đường đâm xuyên qua hồ Hoàn Kiếm (hiện tượng Hallucination), điểm số sai lệch KL Divergence sẽ tăng vọt.
+
+Độ phân kỳ KL giúp lập trình viên nhìn thấy sự vênh nhau giữa suy diễn tự do và thực tế khách quan. Bộ trọng số khổng lồ của các mô hình ngôn ngữ lớn thường tự đẻ ra chuỗi dữ liệu chứa nhiều thành phần mâu thuẫn. Đồ thị tri thức đóng vai trò như một bộ lọc chân lý chặt chẽ cho từng lĩnh vực hẹp. Khoảng cách giữa hai đường phân phối giúp kỹ sư nhận diện kịp thời thời điểm máy móc bắt đầu bịa chuyện ngoài tầm kiểm soát. Việc giám sát độ lệch này lập tức kích hoạt cơ chế cảnh báo sớm, chặn đứng mọi văn bản sai lệch trước khi chúng lan truyền đến người dùng cuối.
+
+\begin{figure}[htbp]
+    \centering
+    \rule{8cm}{5cm} % Placeholder cho ảnh
+    \caption{Biểu đồ so sánh hiệu suất và mức độ hallucination giữa Naive RAG và GraphRAG...}
+\end{figure}
+% ============================================================================
+% CONCLUSION
+% ============================================================================
+
+\chapter*{Kết Luận}
+
+\addcontentsline{toc}{chapter}{Kết Luận}
+
+Sự chuyển dịch kiến trúc học máy từ Naive RAG sang GraphRAG không đơn thuần là quá trình thay đổi cơ sở dữ liệu vật lý sang hệ quản trị cơ sở dữ liệu đồ thị, mà là một bước nhảy vọt cơ sở lý thuyết toán học định hướng. Bằng việc định hình lại bài toán giới hạn đẳng hướng đa chiều qua lăng kính hình học ma trận kề thưa, cùng với phương thức quy giải thực thể nội hàm, truyền lan tín hiệu vi phân PageRank k-hop, và dung hợp truy xuất lai siêu phẳng, hệ thống Neo4j GraphRAG giải phóng hoàn toàn LLMs khỏi điểm mù của liên kết ngữ cảnh phân mảnh. Hơn thế nữa, bằng cách ứng dụng các thông số đo lường như xác suất topo hậu nghiệm và khoảng cách phân kỳ hình học, các kỹ sư AI và nhà nghiên cứu hiện nay đã có thể định lượng minh bạch hóa độ trung thành và ràng buộc triệt để hiện tượng ảo giác AI dưới góc độ chứng minh toán học nghiêm ngặt \cite{neo4j2024essential, edge2024local}.
+
+% ============================================================================
+% REFERENCES
+% ============================================================================
+
+\clearpage
+\addcontentsline{toc}{chapter}{Tài liệu tham khảo}
+
+\begin{thebibliography}{99}
+
+\bibitem{vaswani2017attention}
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., ... \& Polosukhin, I. (2017). 
+\textit{Attention is all you need}. 
+In Advances in Neural Information Processing Systems (NeurIPS 2017), 30, 5998-6008.
+
+\bibitem{lewis2020retrieval}
+Lewis, P., Perez, E., Piktus, A., Petroni, F., Karpukhin, V., Goyal, N., \& Kiela, D. (2020). 
+\textit{Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks}. 
+In Advances in Neural Information Processing Systems (NeurIPS 2020), 33, 9459-9474.
+
+\bibitem{edge2024local}
+Edge, D., Trivedi, H., Monga, V., Ordun, G., Bastian, M., Lally, J., \& Korreck, J. (2024). 
+\textit{From Local to Global: A GraphRAG Approach to Query-Focused Summarization}. 
+arXiv preprint arXiv:2404.16130.
+
+\bibitem{blondel2008fast}
+Blondel, V. D., Guillaume, J. L., Lambiotte, R., \& Lefebvre, E. (2008). 
+\textit{Fast unfolding of communities in large networks}. 
+Journal of Statistical Mechanics: Theory and Experiment, 2008(10), P10008.
+
+\bibitem{manning2008introduction}
+Manning, C. D., Raghavan, P., \& Schütze, H. (2008). 
+\textit{Introduction to Information Retrieval}. 
+Cambridge University Press.
+
+\bibitem{neo4j2024essential}
+Neo4j Inc. (2024). \textit{Essential GraphRAG}. Technical Report.
+\url{https://go.neo4j.com/rs/710-RRC-335/images/Essential-GraphRAG.pdf}
+
+\bibitem{docgraphrag2025}
+Grossmann, Daniel, Oğuz Caymazer, and Simon Knollmeyer. \textit{Document GraphRAG: Knowledge Graph Enhanced Retrieval Augmented Generation for Document Question Answering Within the Manufacturing Domain}. MDPI Electronics, 14(11), 2102, 2025.
+
+\bibitem{subgraphrag2025}
+Li, Mufei, Siqi Miao, and Pan Li. \textit{Simple is Effective: The Roles of Graphs and Large Language Models in Knowledge-Graph-Based Retrieval-Augmented Generation}. ICLR, 2025.
+
+\bibitem{grag2025}
+Hu, Yuntong, et al. \textit{GRAG: Graph Retrieval-Augmented Generation}. Findings of NAACL, 4145--4157, 2025.
+
+\end{thebibliography}
+
+% ============================================================================
+% END DOCUMENT
+% ============================================================================
+
+\end{document}
+

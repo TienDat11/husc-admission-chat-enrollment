@@ -1,0 +1,402 @@
+[
+  {
+    "id": "Q001",
+    "category": "simple",
+    "question": "Ngành Công nghệ thông tin tại Đại học Khoa học Huế có chỉ tiêu bao nhiêu sinh viên năm 2025?",
+    "ground_truth_answer": "Ngành Công nghệ thông tin tại Đại học Khoa học Huế có chỉ tiêu 510 sinh viên năm 2025.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q002",
+    "category": "simple",
+    "question": "Mã ngành của ngành Kỹ thuật phần mềm tại Đại học Khoa học Huế là gì?",
+    "ground_truth_answer": "Mã ngành của ngành Kỹ thuật phần mềm tại Đại học Khoa học Huế là 7480103.",
+    "ground_truth_source_chunks": ["husc_nganh_7480103_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q003",
+    "category": "simple",
+    "question": "Ngành Quản trị và phân tích dữ liệu tại Đại học Khoa học Huế xét tuyển những tổ hợp nào?",
+    "ground_truth_answer": "Ngành Quản trị và phân tích dữ liệu tại Đại học Khoa học Huế xét tuyển các tổ hợp: C01, A01, D01, X02.",
+    "ground_truth_source_chunks": ["husc_nganh_7480107TD_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q004",
+    "category": "simple",
+    "question": "Ngành Công nghệ thông tin (Kỹ sư Việt - Nhật) đào tạo trong bao nhiêu năm?",
+    "ground_truth_answer": "Ngành Công nghệ thông tin (Kỹ sư Việt - Nhật) đào tạo trong 4.5 năm.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201VJ_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q005",
+    "category": "simple",
+    "question": "Ngành Công nghệ kỹ thuật Điện tử - Viễn thông cấp bằng gì?",
+    "ground_truth_answer": "Ngành Công nghệ kỹ thuật Điện tử - Viễn thông cấp bằng Kỹ sư.",
+    "ground_truth_source_chunks": ["husc_nganh_7510302_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q006",
+    "category": "simple",
+    "question": "Mức điểm ưu tiên khu vực 1 (KV1) trong tuyển sinh đại học 2025 là bao nhiêu?",
+    "ground_truth_answer": "Mức điểm ưu tiên khu vực 1 (KV1) trong tuyển sinh đại học 2025 là 0,75 điểm.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_7_muc_diem_uu_tien_kv_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q007",
+    "category": "simple",
+    "question": "Mức điểm ưu tiên khu vực 2 nông thôn (KV2-NT) là bao nhiêu?",
+    "ground_truth_answer": "Mức điểm ưu tiên khu vực 2 nông thôn (KV2-NT) là 0,5 điểm.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_7_muc_diem_uu_tien_kv_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q008",
+    "category": "simple",
+    "question": "Khu vực 3 (KV3) có được tính điểm ưu tiên không?",
+    "ground_truth_answer": "Khu vực 3 (KV3) không được tính điểm ưu tiên.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_7_muc_diem_uu_tien_kv_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q009",
+    "category": "simple",
+    "question": "Thông tư số 08/2022/TT-BGDĐT có hiệu lực từ ngày nào?",
+    "ground_truth_answer": "Thông tư số 08/2022/TT-BGDĐT có hiệu lực từ ngày 22 tháng 7 năm 2022.",
+    "ground_truth_source_chunks": ["all_bogddt_tt_08_header_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q010",
+    "category": "simple",
+    "question": "Ngưỡng đầu vào là gì trong tuyển sinh đại học?",
+    "ground_truth_answer": "Ngưỡng đầu vào là yêu cầu tối thiểu về năng lực học tập thể hiện ở kết quả học tập, kết quả thi, đánh giá để thí sinh có khả năng theo học và hoàn thành chương trình đào tạo.",
+    "ground_truth_source_chunks": ["all_bogddt_tt_08_dieu_2_nguong_dau_vao_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q011",
+    "category": "simple",
+    "question": "Xét tuyển thẳng có cần xét tới ngưỡng đầu vào không?",
+    "ground_truth_answer": "Xét tuyển thẳng không cần xét tới ngưỡng đầu vào (điểm sàn).",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_2_xet_tuyen_thang_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q012",
+    "category": "simple",
+    "question": "Điểm ưu tiên được hiểu là gì?",
+    "ground_truth_answer": "Điểm ưu tiên được hiểu là số điểm chênh lệch giữa mức điểm trúng tuyển áp dụng cho nhóm thí sinh được ưu tiên so với mức điểm trúng tuyển bình thường; hay cũng chính là số điểm mà nhóm thí sinh được cộng vào điểm xét để áp dụng mức điểm trúng tuyển bình thường.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_2_diem_uu_tien_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q013",
+    "category": "simple",
+    "question": "Một cơ sở đào tạo có thể sử dụng tối đa bao nhiêu tổ hợp xét tuyển cho một ngành?",
+    "ground_truth_answer": "Một cơ sở đào tạo không sử dụng quá 4 tổ hợp xét tuyển cho một ngành, một chương trình đào tạo (trừ trường hợp các tổ hợp môn chỉ khác nhau ở môn ngoại ngữ).",
+    "ground_truth_source_chunks": ["csdt_admin_bogddt_tt_08_dieu_6_gioi_han_to_hop_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q014",
+    "category": "simple",
+    "question": "Tổ hợp môn xét tuyển phải có ít nhất bao nhiêu môn?",
+    "ground_truth_answer": "Tổ hợp môn dùng để xét tuyển phải bao gồm ít nhất 3 môn.",
+    "ground_truth_source_chunks": ["csdt_admin_bogddt_tt_08_dieu_6_gioi_han_to_hop_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q015",
+    "category": "simple",
+    "question": "Tổ hợp môn xét tuyển phải có môn nào?",
+    "ground_truth_answer": "Tổ hợp môn dùng để xét tuyển phải có môn toán hoặc ngữ văn.",
+    "ground_truth_source_chunks": ["csdt_admin_bogddt_tt_08_dieu_6_gioi_han_to_hop_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q016",
+    "category": "simple",
+    "question": "Thí sinh được đảm bảo quyền lợi gì trong tuyển sinh?",
+    "ground_truth_answer": "Thí sinh được đảm bảo quyền lợi về thực hiện cam kết của cơ sở đào tạo; được tư vấn, hỗ trợ và giải quyết khiếu nại, bảo vệ quyền lợi chính đáng trong những trường hợp rủi ro.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_4_bao_ve_quyen_loi_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q017",
+    "category": "simple",
+    "question": "Thí sinh đoạt giải học sinh giỏi quốc gia được xét tuyển thẳng với điều kiện gì?",
+    "ground_truth_answer": "Thí sinh đoạt giải nhất, nhì, ba trong kỳ thi chọn học sinh giỏi quốc gia, quốc tế hoặc thi khoa học, kỹ thuật cấp quốc gia, quốc tế do Bộ GDĐT tổ chức, cử tham gia, được xét tuyển thẳng vào các ngành phù hợp. Thời gian đoạt giải không quá 3 năm tính tới thời điểm xét tuyển thẳng.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_8_tuyen_thang_hsg_khkt_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q018",
+    "category": "simple",
+    "question": "Công thức tính điểm ưu tiên giảm dần khi tổng điểm từ 22,5 trở lên là gì?",
+    "ground_truth_answer": "Công thức tính điểm ưu tiên giảm dần khi tổng điểm từ 22,5 trở lên là: Điểm ưu tiên = [(30 – Tổng điểm đạt được)/7,5] × Mức điểm ưu tiên quy định.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_7_cong_thuc_giam_uu_tien_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q019",
+    "category": "simple",
+    "question": "Xử lý nguyện vọng là gì?",
+    "ground_truth_answer": "Xử lý nguyện vọng là quy trình xử lý trên hệ thống hỗ trợ tuyển sinh chung để xác định nguyện vọng cao nhất trong số nguyện vọng mà thí sinh đủ điều kiện trúng tuyển, trên cơ sở đó lập danh sách thí sinh trúng tuyển.",
+    "ground_truth_source_chunks": ["csdt_admin_bogddt_tt_08_dieu_2_xu_ly_nguyen_vong_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q020",
+    "category": "simple",
+    "question": "Thông tư số 08/2022/TT-BGDĐT được ban hành vào ngày nào?",
+    "ground_truth_answer": "Thông tư số 08/2022/TT-BGDĐT được ban hành ngày 06 tháng 6 năm 2022.",
+    "ground_truth_source_chunks": ["all_bogddt_tt_08_header_2025"],
+    "required_hops": 1
+  },
+  {
+    "id": "Q021",
+    "category": "multihop",
+    "question": "Ngành nào tại Đại học Khoa học Huế có chỉ tiêu cao nhất năm 2025?",
+    "ground_truth_answer": "Ngành Công nghệ thông tin (Cử nhân) tại Đại học Khoa học Huế có chỉ tiêu cao nhất với 510 sinh viên năm 2025.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201_2025", "husc_nganh_7480103_2025", "husc_nganh_7480107TD_2025", "husc_nganh_7480201VJ_2025", "husc_nganh_7510302_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q022",
+    "category": "multihop",
+    "question": "Ngành nào tại Đại học Khoa học Huế đào tạo bằng Kỹ sư và có thời gian đào tạo 5 năm?",
+    "ground_truth_answer": "Ngành Công nghệ kỹ thuật Điện tử - Viễn thông tại Đại học Khoa học Huế đào tạo bằng Kỹ sư với thời gian đào tạo 5 năm.",
+    "ground_truth_source_chunks": ["husc_nganh_7510302_2025", "husc_nganh_7480201VJ_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q023",
+    "category": "multihop",
+    "question": "Các ngành nào tại Đại học Khoa học Huế xét tuyển tổ hợp A00?",
+    "ground_truth_answer": "Các ngành tại Đại học Khoa học Huế xét tuyển tổ hợp A00 gồm: Công nghệ thông tin, Kỹ thuật phần mềm, Công nghệ thông tin (Kỹ sư Việt - Nhật), Công nghệ kỹ thuật Điện tử - Viễn thông.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201_2025", "husc_nganh_7480103_2025", "husc_nganh_7480201VJ_2025", "husc_nganh_7510302_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q024",
+    "category": "multihop",
+    "question": "Ngành nào tại Đại học Khoa học Huế có thời gian đào tạo ngắn nhất?",
+    "ground_truth_answer": "Ngành Công nghệ thông tin (Cử nhân), Kỹ thuật phần mềm, và Quản trị và phân tích dữ liệu tại Đại học Khoa học Huế có thời gian đào tạo ngắn nhất là 4 năm.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201_2025", "husc_nganh_7480103_2025", "husc_nganh_7480107TD_2025", "husc_nganh_7480201VJ_2025", "husc_nganh_7510302_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q025",
+    "category": "multihop",
+    "question": "Tổ hợp nào được nhiều ngành tại Đại học Khoa học Huế xét tuyển nhất?",
+    "ground_truth_answer": "Tổ hợp A00, A01 và D01 được nhiều ngành tại Đại học Khoa học Huế xét tuyển nhất.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201_2025", "husc_nganh_7480103_2025", "husc_nganh_7480201VJ_2025", "husc_nganh_7510302_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q026",
+    "category": "multihop",
+    "question": "Ngành nào tại Đại học Khoa học Huế có chỉ tiêu dưới 50 sinh viên?",
+    "ground_truth_answer": "Ngành Công nghệ thông tin (Kỹ sư Việt - Nhật) tại Đại học Khoa học Huế có chỉ tiêu 35 sinh viên và Quản trị và phân tích dữ liệu có chỉ tiêu 30 sinh viên.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201VJ_2025", "husc_nganh_7480107TD_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q027",
+    "category": "multihop",
+    "question": "Các ngành nào tại Đại học Khoa học Huế đào tạo bằng Cử nhân?",
+    "ground_truth_answer": "Các ngành tại Đại học Khoa học Huế đào tạo bằng Cử nhân gồm: Công nghệ thông tin, Kỹ thuật phần mềm, Quản trị và phân tích dữ liệu.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201_2025", "husc_nganh_7480103_2025", "husc_nganh_7480107TD_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q028",
+    "category": "multihop",
+    "question": "Tổ hợp X26 được ngành nào tại Đại học Khoa học Huế xét tuyển?",
+    "ground_truth_answer": "Tổ hợp X26 được các ngành Công nghệ thông tin, Kỹ thuật phần mềm, và Công nghệ thông tin (Kỹ sư Việt - Nhật) tại Đại học Khoa học Huế xét tuyển.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201_2025", "husc_nganh_7480103_2025", "husc_nganh_7480201VJ_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q029",
+    "category": "multihop",
+    "question": "Ngành nào tại Đại học Khoa học Huế có mã ngành bắt đầu bằng 751?",
+    "ground_truth_answer": "Ngành Công nghệ kỹ thuật Điện tử - Viễn thông tại Đại học Khoa học Huế có mã ngành 7510302.",
+    "ground_truth_source_chunks": ["husc_nganh_7510302_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q030",
+    "category": "multihop",
+    "question": "Các ngành nào tại Đại học Khoa học Huế có thời gian đào tạo trên 4 năm?",
+    "ground_truth_answer": "Các ngành tại Đại học Khoa học Huế có thời gian đào tạo trên 4 năm gồm: Công nghệ thông tin (Kỹ sư Việt - Nhật) đào tạo 4.5 năm và Công nghệ kỹ thuật Điện tử - Viễn thông đào tạo 5 năm.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201VJ_2025", "husc_nganh_7510302_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q031",
+    "category": "multihop",
+    "question": "Thí sinh đạt tổng điểm 24 thì điểm ưu tiên KV1 được tính như thế nào?",
+    "ground_truth_answer": "Thí sinh đạt tổng điểm 24 thì điểm ưu tiên KV1 được tính theo công thức: [(30 - 24)/7,5] × 0,75 = (6/7,5) × 0,75 = 0,8 × 0,75 = 0,6 điểm.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_7_cong_thuc_giam_uu_tien_2025", "thi_sinh_bogddt_tt_08_dieu_7_muc_diem_uu_tien_kv_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q032",
+    "category": "multihop",
+    "question": "Thí sinh đạt tổng điểm 20 có được hưởng đầy đủ điểm ưu tiên KV2-NT không?",
+    "ground_truth_answer": "Thí sinh đạt tổng điểm 20 thì được hưởng đầy đủ điểm ưu tiên KV2-NT là 0,5 điểm vì tổng điểm dưới 22,5.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_7_cong_thuc_giam_uu_tien_2025", "thi_sinh_bogddt_tt_08_dieu_7_muc_diem_uu_tien_kv_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q033",
+    "category": "multihop",
+    "question": "Thí sinh đoạt giải học sinh giỏi quốc gia năm 2023 có được xét tuyển thẳng năm 2025 không?",
+    "ground_truth_answer": "Thí sinh đoạt giải học sinh giỏi quốc gia năm 2023 vẫn được xét tuyển thẳng năm 2025 vì thời gian đoạt giải không quá 3 năm tính tới thời điểm xét tuyển thẳng.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_8_tuyen_thang_hsg_khkt_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q034",
+    "category": "multihop",
+    "question": "Một trường có thể xét tuyển ngành Công nghệ thông tin với những tổ hợp nào theo quy định?",
+    "ground_truth_answer": "Một trường có thể xét tuyển ngành Công nghệ thông tin với tối đa 4 tổ hợp (trừ trường hợp các tổ hợp chỉ khác nhau ở môn ngoại ngữ), tổ hợp phải có ít nhất 3 môn và phải có môn toán hoặc ngữ văn.",
+    "ground_truth_source_chunks": ["csdt_admin_bogddt_tt_08_dieu_6_gioi_han_to_hop_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q035",
+    "category": "multihop",
+    "question": "Thí sinh có quyền gì khi cơ sở đào tạo không thực hiện cam kết trong đề án tuyển sinh?",
+    "ground_truth_answer": "Thí sinh có quyền được tư vấn, hỗ trợ và giải quyết khiếu nại, bảo vệ quyền lợi chính đáng khi cơ sở đào tạo không thực hiện cam kết trong đề án tuyển sinh.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_4_bao_ve_quyen_loi_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q036",
+    "category": "multihop",
+    "question": "Xử lý nguyện vọng được thực hiện trên hệ thống nào?",
+    "ground_truth_answer": "Xử lý nguyện vọng được thực hiện trên hệ thống hỗ trợ tuyển sinh chung của Bộ GDĐT.",
+    "ground_truth_source_chunks": ["csdt_admin_bogddt_tt_08_dieu_2_xu_ly_nguyen_vong_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q037",
+    "category": "multihop",
+    "question": "Ngưỡng đầu vào và xét tuyển thẳng khác nhau như thế nào?",
+    "ground_truth_answer": "Ngưỡng đầu vào là yêu cầu tối thiểu về năng lực học tập để thí sinh có khả năng theo học, còn xét tuyển thẳng là việc công nhận trúng tuyển mà không cần xét tới ngưỡng đầu vào.",
+    "ground_truth_source_chunks": ["all_bogddt_tt_08_dieu_2_nguong_dau_vao_2025", "thi_sinh_bogddt_tt_08_dieu_2_xet_tuyen_thang_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q038",
+    "category": "multihop",
+    "question": "Thông tư số 08/2022/TT-BGDĐT áp dụng cho năm tuyển sinh nào?",
+    "ground_truth_answer": "Thông tư số 08/2022/TT-BGDĐT áp dụng cho tuyển sinh đại học năm 2025.",
+    "ground_truth_source_chunks": ["all_bogddt_tt_08_header_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q039",
+    "category": "multihop",
+    "question": "Điểm ưu tiên và ngưỡng đầu vào có mối quan hệ gì?",
+    "ground_truth_answer": "Điểm ưu tiên được cộng vào điểm xét để áp dụng mức điểm trúng tuyển bình thường, trong khi ngưỡng đầu vào là yêu cầu tối thiểu về năng lực học tập.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_2_diem_uu_tien_2025", "all_bogddt_tt_08_dieu_2_nguong_dau_vao_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q040",
+    "category": "multihop",
+    "question": "Các tổ hợp xét tuyển có thể khác nhau chỉ ở môn ngoại ngữ được tính là bao nhiêu tổ hợp?",
+    "ground_truth_answer": "Các tổ hợp xét tuyển chỉ khác nhau ở môn ngoại ngữ được tính là một tổ hợp theo quy định về giới hạn 4 tổ hợp cho một ngành.",
+    "ground_truth_source_chunks": ["csdt_admin_bogddt_tt_08_dieu_6_gioi_han_to_hop_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q041",
+    "category": "comparative",
+    "question": "So sánh chỉ tiêu của ngành Công nghệ thông tin và Kỹ thuật phần mềm tại Đại học Khoa học Huế.",
+    "ground_truth_answer": "Ngành Công nghệ thông tin có chỉ tiêu 510 sinh viên, trong khi ngành Kỹ thuật phần mềm có chỉ tiêu 80 sinh viên tại Đại học Khoa học Huế năm 2025.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201_2025", "husc_nganh_7480103_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q042",
+    "category": "comparative",
+    "question": "So sánh thời gian đào tạo của ngành Công nghệ thông tin (Cử nhân) và Công nghệ thông tin (Kỹ sư Việt - Nhật).",
+    "ground_truth_answer": "Ngành Công nghệ thông tin (Cử nhân) đào tạo trong 4 năm, còn ngành Công nghệ thông tin (Kỹ sư Việt - Nhật) đào tạo trong 4.5 năm tại Đại học Khoa học Huế.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201_2025", "husc_nganh_7480201VJ_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q043",
+    "category": "comparative",
+    "question": "So sánh bằng cấp của ngành Kỹ thuật phần mềm và Công nghệ kỹ thuật Điện tử - Viễn thông.",
+    "ground_truth_answer": "Ngành Kỹ thuật phần mềm cấp bằng Cử nhân, còn ngành Công nghệ kỹ thuật Điện tử - Viễn thông cấp bằng Kỹ sư tại Đại học Khoa học Huế.",
+    "ground_truth_source_chunks": ["husc_nganh_7480103_2025", "husc_nganh_7510302_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q044",
+    "category": "comparative",
+    "question": "So sánh các tổ hợp xét tuyển của ngành Quản trị và phân tích dữ liệu với ngành Công nghệ thông tin.",
+    "ground_truth_answer": "Ngành Quản trị và phân tích dữ liệu xét tuyển các tổ hợp C01, A01, D01, X02, còn ngành Công nghệ thông tin xét tuyển A00, A01, D01, X26.",
+    "ground_truth_source_chunks": ["husc_nganh_7480107TD_2025", "husc_nganh_7480201_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q045",
+    "category": "comparative",
+    "question": "So sánh mức điểm ưu tiên khu vực 1 và khu vực 2 nông thôn.",
+    "ground_truth_answer": "Khu vực 1 (KV1) được cộng 0,75 điểm ưu tiên, còn khu vực 2 nông thôn (KV2-NT) được cộng 0,5 điểm ưu tiên.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_7_muc_diem_uu_tien_kv_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q046",
+    "category": "comparative",
+    "question": "So sánh ngưỡng đầu vào và xét tuyển thẳng về yêu cầu điểm sàn.",
+    "ground_truth_answer": "Ngưỡng đầu vào yêu cầu thí sinh phải đạt mức điểm tối thiểu, còn xét tuyển thẳng không cần xét tới ngưỡng đầu vào (điểm sàn).",
+    "ground_truth_source_chunks": ["all_bogddt_tt_08_dieu_2_nguong_dau_vao_2025", "thi_sinh_bogddt_tt_08_dieu_2_xet_tuyen_thang_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q047",
+    "category": "comparative",
+    "question": "So sánh chỉ tiêu của ngành có chỉ tiêu cao nhất và thấp nhất tại Đại học Khoa học Huế.",
+    "ground_truth_answer": "Ngành Công nghệ thông tin có chỉ tiêu cao nhất với 510 sinh viên, còn ngành Quản trị và phân tích dữ liệu có chỉ tiêu thấp nhất với 30 sinh viên tại Đại học Khoa học Huế năm 2025.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201_2025", "husc_nganh_7480107TD_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q048",
+    "category": "comparative",
+    "question": "So sánh thời gian đào tạo của ngành có thời gian đào tạo ngắn nhất và dài nhất.",
+    "ground_truth_answer": "Các ngành Cử nhân có thời gian đào tạo ngắn nhất là 4 năm, còn ngành Công nghệ kỹ thuật Điện tử - Viễn thông có thời gian đào tạo dài nhất là 5 năm tại Đại học Khoa học Huế.",
+    "ground_truth_source_chunks": ["husc_nganh_7480201_2025", "husc_nganh_7510302_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q049",
+    "category": "comparative",
+    "question": "So sánh điểm ưu tiên khi thí sinh đạt tổng điểm 20 và 25.",
+    "ground_truth_answer": "Thí sinh đạt tổng điểm 20 được hưởng đầy đủ điểm ưu tiên, còn thí sinh đạt tổng điểm 25 thì điểm ưu tiên bị giảm theo công thức [(30 - 25)/7,5] × mức ưu tiên.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_7_cong_thuc_giam_uu_tien_2025"],
+    "required_hops": 2
+  },
+  {
+    "id": "Q050",
+    "category": "comparative",
+    "question": "So sánh quyền lợi của thí sinh trong xét tuyển thẳng và xét tuyển thông thường.",
+    "ground_truth_answer": "Thí sinh xét tuyển thẳng được công nhận trúng tuyển mà không cần xét tới ngưỡng đầu vào, còn thí sinh xét tuyển thông thường phải đạt ngưỡng đầu vào. Cả hai đều được đảm bảo quyền lợi về thực hiện cam kết và giải quyết khiếu nại.",
+    "ground_truth_source_chunks": ["thi_sinh_bogddt_tt_08_dieu_2_xet_tuyen_thang_2025", "thi_sinh_bogddt_tt_08_dieu_4_bao_ve_quyen_loi_2025"],
+    "required_hops": 2
+  }
+]

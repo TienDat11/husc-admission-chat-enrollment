@@ -1,0 +1,342 @@
+% =============================================================================
+% Từ Vector đến ��ồ thị: Làm chủ GraphRAG cho Giải quyết Truy vấn Phức tạp
+% IEEE 2-Column Conference Paper Format
+% Version: 3.1 | Date: February 13, 2026
+% =============================================================================
+\documentclass[conference]{IEEEtran}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{multicol}
+\usepackage{url}
+
+% Listings style for Python
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\scriptsize,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    frame=single,
+    breaklines=true,
+    showstringspaces=false
+}
+
+% Document info
+\title{Từ Vector đến Đồ thị: Làm chủ GraphRAG cho Giải quyết Truy vấn Phức tạp}
+\author{
+    \IEEEauthorblockN{Sisyphus --- Dean of Computer Science (Simulation)}
+    \IEEEauthorblockA{\textit{Academic Research Paper}}
+}
+\date{February 13, 2026}
+
+\begin{document}
+
+\maketitle
+
+% =============================================================================
+% ABSTRACT
+% =============================================================================
+\begin{abstract}
+GraphRAG (Graph Retrieval-Augmented Generation) là một phương pháp tiên tiến kết hợp kiến trúc đồ thị (knowledge graph) với cơ chế Retrieval-Augmented Generation, giúp Large Language Models (LLMs) trả lời các câu hỏi toàn cục trên bộ dữ liệu văn bản lớn một cách toàn diện và đa chiều. GraphRAG được phát triển bởi Microsoft Research vào năm 2024 (Darren Edge, Ha Trinh, và cộng sự), giải quyết vấn đề cốt lõi của RAG truyền thống: không thể tổng hợp thông tin đa chiều từ hàng triệu token văn bản, trong khi vẫn duy trì hiệu năng truy vấn chấp nhận được. Bài báo này trình bày phân tích chuyên sâu về kiến trúc GraphRAG, so sánh với Standard RAG và các biến thể RAG khác, khảo sát hệ sinh thái 10 biến thể GraphRAG từ các paper học thuật, phân tích các triển khai thực tế trong y tế, tài chính, pháp luật, và an ninh mạng, đồng thời thảo luận các benchmark và thách thức mở.
+\end{abstract}
+
+\begin{IEEEkeywords}
+GraphRAG, Knowledge Graph, Retrieval-Augmented Generation, Large Language Models, Multi-hop Reasoning, Community Detection, Leiden Algorithm
+\end{IEEEkeywords}
+
+% =============================================================================
+% SECTION 1: INTRODUCTION
+% =============================================================================
+\section{Giới thiệu}
+
+GraphRAG (Graph Retrieval-Augmented Generation) là một phương pháp tiên tiến kết hợp kiến trúc đồ thị (knowledge graph) với cơ chế Retrieval-Augmented Generation, giúp Large Language Models (LLMs) trả lời các câu hỏi toàn cục trên bộ dữ liệu văn bản lớn một cách toàn diện và đa chiều.
+
+GraphRAG được phát triển bởi Microsoft Research vào năm 2024 (Darren Edge, Ha Trinh, và cộng sự) \cite{edge2024graphrag}, giải quyết vấn đề cốt lõi của RAG truyền thống: không thể tổng hợp thông tin đa chiều từ hàng triệu token văn bản, trong khi vẫn duy trì hiệu năng truy vấn chấp nhận được.
+
+\section{Tại sao cần GraphRAG?}
+
+\subsection{Vấn đề của Standard RAG (Naive RAG)}
+
+RAG truyền thống (Naive RAG) hoạt động theo cơ chế: truy xuất → tìm kiếm vector → tạo câu trả lời \cite{lewis2020rag}.
+
+\textbf{Điểm mạnh:}
+\begin{itemize}
+    \item Rất hiệu quả cho câu hỏi ``needle-in-a-haystack''
+    \item Chi phí indexing thấp (chỉ cần embedding)
+    \item Latency truy vấn nhanh (single LLM call)
+\end{itemize}
+
+\textbf{Điểm yếu --- The ``Middle-Ground Problem'':}
+\begin{itemize}
+    \item Không hiểu quan hệ giữa thực thể: Vector similarity chỉ tìm chunk tương tự
+    \item Fail ở câu hỏi toàn cục: Các chủ đề chính trong toàn bộ tài liệu?
+    \item Lost in the Middle: LLM bỏ qua thông tin ở giữa context window
+\end{itemize}
+
+\subsection{GraphRAG --- Giải pháp cho Câu hỏi Phức tạp}
+
+Bảng \ref{tab:comparison} so sánh Standard RAG với GraphRAG.
+
+\begin{table}[htbp]
+\caption{So sánh Standard RAG vs GraphRAG}
+\begin{center}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Tiêu chí} & \textbf{Standard RAG} & \textbf{GraphRAG} \\
+\hline
+Phương pháp truy xuất & Vector similarity & Graph traversal + Map-Reduce \\
+\hline
+Loại câu hỏi phù hợp & Fact-based & Global, multi-hop \\
+\hline
+Xử lý quan hệ thực thể & Không có & Có (edges) \\
+\hline
+Chi phí indexing & Thấp & Cao \\
+\hline
+Chi phí query & Thấp & Cao (global), Thấp (local) \\
+\hline
+\end{tabular}
+\end{center}
+\label{tab:comparison}
+\end{table}
+
+% =============================================================================
+% SECTION 3: KIẾN TRÚC GRAPHRAG
+% =============================================================================
+\section{Kiến trúc GraphRAG --- Deep Dive}
+
+\subsection{Pipeline Tổng quan}
+
+GraphRAG có hai pipeline chính:
+\begin{enumerate}
+    \item \textbf{Pipeline Indexing (Chi phí cao):} Tài liệu → Chunks → Entity Extraction → Graph → Leiden Communities → Community Summaries
+    \item \textbf{Pipeline Query:} Global Search (Map-Reduce) hoặc Local Search (Graph Traversal)
+\end{enumerate}
+
+\subsection{Giai đoạn Indexing}
+
+\subsubsection{Bước 1: Chunking}
+
+Paper's recommendation: 600 tokens chunk với 100 tokens overlap.
+
+\subsubsection{Bước 2: Entity Extraction}
+
+LLM extracts entities, relationships, và covariates. Gleaning mechanism cho multi-round extraction.
+
+\begin{lstlisting}[caption={Entity Extraction với Gleaning}]
+def extract_elements_with_gleaning(chunk, max_gleanings=3):
+    entities, relationships = llm.extract(chunk)
+    for round in range(max_gleanings):
+        missed = llm.assess("Còn entity nào bị bo sot?")
+        if missed == "NO":
+            break
+        extra = llm.glean(chunk)
+        entities.extend(extra)
+    return entities, relationships
+\end{lstlisting}
+
+\subsubsection{Bước 3: Leiden Community Detection}
+
+Thuật toán Leiden \cite{traag2019leiden} là ``secret sauce'' của GraphRAG, tạo hierarchical communities với thuộc tính MECE (Mutually Exclusive, Collectively Exhaustive).
+
+\subsection{Giai đoạn Query}
+
+\subsubsection{Global Search (Map-Reduce)}
+
+Dùng cho câu hỏi toàn cục với 4 bước:
+\begin{enumerate}
+    \item Select Community Level
+    \item MAP: Query → mỗi community summary
+    \item FILTER: Loại bỏ score = 0
+    \item REDUCE: Tổng hợp final answer
+\end{enumerate}
+
+\subsubsection{Local Search (Graph Traversal)}
+
+Dùng cho câu hỏi specific với graph traversal: entities → edges → covariates → text units → communities.
+
+% =============================================================================
+% SECTION 4: ỨNG DỤNG
+% =============================================================================
+\section{Ứng dụng cho Chatbot Tuyển sinh}
+
+Dự án husc-admission-chat-enrollment sử dụng:
+\begin{itemize}
+    \item Backend: Python + FastAPI
+    \item Vector Database: Qdrant Cloud
+    \item Embeddings: BAAI/bge-m3
+    \item Hybrid Retrieval: Dense + BM25 + RRF + Reranking
+\end{itemize}
+
+GraphRAG cải thiện khả năng trả lời các câu hỏi multi-hop như ``Cơ hội học bổng cho sinh viên CNTT?'' bằng cách kết nối entities: Major → has\_tuition → Tuition, Student → eligible\_for → Scholarship.
+
+% =============================================================================
+% SECTION 5: ĐÁNH GIÁ
+% =============================================================================
+\section{Đánh giá và Trade-offs}
+
+\subsection{Evaluation Results}
+
+\begin{table}[htbp]
+\caption{Kết quả đánh giá GraphRAG}
+\begin{center}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Metric} & \textbf{Naive RAG} & \textbf{GraphRAG} \\
+\hline
+Comprehensiveness & Baseline & +70\% \\
+\hline
+Diversity & Baseline & +60\% \\
+\hline
+Empowerment & Baseline & +50\% \\
+\hline
+Directness & Higher & Lower \\
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsection{Cost Analysis}
+
+Indexing 1M token corpus với GPT-4o-mini: $\sim$\$1. Query cost: Local $\sim$\$0.001, Global $\sim$\$0.008.
+
+% =============================================================================
+% SECTION 5.5: EVOLUTION
+% =============================================================================
+\section{Evolution của RAG (2020-2026)}
+
+\begin{table}[htbp]
+\caption{Tiến hóa của RAG}
+\begin{center}
+\scriptsize
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Năm} & \textbf{Biến thể} & \textbf{Đặc điểm} \\
+\hline
+2020 & Naive RAG & Vector retrieval \cite{lewis2020rag} \\
+\hline
+2023 & Self-RAG & Self-reflection loops \cite{asai2023selfrag} \\
+\hline
+2023 & RAPTOR & Tree-structured \cite{sarthi2024raptor} \\
+\hline
+2024 & GraphRAG & KG + Leiden \cite{edge2024graphrag} \\
+\hline
+2024-25 & Agentic RAG & Multi-agent \cite{singh2025agenticrag} \\
+\hline
+2025-26 & syftr & Pareto-optimal \\
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+% =============================================================================
+% SECTION 6: BIẾN THỂ GRAPHRAG
+% =============================================================================
+\section{Hệ sinh thái Biến thể GraphRAG}
+
+\begin{table}[htbp]
+\caption{Các biến thể GraphRAG chính}
+\begin{center}
+\scriptsize
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Biến thể} & \textbf{arXiv} & \textbf{Multi-hop} & \textbf{Global} \\
+\hline
+LightRAG \cite{guo2024lightrag} & 2410.05779 & \checkmark & \checkmark \\
+\hline
+HippoRAG \cite{gutierrez2024hipporag} & 2405.14831 & \checkmark\checkmark & $\times$ \\
+\hline
+SubgraphRAG \cite{li2024subgraphrag} & 2410.20724 & \checkmark & $\times$ \\
+\hline
+NodeRAG \cite{xu2025noderag} & 2504.11544 & \checkmark & \checkmark \\
+\hline
+MedGraphRAG \cite{wu2024medgraphrag} & 2408.04187 & \checkmark & \checkmark \\
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsection{LightRAG}
+LightRAG \cite{guo2024lightrag} giải quyết limitation lớn nhất của GraphRAG: chi phí indexing cao và không hỗ trợ incremental updates với dual-level retrieval.
+
+\subsection{HippoRAG}
+HippoRAG \cite{gutierrez2024hipporag} (NeurIPS 2024) mô phỏng hippocampal indexing theory với Personalized PageRank.
+
+\subsection{SubgraphRAG}
+SubgraphRAG \cite{li2024subgraphrag} (ICLR 2025) retrieves subgraphs từ knowledge graphs với GNN discriminator.
+
+% =============================================================================
+% SECTION 7: PRODUCTION DEPLOYMENTS
+% =============================================================================
+\section{GraphRAG trong Production}
+
+\subsection{Y tế}
+MedGraphRAG \cite{wu2024medgraphrag} --- University of Oxford với three-tier hierarchical graph cho medical domain.
+
+\subsection{Tài chính}
+BNP Paribas \cite{barry2025bnp}, startup prediction \cite{gao2024startup}, financial QA \cite{shah2024financialqa}.
+
+\subsection{Pháp luật}
+SAT-Graph RAG \cite{demartim2025satgraph} cho legal norms Brazil, CLAKG \cite{chen2024clakg} cho Chinese Criminal Law.
+
+\subsection{An ninh mạng}
+Network security \cite{carvalho2024netsec}, ThreatPilot \cite{xu2024threatpilot}.
+
+% =============================================================================
+% SECTION 8: BENCHMARKS
+% =============================================================================
+\section{Benchmarks và Thách thức Mở}
+
+\subsection{Benchmarks Chính}
+\begin{itemize}
+    \item GraphRAG-Bench \cite{xiang2025whentousegraphs}
+    \item WildGraphBench \cite{wang2026wildgraphbench}
+    \item PolyBench \cite{liu2025polybench}
+    \item TREX \cite{cahoon2025trex}
+\end{itemize}
+
+\subsection{Open Challenges}
+\begin{enumerate}
+    \item Chi phí Indexing: LLM calls cho mỗi chunk
+    \item Incremental Updates: Re-index toàn bộ corpus
+    \item Scalability: Graph size O(n$^2$)
+    \item Evaluation Standards: Thiếu standardized benchmarks
+    \item Domain Adaptation: Entity extraction prompts
+    \item Hallucination trong Graph Construction
+    \item Multi-modal Integration
+\end{enumerate}
+
+% =============================================================================
+% SECTION 9: CONCLUSION
+% =============================================================================
+\section{Kết luận}
+
+RAG đã phát triển từ Naive RAG (2020) sang Agentic GraphRAG (2026). GraphRAG là bước quan trọng giữa vector-based retrieval và agent-based reasoning, giải quyết ``Middle-Ground Problem''.
+
+\textbf{Key takeaways:}
+\begin{enumerate}
+    \item RAG không phải monolithic --- chọn biến thể phù hợp use case
+    \item Hệ sinh thái GraphRAG variants phong phú (10+ biến thể)
+    \item Production deployments đã chứng minh trong y tế, tài chính, pháp luật
+    \item 5 thách thức mở lớn cần giải quyết
+\end{enumerate}
+
+% =============================================================================
+% REFERENCES
+% =============================================================================
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

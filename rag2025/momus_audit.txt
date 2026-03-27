@@ -1,0 +1,13 @@
+[CRITICAL] Line 280: \frontmatter appears AFTER \clearpage\thispagestyle — must be before first page content — SUGGESTED FIX: Move \frontmatter to immediately after \begin{document} (before title/declaration pages) and set page styles afterward.
+[CRITICAL] Line 105: \caption* used inside titlepage figure — caption* requires package caption, or replace with \node[] in TikZ — SUGGESTED FIX: Remove the figure float on titlepage and place the text directly as a TikZ node or plain centered text.
+[CRITICAL] Line 638: pgfplots coordinate "--" — invalid, will crash compile — SUGGESTED FIX: Replace placeholder "--" with numeric values (or comment out the \addplot until real data is available).
+[CRITICAL] Line 639: pgfplots coordinate "--" — invalid, will crash compile — SUGGESTED FIX: Replace placeholder "--" with numeric values (or comment out the \addplot until real data is available).
+[CRITICAL] Line 9 (chapter2_new.tex): \cite{edge2024graphrag} where KEY not in \bibitem — undefined reference — SUGGESTED FIX: Add \bibitem{edge2024graphrag} to the bibliography or change the citation key to an existing entry.
+[CRITICAL] Line 9 (chapter2_new.tex): \cite{gutierrez2024hipporag} where KEY not in \bibitem — undefined reference — SUGGESTED FIX: Add \bibitem{gutierrez2024hipporag} to the bibliography.
+[CRITICAL] Line 9 (chapter2_new.tex): \cite{guo2024lightrag} where KEY not in \bibitem — undefined reference — SUGGESTED FIX: Add \bibitem{guo2024lightrag} to the bibliography.
+[CRITICAL] Line 63 (chapter2_new.tex): \cite{tran2024vietnamese} where KEY not in \bibitem — undefined reference — SUGGESTED FIX: Add \bibitem{tran2024vietnamese} to the bibliography.
+[CRITICAL] Line 111 (chapter2_new.tex): \cite{edge2024graphrag} where KEY not in \bibitem — undefined reference — SUGGESTED FIX: Add \bibitem{edge2024graphrag} or replace with an existing key if intended.
+[CRITICAL] Line 161 (chapter2_new.tex): \cite{gutierrez2024hipporag} where KEY not in \bibitem — undefined reference — SUGGESTED FIX: Add \bibitem{gutierrez2024hipporag} to the bibliography.
+[CRITICAL] Line 172 (chapter2_new.tex): \cite{guo2024lightrag} where KEY not in \bibitem — undefined reference — SUGGESTED FIX: Add \bibitem{guo2024lightrag} to the bibliography.
+[WARNING]  Line 105: \listoffigures entry may be wrong if \caption missing — SUGGESTED FIX: Use a normal \caption{...} outside titlepage float context, or keep titlepage graphic non-floating and exclude it from LoF.
+[WARNING]  Line 100: Figure environment inside titlepage (problematic) — SUGGESTED FIX: Replace the float with inline TikZ/center environment inside titlepage.

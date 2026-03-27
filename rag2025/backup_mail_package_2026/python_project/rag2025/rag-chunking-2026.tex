@@ -1,0 +1,1465 @@
+\documentclass[12pt,a4paper]{report}
+
+% ============================================================
+% PACKAGES
+% ============================================================
+\usepackage[T5]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[vietnamese]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+\usepackage{geometry}
+\geometry{top=3cm, bottom=3cm, left=3.5cm, right=2.5cm}
+\usepackage{setspace}
+\onehalfspacing
+\clubpenalty=10000
+\widowpenalty=10000
+
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{booktabs, adjustbox, multirow, array}
+\usepackage{graphicx, caption, subcaption}
+\captionsetup{font=small, labelfont=bf}
+
+\usepackage[colorlinks=true, linkcolor=black,
+citecolor=black, urlcolor=blue]{hyperref}
+\usepackage{indentfirst}
+\usepackage{enumitem}
+\usepackage{tocbibind}
+
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning,
+	fit, backgrounds, calc, decorations.pathreplacing}
+\tikzset{every picture/.style={line width=0.8pt}}
+
+% ============================================================
+% THEOREM ENVIRONMENTS
+% ============================================================
+\theoremstyle{plain}
+\newtheorem{dinhly}{Định lý}[chapter]
+\newtheorem{menh}{Mệnh đề}[chapter]
+
+\theoremstyle{definition}
+\newtheorem{dinhnghia}{Định nghĩa}[chapter]
+\newtheorem{vidu}{Ví dụ}[chapter]
+
+% ============================================================
+% MATH OPERATORS
+% ============================================================
+\DeclareMathOperator*{\argmax}{argmax}
+\DeclareMathOperator*{\argmin}{argmin}
+
+% ============================================================
+% TITLE PAGE
+% ============================================================
+\begin{document}
+	\pagenumbering{roman}
+	\pagestyle{plain}
+	
+	\begin{titlepage}
+		\centering
+		\vspace*{1cm}
+		\textbf{TRƯỜNG ĐẠI HỌC KHOA HỌC}\\[0.2cm]
+		\textbf{ĐẠI HỌC HUẾ}\\[0.8cm]
+		\textbf{\Large KHOA CÔNG NGHỆ THÔNG TIN}\\[1.2cm]
+		
+		\includegraphics[width=2.5cm, keepaspectratio]{logo.png}\\[0.5cm]
+		{\small\textit{Trường Đại Học Khoa Học -- Đại Học Huế}}\\[1.5cm]
+		
+		\textbf{\LARGE KHOÁ LUẬN TỐT NGHIỆP}\\[0.8cm]
+		
+		\textbf{\Large Chiến lược Phân đoạn Văn bản (Chunking)\\
+			trong Hệ thống Truy xuất Tăng cường (RAG):\\
+			Từ Lý thuyết đến Ứng dụng Tư vấn Tuyển sinh}\\[2cm]
+		
+		\textbf{Sinh Viên:}\\[0.3cm]
+		Ngô Đức Phan Tiến Đạt\\[1cm]
+		
+		\textbf{Giảng viên hướng dẫn:}\\[0.3cm]
+		Đoàn Thị Hồng Phước\\[1cm]
+		
+		\textbf{Năm:} 2026
+		\vfill
+	\end{titlepage}
+	
+	% ============================================================
+	% LỜI CAM ĐOAN
+	% ============================================================
+	\thispagestyle{empty}
+	\vspace*{3cm}
+	\section*{LỜI CAM ĐOAN}
+	
+	Em xin cam đoan rằng khoá luận tốt nghiệp này là công trình nghiên cứu của
+	bản thân, được thực hiện dưới sự hướng dẫn khoa học của giảng viên hướng dẫn
+	tại Khoa Công nghệ Thông tin, Trường Đại Học Khoa Học -- Đại Học Huế. Toàn
+	bộ nội dung trình bày là trung thực; mọi tham chiếu đến kết quả của các tác
+	giả khác đều được ghi rõ nguồn gốc.
+	
+	\vspace{2cm}
+	\begin{flushright}
+		Thành phố Huế, ngày \quad tháng \quad năm 2026\\[1cm]
+		\textbf{Ngô Đức Phan Tiến Đạt}
+	\end{flushright}
+	\clearpage
+	
+	% ============================================================
+	% LỜI CẢM ƠN
+	% ============================================================
+	\thispagestyle{empty}
+	\vspace*{3cm}
+	\section*{LỜI CẢM ƠN}
+	
+	Em xin trân trọng cảm ơn cô Đoàn Thị Hồng Phước đã tận tình định hướng
+	nghiên cứu và phản biện kỹ thuật trong suốt quá trình thực hiện khoá luận.
+	Em cũng xin cảm ơn Khoa Công nghệ Thông tin, Trường Đại Học Khoa Học --
+	Đại Học Huế đã tạo điều kiện để triển khai các thực nghiệm.
+	
+	\vspace{2cm}
+	\begin{flushright}
+		Thành phố Huế, ngày \quad tháng \quad năm 2026
+	\end{flushright}
+	\clearpage
+	
+	% ============================================================
+	% TÓM TẮT
+	% ============================================================
+	\thispagestyle{empty}
+	\vspace*{2cm}
+	\section*{TÓM TẮT}
+	\addcontentsline{toc}{section}{Tóm tắt}
+	
+	Khoá luận nghiên cứu bài toán phân đoạn văn bản (text chunking) trong kiến
+	trúc Retrieval-Augmented Generation (RAG), với ứng dụng vào hệ thống tư vấn
+	tuyển sinh Trường Đại Học Khoa Học -- Đại Học Huế (HUSC).
+	
+	\textbf{Câu hỏi nghiên cứu trung tâm:} Chiến lược chunking nào --- về mặt
+	lý thuyết và thực nghiệm --- phù hợp nhất với đặc trưng văn bản hành chính
+	tiếng Việt trong bài toán hỏi đáp tuyển sinh đại học?
+	
+	Khoá luận đóng góp trên ba phương diện. Thứ nhất, hệ thống hoá phân tích
+	toán học bốn thế hệ chiến lược chunking: fixed-size (G1), semantic (G2),
+	proposition/late chunking (G3), và RAPTOR/Contextual Retrieval (G4). Thứ
+	hai, thiết lập khung đánh giá ba chỉ số (Recall@$k$, Precision@$k$, IoU)
+	gắn với bộ dữ liệu tuyển sinh HUSC gồm 50 câu hỏi phân tầng. Thứ ba, đề
+	xuất chiến lược lai (hybrid chunking) kết hợp semantic chunking cho tầng
+	vector search với proposition extraction cho tầng xây dựng đồ thị tri thức.
+	
+	\textbf{Từ khóa:} Text chunking, Retrieval-Augmented Generation, Semantic
+	Chunking, Late Chunking, RAPTOR, Proposition-based Retrieval, Tư vấn tuyển sinh.
+	
+	\clearpage
+	
+	% ============================================================
+	% MỤC LỤC
+	% ============================================================
+	\tableofcontents
+	\clearpage
+	\listoffigures
+	\addcontentsline{toc}{section}{Danh mục hình vẽ}
+	\clearpage
+	\listoftables
+	\addcontentsline{toc}{section}{Danh mục bảng biểu}
+	\clearpage
+	
+	% ============================================================
+	% DANH MỤC KÝ HIỆU
+	% ============================================================
+	\section*{DANH MỤC KÝ HIỆU VÀ CHỮ VIẾT TẮT}
+	\addcontentsline{toc}{section}{Danh mục ký hiệu và chữ viết tắt}
+	
+	\begin{table}[h]
+		\centering
+		\begin{tabular}{ll}
+			\toprule
+			\textbf{Ký hiệu / Viết tắt} & \textbf{Giải thích} \\
+			\midrule
+			RAG     & Retrieval-Augmented Generation \\
+			LLM     & Large Language Model \\
+			G1--G4  & Thế hệ chiến lược chunking 1--4 \\
+			$D$     & Tài liệu đầu vào (chuỗi token) \\
+			$C_i$   & Chunk thứ $i$ sau phân đoạn \\
+			$\ell$  & Kích thước chunk (token) \\
+			$s$     & Độ chồng lấp (overlap stride) \\
+			$\phi$  & Hàm nhúng (embedding function) \\
+			$S_C$   & Cosine similarity \\
+			$\delta_{\text{thresh}}$ & Ngưỡng bất tương đồng ngữ nghĩa \\
+			BM25    & Best Matching 25 (sparse retrieval) \\
+			RRF     & Reciprocal Rank Fusion \\
+			GMM     & Gaussian Mixture Model \\
+			UMAP    & Uniform Manifold Approximation and Projection \\
+			NER     & Named Entity Recognition \\
+			HUSC    & Trường Đại Học Khoa Học -- Đại Học Huế \\
+			\bottomrule
+		\end{tabular}
+	\end{table}
+	\clearpage
+	
+	% ============================================================
+	% PHẦN NỘI DUNG CHÍNH
+	% ============================================================
+	\pagenumbering{arabic}
+	
+	% ============================================================
+	% CHƯƠNG 1: TỔNG QUAN RAG VÀ ĐỘNG LỰC NGHIÊN CỨU
+	% ============================================================
+	
+	\chapter{Tổng quan về Retrieval-Augmented Generation và Vai trò của Chunking}
+	\label{chap:rag_overview}
+	
+	\section{Hạn chế của Mô hình Ngôn ngữ Lớn trong Bài toán Hỏi đáp Chuyên biệt}
+	\label{sec:llm_limits}
+	
+	Mô hình ngôn ngữ lớn (Large Language Model -- LLM) đã chứng minh khả năng
+	xử lý ngôn ngữ tự nhiên vượt trội trên nhiều tác vụ tổng quát. Tuy nhiên,
+	trong bối cảnh hệ thống hỏi đáp yêu cầu tri thức chuyên biệt, cập nhật và
+	có thể kiểm chứng, LLM bộc lộ bốn hạn chế cấu trúc không thể khắc phục bằng
+	cách tăng quy mô tham số~\cite{lewis2020retrieval}.
+	
+	\textbf{Ngưỡng kiến thức tĩnh (Static Knowledge Cutoff).} Quá trình tiền
+	huấn luyện của LLM sử dụng tập dữ liệu thu thập đến một thời điểm cố định.
+	Mọi thay đổi xảy ra sau đó --- chỉ tiêu tuyển sinh, mức học phí, quy chế
+	xét tuyển --- đều nằm ngoài tầm nhận thức của mô hình, bất kể độ lớn kiến
+	trúc.
+	
+	\textbf{Tri thức tổ chức nội bộ.} Văn bản tuyển sinh, quy chế nội bộ, và
+	cơ sở dữ liệu sinh viên của HUSC chưa bao giờ xuất hiện trong bất kỳ tập
+	huấn luyện công khai nào. LLM không thể lý luận trực tiếp trên những nguồn
+	này.
+	
+	\textbf{Ảo giác (Hallucination).} LLM biểu diễn tri thức dưới dạng phân
+	phối xác suất trên không gian ngôn ngữ, không phải tra cứu bản ghi. Do đó,
+	mô hình có thể tự tin sản sinh thông tin sai lệch --- từ tên ngành học đến
+	mã ngành và điểm chuẩn --- mà không phát tín hiệu cảnh báo.
+	
+	\textbf{Không thể kiểm chứng nguồn gốc.} Câu trả lời của LLM không gắn
+	với bất kỳ đoạn văn bản cụ thể nào, khiến quá trình xác minh độ tin cậy
+	trở nên không khả thi trong bối cảnh học thuật và hành chính.
+	
+	Phương án tinh chỉnh (fine-tuning) có vẻ trực quan nhưng không thực tế: chu
+	kỳ tái huấn luyện tốn kém, không đảm bảo mô hình ghi nhớ thông tin theo cách
+	có thể kiểm soát, và phải lặp lại mỗi khi tri thức thay đổi. RAG ra đời như
+	một giải pháp bổ sung tri thức tại thời điểm suy luận (inference-time),
+	tách biệt vòng đời của mô hình khỏi vòng đời của dữ liệu.
+	
+	% -------------------------------------------------------------------
+	\section{Kiến trúc RAG: Pipeline Hình thức}
+	\label{sec:rag_pipeline}
+	
+	Kiến trúc RAG tổng quát bao gồm ba thành phần tách biệt về mặt chức
+	năng~\cite{lewis2020retrieval}. Gọi $\mathcal{D} = \{D_1, D_2, \ldots,
+	D_M\}$ là tập tài liệu gốc và $q$ là truy vấn người dùng.
+	
+	\textbf{Thành phần 1 --- Indexing.} Mỗi tài liệu $D_j$ được xử lý thành
+	tập chunk $\{C_1^j, C_2^j, \ldots, C_{m_j}^j\}$, sau đó mỗi chunk được
+	nhúng vào không gian vector $\mathbb{R}^d$ qua hàm $\phi$:
+	\begin{equation}
+		\mathbf{v}_{C_i^j} = \phi(C_i^j) \in \mathbb{R}^d
+		\label{eq:indexing}
+	\end{equation}
+	Toàn bộ $\sum_j m_j$ vector được lưu trong cơ sở dữ liệu vector (vector
+	store) $\mathcal{V}$.
+	
+	\textbf{Thành phần 2 --- Retrieval.} Với truy vấn $q$, tìm $k$ chunk có
+	độ tương đồng Cosine cao nhất:
+	\begin{equation}
+		S_C(\mathbf{v}_q, \mathbf{v}_{C}) =
+		\frac{\mathbf{v}_q \cdot \mathbf{v}_{C}}
+		{\|\mathbf{v}_q\|_2 \cdot \|\mathbf{v}_{C}\|_2}
+		\label{eq:cosine}
+	\end{equation}
+	\begin{equation}
+		\mathcal{R}(q, k) = \operatorname{Top-}k_{\,C \in \mathcal{V}}
+		S_C\!\left(\phi(q),\, \phi(C)\right)
+		\label{eq:retrieval}
+	\end{equation}
+	
+	\textbf{Thành phần 3 --- Generation.} LLM sinh câu trả lời $\hat{a}$ dựa
+	trên truy vấn và ngữ cảnh truy xuất được:
+	\begin{equation}
+		\hat{a} = \text{LLM}\!\left(q,\, \mathcal{R}(q, k)\right)
+		\label{eq:generation}
+	\end{equation}
+	
+	Điểm quan trọng cần lưu ý: bước Indexing --- đặc biệt là quyết định chia
+	$D_j$ thành các $C_i^j$ như thế nào --- được thực hiện \emph{một lần, ngoại
+		tuyến}, trong khi bước Retrieval và Generation được thực hiện \emph{trực
+		tuyến} theo từng truy vấn. Do đó, chất lượng của chiến lược chunking ảnh
+	hưởng đến mọi truy vấn trong suốt vòng đời của hệ thống.
+	
+	Hình~\ref{fig:rag_pipeline_full} minh họa toàn bộ pipeline.
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{adjustbox}{max width=\linewidth}
+			\begin{tikzpicture}[
+				box/.style={rectangle, rounded corners=4pt, draw=black!65,
+					minimum height=0.85cm, align=center, font=\small,
+					text width=2.4cm},
+				arrow/.style={-Stealth, thick},
+				phase/.style={rectangle, rounded corners=6pt, draw,
+					minimum height=1.6cm, align=center, font=\footnotesize,
+					text width=2.8cm, dashed}
+				]
+				% ---- Offline Phase ----
+				\node[box, fill=blue!10] (docs)   at (0,   0) {Tài liệu\\gốc $\mathcal{D}$};
+				\node[box, fill=blue!15] (chunk)  at (3.2, 0) {Chunking\\$\{C_i\}$};
+				\node[box, fill=blue!20] (embed)  at (6.4, 0) {Embedding\\$\phi(C_i)$};
+				\node[box, fill=blue!25] (store)  at (9.6, 0) {Vector\\Store $\mathcal{V}$};
+				
+				\draw[arrow] (docs)  -- node[above, font=\tiny]{Phân đoạn} (chunk);
+				\draw[arrow] (chunk) -- node[above, font=\tiny]{Nhúng}     (embed);
+				\draw[arrow] (embed) -- node[above, font=\tiny]{Lưu}       (store);
+				
+				\begin{scope}[on background layer]
+					\node[draw=blue!40, fill=blue!4, rounded corners=8pt,
+					fit=(docs)(chunk)(embed)(store),
+					label={[font=\footnotesize\bfseries, text=blue!60]
+						above:Giai đoạn Offline (Indexing)}] {};
+				\end{scope}
+				
+				% ---- Online Phase ----
+				\node[box, fill=orange!10] (query)  at (0,  -2.5) {Truy vấn\\người dùng $q$};
+				\node[box, fill=orange!15] (ret)    at (3.2,-2.5) {Retrieval\\$\mathcal{R}(q,k)$};
+				\node[box, fill=orange!20] (llm)    at (6.4,-2.5) {LLM\\Generation};
+				\node[box, fill=green!20,
+				draw=green!60]       (ans)    at (9.6,-2.5) {Câu trả\\lời $\hat{a}$};
+				
+				\draw[arrow] (query) -- (ret);
+				\draw[arrow] (ret)   -- node[above, font=\tiny]{Ngữ cảnh} (llm);
+				\draw[arrow] (llm)   -- (ans);
+				
+				% Kết nối vector store xuống retrieval
+				\draw[arrow, gray!60, dashed] (store.south) -- ++(0,-0.4)
+				-| (ret.north);
+				
+				\begin{scope}[on background layer]
+					\node[draw=orange!40, fill=orange!4, rounded corners=8pt,
+					fit=(query)(ret)(llm)(ans),
+					label={[font=\footnotesize\bfseries, text=orange!70]
+						below:Giai đoạn Online (per Query)}] {};
+				\end{scope}
+			\end{tikzpicture}
+		\end{adjustbox}
+		\caption{Pipeline RAG đầy đủ gồm hai giai đoạn. Giai đoạn Offline
+			(trên) thực hiện một lần: phân đoạn, nhúng và lưu trữ. Giai đoạn
+			Online (dưới) lặp lại theo từng truy vấn: truy xuất và tạo sinh.
+			Chất lượng chunking ở giai đoạn Offline ảnh hưởng trực tiếp đến
+			mọi truy vấn ở giai đoạn Online.}
+		\label{fig:rag_pipeline_full}
+	\end{figure}
+	
+	% -------------------------------------------------------------------
+	\section{Chunking là Nút Thắt Cổ Chai của RAG}
+	\label{sec:chunking_bottleneck}
+	
+	Barnett và cộng sự~\cite{barnett2024seven} tiến hành phân tích hệ thống bảy
+	điểm thất bại phổ biến nhất khi triển khai RAG trong thực tế. Trong số đó,
+	hai điểm liên quan trực tiếp đến chiến lược chunking và cùng nhau chiếm tỷ
+	lệ thất bại cao nhất trong khảo sát thực tế:
+	
+	Điểm thất bại \#1 --- \emph{Missed Top Ranked Documents}: chunk liên quan
+	bị thiếu trong tập top-$k$ vì ranh giới phân đoạn cắt đứt thông tin ngữ
+	nghĩa. Điểm thất bại \#2 --- \emph{Not in Context}: chunk có nằm trong
+	tập top-$k$ nhưng không được LLM sử dụng vì kích thước context window bị
+	chiếm dụng bởi các chunk không liên quan truy xuất cùng lúc.
+	
+	Cả hai điểm thất bại này đều có căn nguyên toán học từ sự mất cân bằng
+	giữa hai mục tiêu mâu thuẫn trong phân đoạn. Gọi $f(\ell)$ là Precision
+	của truy xuất (chất lượng embedding cho chunk kích thước $\ell$) và
+	$g(\ell)$ là Context Completeness (khả năng một chunk chứa đủ thông tin
+	để trả lời câu hỏi). Hai hàm này thỏa mãn:
+	\begin{equation}
+		f'(\ell) < 0 \quad \text{và} \quad g'(\ell) > 0
+		\qquad \forall\, \ell > 0
+		\label{eq:chunking_tradeoff}
+	\end{equation}
+	Mối quan hệ đơn điệu nghịch chiều này --- đã được xác nhận thực nghiệm
+	bởi Chroma Research~\cite{chroma2024eval} và Merola \& Singh~\cite{merola2025reconstructing}
+	--- đặt ra bài toán tối ưu hóa đa mục tiêu không tầm thường. Hàm mục tiêu
+	hợp nhất với trọng số $\lambda \in (0,1)$ phản ánh ưu tiên ứng dụng:
+	\begin{equation}
+		\mathcal{L}(\ell) = \lambda\, f(\ell) + (1-\lambda)\, g(\ell)
+		\label{eq:chunking_objective}
+	\end{equation}
+	Điểm cực trị $\ell^*$ thỏa mãn điều kiện bậc nhất
+	$\lambda f'(\ell^*) + (1-\lambda)g'(\ell^*) = 0$ và phụ thuộc vào phân
+	phối nội dung corpus --- không tồn tại giá trị $\ell^*$ vạn năng áp dụng
+	được cho mọi bài toán.
+	
+	% -------------------------------------------------------------------
+	\section{Bài toán Tư vấn Tuyển sinh HUSC}
+	\label{sec:husc_problem}
+	
+	Tư vấn tuyển sinh đại học là bài toán hỏi đáp có đặc trưng riêng biệt đặt
+	ra những yêu cầu cụ thể cho thiết kế chunking.
+	
+	\textbf{Đặc trưng ngôn ngữ.} Văn bản tuyển sinh tiếng Việt tại HUSC có
+	mật độ từ viết tắt cao (CNTT, ĐHKH, ĐH Huế), sử dụng tên riêng tổ chức
+	có nhiều biến thể, và chứa các mệnh đề điều kiện phức hợp (``Thí sinh đạt
+	từ 24,5 điểm trở lên theo tổ hợp A00, B00 hoặc D01 \emph{và} có điểm
+	tiếng Anh riêng lẻ từ 7,0 điểm (thang 10) trở lên \ldots'').
+	
+	\textbf{Đặc trưng truy vấn.} Câu hỏi tuyển sinh phân bổ theo ba loại rõ
+	nét, mỗi loại đặt ra yêu cầu khác nhau cho chiến lược chunking. Câu hỏi
+	\emph{thực thể} (``Điểm chuẩn ngành CNTT năm 2024 là bao nhiêu?'') yêu
+	cầu truy xuất độ chính xác cao, hưởng lợi từ chunk nhỏ. Câu hỏi
+	\emph{đa điều kiện} (``Tôi có $23$ điểm thi tốt nghiệp, học lực giỏi, và
+	có chứng chỉ IELTS~6.5, có được xét tuyển không?'') đòi hỏi tổng hợp
+	thông tin từ nhiều đoạn văn bản. Câu hỏi \emph{so sánh} (``Chương trình
+	tiêu chuẩn và chương trình chất lượng cao của ngành CNTT khác nhau như
+	thế nào?'') yêu cầu truy xuất ở mức độ trừu tượng cao.
+	
+	\textbf{Quy mô dữ liệu.} Corpus tuyển sinh HUSC bao gồm các tài liệu:
+	Đề án tuyển sinh hàng năm (khoảng 80--120 trang), Quy chế tuyển sinh Bộ
+	GD\&ĐT (khoảng 40--60 trang), trang web tuyển sinh chính thức, và các
+	thông báo bổ sung. Quy mô trung bình: $N \approx 120{,}000$ token toàn
+	corpus, với cấu trúc hành chính gồm chương mục, bảng số liệu, và mệnh đề
+	điều kiện.
+	
+	\begin{table}[htbp]
+		\centering
+		\caption{Phân tích đặc trưng câu hỏi tuyển sinh HUSC theo loại truy vấn}
+		\label{tab:husc_query_types}
+		\begin{tabular}{lccl}
+			\toprule
+			\textbf{Loại truy vấn} & \textbf{Tỷ lệ (\%)} & \textbf{Độ phức tạp}
+			& \textbf{Yêu cầu chunking} \\
+			\midrule
+			Thực thể đơn        & 40 & Thấp    & Chunk nhỏ, nguyên tử \\
+			Đa điều kiện        & 35 & Trung bình & Chunk trung bình, đủ ngữ cảnh \\
+			So sánh / Tổng hợp  & 25 & Cao     & Đa cấp độ trừu tượng \\
+			\bottomrule
+		\end{tabular}
+	\end{table}
+	
+	\noindent\textit{Lưu ý: Tỷ lệ trong Bảng~\ref{tab:husc_query_types} là ước
+		lượng dựa trên phân tích định tính bộ câu hỏi thực nghiệm; chưa có bằng
+		chứng định lượng từ nghiên cứu đã xuất bản về phân phối câu hỏi tuyển sinh
+		tiếng Việt.}
+	
+	Sự đa dạng này là lý do chính mà không có chiến lược chunking đơn lẻ nào
+	tối ưu đồng thời cho cả ba loại truy vấn. Nghiên cứu trong khoá luận này
+	nhằm xác định chiến lược (hoặc tổ hợp chiến lược) phù hợp nhất với phân
+	phối truy vấn cụ thể của bài toán HUSC.
+	
+	% ============================================================
+	% CHƯƠNG 2: LÝ THUYẾT CHUNKING (G1–G4)
+	% ============================================================
+	
+	\chapter{Lý thuyết Phân đoạn Văn bản: Từ G1 đến G4}
+	\label{chap:chunking_theory}
+	
+	\section{Định nghĩa Hình thức Bài toán Chunking}
+	\label{sec:chunking_formal}
+	
+	\begin{dinhnghia}[Phân đoạn văn bản]
+		\label{def:chunking}
+		Cho tài liệu $D = (t_1, t_2, \ldots, t_N)$ gồm $N$ token và tham số
+		$\ell_{\max} > 0$. Một \emph{phân đoạn} (chunking) của $D$ là ánh xạ
+		\[
+		\pi(D) = (C_1, C_2, \ldots, C_m)
+		\]
+		trong đó:
+		\begin{enumerate}[label=(\roman*)]
+			\item $C_i = (t_{a_i}, t_{a_i+1}, \ldots, t_{b_i})$ là chuỗi token
+			liên tiếp với $1 \leq a_i \leq b_i \leq N$;
+			\item $|C_i| = b_i - a_i + 1 \leq \ell_{\max}$ với mọi $i$;
+			\item $\bigcup_{i=1}^{m} \{t_{a_i}, \ldots, t_{b_i}\} = \{t_1, \ldots, t_N\}$
+			(tính phủ toàn bộ).
+		\end{enumerate}
+		Khi cho phép chồng lấp kiểm soát, thay điều kiện (i) bằng yêu cầu mỗi
+		token xuất hiện trong ít nhất một chunk.
+	\end{dinhnghia}
+	
+	Hàm chất lượng của một phân đoạn $\pi$ trên bộ câu hỏi $\mathcal{Q}$:
+	\begin{equation}
+		Q(\pi, \mathcal{Q}) = \frac{1}{|\mathcal{Q}|}
+		\sum_{q \in \mathcal{Q}} \text{Score}\!\left(
+		\mathcal{R}(q, k; \pi),\; a^*_q
+		\right)
+		\label{eq:chunking_quality}
+	\end{equation}
+	trong đó $\mathcal{R}(q, k; \pi)$ là tập $k$ chunk được truy xuất khi áp
+	dụng phân đoạn $\pi$, và $a^*_q$ là câu trả lời chuẩn. Hàm $\text{Score}$
+	cụ thể sẽ được định nghĩa tại Chương~\ref{chap:experiments}.
+	
+	% -------------------------------------------------------------------
+	\section{Thế hệ G1: Phân đoạn theo Cấu trúc Hình thức}
+	\label{sec:g1}
+	
+	\subsection{Fixed-size Chunking}
+	\label{subsec:fixed_size}
+	
+	Fixed-size chunking là chiến lược đơn giản nhất và là baseline trong phần
+	lớn tài liệu kỹ thuật~\cite{lewis2020retrieval}. Tài liệu được cắt thành
+	các đoạn có độ dài $\ell$ token với stride $s < \ell$ (cho phép chồng lấp):
+	\begin{equation}
+		C_i = (t_{(i-1)(\ell-s)+1},\; t_{(i-1)(\ell-s)+2},\; \ldots,\;
+		t_{(i-1)(\ell-s)+\ell})
+		\label{eq:fixed_chunks}
+	\end{equation}
+	Số chunk tạo ra:
+	\begin{equation}
+		m = \left\lceil \frac{N - s}{\ell - s} \right\rceil
+		\label{eq:chunk_count}
+	\end{equation}
+	Trường hợp đặc biệt $s = 0$ (không chồng lấp) cho $m = \lceil N/\ell \rceil$.
+	
+	\textbf{Hiệu ứng biên (Boundary Effect).} Xác suất một ranh giới cắt ngẫu
+	nhiên nằm giữa câu hoàn chỉnh tỷ lệ nghịch với độ dài câu trung bình
+	$\bar{\ell}_s$ của corpus:
+	\begin{equation}
+		P(\text{cắt giữa câu}) \approx 1 - \frac{\bar{\ell}_s}{\ell}
+		\quad \text{với } \ell \gg \bar{\ell}_s
+		\label{eq:boundary_prob}
+	\end{equation}
+	Với corpus văn bản tuyển sinh tiếng Việt ($\bar{\ell}_s \approx 18$--$25$
+	token) và $\ell = 200$ token, xác suất này xấp xỉ $90$--$91\%$ --- nghĩa
+	là 9 trong 10 chunk có khả năng chứa câu bị cắt đứt ở một trong hai đầu.
+	
+	\subsection{Recursive Chunking}
+	\label{subsec:recursive}
+	
+	Recursive Character Text Splitter (phổ biến trong LangChain) giải quyết
+	hiệu ứng biên bằng cách định nghĩa danh sách ưu tiên tách
+	$\Sigma = [\sigma_1, \sigma_2, \ldots, \sigma_K]$ và áp dụng đệ quy:
+	\begin{equation}
+		\text{Split}(D, \Sigma, \ell) =
+		\begin{cases}
+			\{D\} & \text{nếu } |D| \leq \ell \\[4pt]
+			\displaystyle\bigcup_{c \,\in\, T(\sigma_1, D)}
+			\text{Split}(c, \Sigma, \ell)
+			& \text{nếu } |D| > \ell
+		\end{cases}
+		\label{eq:recursive_split}
+	\end{equation}
+	trong đó $T(\sigma, D)$ là hàm tách $D$ tại ký tự $\sigma$. Nếu tách theo
+	$\sigma_1$ không tạo ra chunk nhỏ hơn $\ell$, thuật toán thử $\sigma_2$,
+	$\sigma_3$, \ldots theo thứ tự. Thứ tự ưu tiên điển hình:
+	$\Sigma = [\texttt{\textquotedbl\textbackslash n\textbackslash n\textquotedbl},\;
+	\texttt{\textquotedbl\textbackslash n\textquotedbl},\;
+	\texttt{\textquotedbl.\textquotedbl},\;
+	\texttt{\textquotedbl,\textquotedbl},\;
+	\texttt{\textquotedbl\ \textquotedbl}]$.
+	
+	Recursive chunking vô hiệu hóa hiệu ứng biên ở mức đoạn văn và câu trong
+	phần lớn trường hợp. Tuy nhiên, hai chiến lược G1 chia sẻ hạn chế cấu trúc
+	cơ bản: cả hai xử lý văn bản như \emph{chuỗi ký tự} mà không có bất kỳ
+	biểu diễn ngữ nghĩa nào. Ranh giới phân đoạn không phản ánh cấu trúc ý
+	nghĩa của tài liệu.
+	
+	% -------------------------------------------------------------------
+	\section{Thế hệ G2: Phân đoạn theo Ngữ nghĩa Embedding}
+	\label{sec:g2}
+	
+	\subsection{Phát hiện Ranh giới Ngữ nghĩa}
+	\label{subsec:semantic_boundary}
+	
+	Semantic chunking (Kamradt, 2024) bổ sung một lớp nhận thức ngữ nghĩa:
+	thay vì dựa vào ký tự phân tách, chiến lược này phát hiện điểm đứt gãy
+	ngữ nghĩa (semantic breakpoint) dựa trên độ tương đồng embedding giữa các
+	câu liền kề.
+	
+	Gọi $\{s_1, s_2, \ldots, s_n\}$ là chuỗi câu trong tài liệu và
+	$\mathbf{v}_i = \phi(s_i)$ là embedding của câu $s_i$. Định nghĩa khoảng
+	cách ngữ nghĩa tại vị trí $i$:
+	\begin{equation}
+		d_i = 1 - S_C(\mathbf{v}_i,\, \mathbf{v}_{i+1}), \quad i = 1, \ldots, n-1
+		\label{eq:semantic_dist}
+	\end{equation}
+	Ranh giới chunk được đặt tại vị trí $i^*$ khi:
+	\begin{equation}
+		d_{i^*} \geq \delta_{\text{thresh}}
+		\label{eq:semantic_breakpoint}
+	\end{equation}
+	Ngưỡng $\delta_{\text{thresh}}$ được xác định tự thích nghi theo phân vị
+	của phân phối khoảng cách:
+	\begin{equation}
+		\delta_{\text{thresh}} = F^{-1}_{d}(p)
+		\quad \text{với } p \in [0.90, 0.97]
+		\label{eq:threshold_adaptive}
+	\end{equation}
+	trong đó $F^{-1}_d$ là hàm phân vị của $\{d_i\}$. Thực tiễn, $p = 0.95$
+	(phân vị thứ 95) cho kết quả ổn định trên nhiều corpus~\cite{chroma2024eval}.
+	
+	\subsection{Parent Document Retriever: Tách Biệt Đơn vị Truy xuất và Ngữ cảnh}
+	\label{subsec:parent_doc}
+	
+	Parent Document Retriever giải quyết mâu thuẫn ở~\eqref{eq:chunking_tradeoff}
+	bằng cách duy trì \emph{hai cấp biểu diễn song song}. Child chunks
+	$C_i^{\text{child}}$ có kích thước nhỏ ($\ell_c \approx 100$--$200$ token)
+	được dùng để lập chỉ mục và truy xuất chính xác. Khi chunk con được xác
+	định, hệ thống trả về parent document $C_j^{\text{par}}$ --- đoạn cha lớn
+	hơn bao hàm chunk con đó:
+	\begin{equation}
+		\text{Context}(q) = C_j^{\text{par}}, \quad
+		j = \operatorname{parent}(i^*)
+		\label{eq:parent_doc}
+	\end{equation}
+	trong đó $i^* = \argmax_{i} S_C(\phi(q), \phi(C_i^{\text{child}}))$.
+	Kỹ thuật này thừa nhận một nguyên lý quan trọng: đơn vị tối ưu cho
+	\emph{truy xuất} và đơn vị tối ưu cho \emph{tạo sinh} không nhất thiết
+	trùng nhau.
+	
+	\subsection{Hạn chế Cấu trúc của G1 và G2}
+	\label{subsec:early_chunking_limit}
+	
+	Cả G1 và G2 đều thuộc kiến trúc \emph{early chunking}: tài liệu được phân
+	đoạn \emph{trước khi} đưa vào encoder. Embedding của chunk $C_i$ là:
+	\begin{equation}
+		\mathbf{v}_{C_i}^{\text{early}} = \text{Pool}\!\left(E(C_i)\right)
+		\label{eq:early_embed}
+	\end{equation}
+	trong đó $E(C_i)$ chỉ nhận $C_i$ làm đầu vào. Do cơ chế Self-Attention
+	của Transformer~\cite{vaswani2017attention}, mỗi token trong $C_i$ chỉ
+	attend đến các token khác trong $C_i$, không thấy ngữ cảnh bên ngoài chunk.
+	
+	Hậu quả là \emph{mất ngữ cảnh nội chiếu} (coreference loss): các đại từ,
+	mệnh đề tham chiếu và cụm từ tỉnh lược bên trong $C_i$ sẽ bị biểu diễn
+	sai. Günther và cộng sự~\cite{gunther2024late} minh họa bằng ví dụ cụ thể:
+	trong tài liệu tuyển sinh, câu ``\textit{Ngưỡng điểm đảm bảo chất lượng
+		đầu vào là 18,0 điểm.}'' được phân đoạn tách khỏi đoạn mở đầu xác định
+	rõ đây là quy định của ngành Công nghệ Thông tin. Với early chunking,
+	embedding của chunk câu đó có cosine thấp với truy vấn ``điểm chuẩn CNTT''
+	vì nhãn định danh ngành không xuất hiện trong chunk đó.
+	
+	% -------------------------------------------------------------------
+	\section{Thế hệ G3: Phân đoạn sau Encoder}
+	\label{sec:g3}
+	
+	\subsection{Late Chunking: Đảo ngược Thứ tự Xử lý}
+	\label{subsec:late_chunking}
+	
+	Late Chunking~\cite{gunther2024late} (Günther et al., 2024, Jina AI) đảo
+	ngược thứ tự truyền thống: thay vì \emph{phân đoạn trước, mã hóa sau},
+	late chunking \emph{mã hóa toàn tài liệu trước, phân đoạn sau}.
+	
+	Gọi $E$ là bộ mã hóa long-context với cửa sổ ngữ cảnh $W$. Giả sử
+	$N \leq W$ (tài liệu vừa trong cửa sổ ngữ cảnh). Embedding của chunk
+	$C_i = (t_{a_i}, \ldots, t_{b_i})$ trong kiến trúc late chunking là:
+	\begin{equation}
+		\mathbf{v}_{C_i}^{\text{late}}
+		= \frac{1}{b_i - a_i + 1} \sum_{j=a_i}^{b_i} E_j(D)
+		\label{eq:late_embed}
+	\end{equation}
+	trong đó $E_j(D)$ là contextualized token embedding của token $t_j$ khi
+	\emph{toàn bộ tài liệu $D$} được đưa vào encoder. Khác với~\eqref{eq:early_embed}
+	trong đó $E_j(C_i)$ chỉ thấy $C_i$: do cơ chế Self-Attention, $E_j(D)$
+	đã ``nhìn thấy'' mọi token trong $D$ thông qua attention weight
+	$\alpha_{jk} = \text{softmax}(\mathbf{q}_j \cdot \mathbf{k}_k / \sqrt{d_h})$
+	với mọi $k \in [1, N]$. Do đó $\mathbf{v}_{C_i}^{\text{late}}$ mang thông
+	tin ngữ cảnh toàn cục ngay cả khi $C_i$ chứa đại từ hay tham chiếu ngoài biên.
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{adjustbox}{max width=\linewidth}
+			\begin{tikzpicture}[
+				box/.style={rectangle, draw=black!60, minimum height=0.65cm,
+					align=center, font=\small, rounded corners=2pt},
+				arrow/.style={-Stealth, thick}
+				]
+				% ---- EARLY ----
+				\node[font=\small\bfseries] at (-3.5, 0.7) {Early Chunking};
+				\node[box, fill=gray!12, text width=5cm] (D_e) at (-3.5, 0)
+				{Tài liệu $D = (t_1 \ldots t_N)$};
+				\node[box, fill=blue!10, text width=2cm] (C1_e) at (-5.2,-1.3)
+				{$E(C_1)$\\{\tiny chỉ thấy $C_1$}};
+				\node[box, fill=blue!10, text width=2cm] (C2_e) at (-1.8,-1.3)
+				{$E(C_2)$\\{\tiny chỉ thấy $C_2$}};
+				\node[box, fill=green!10, text width=2cm] (v1_e) at (-5.2,-2.6)
+				{$\mathbf{v}_{C_1}^{\text{early}}$};
+				\node[box, fill=green!10, text width=2cm] (v2_e) at (-1.8,-2.6)
+				{$\mathbf{v}_{C_2}^{\text{early}}$};
+				\draw[arrow] (D_e.south) -- ++(0,-0.2) -| (C1_e.north);
+				\draw[arrow] (D_e.south) -- ++(0,-0.2) -| (C2_e.north);
+				\draw[arrow] (C1_e) -- (v1_e);
+				\draw[arrow] (C2_e) -- (v2_e);
+				\node[font=\tiny, red!70] at (-3.5,-1.6)
+				{\textit{Không thấy nhau}};
+				
+				% ---- LATE ----
+				\node[font=\small\bfseries] at (4.5, 0.7) {Late Chunking};
+				\node[box, fill=gray!12, text width=5.5cm] (D_l) at (4.5, 0)
+				{Tài liệu $D$ (toàn bộ $\leq W$)};
+				\node[box, fill=blue!20, text width=5cm] (E_l) at (4.5,-1.3)
+				{$E(D)$: long-context encoder\\{\tiny toàn ngữ cảnh qua Self-Attention}};
+				\node[box, fill=green!10, text width=2cm] (v1_l) at (2.7,-2.6)
+				{Slice $[a_1..b_1]$\\$\mathbf{v}_{C_1}^{\text{late}}$};
+				\node[box, fill=green!10, text width=2cm] (v2_l) at (6.3,-2.6)
+				{Slice $[a_2..b_2]$\\$\mathbf{v}_{C_2}^{\text{late}}$};
+				\draw[arrow] (D_l) -- (E_l);
+				\draw[arrow] (E_l.south) -- ++(0,-0.2) -| (v1_l.north);
+				\draw[arrow] (E_l.south) -- ++(0,-0.2) -| (v2_l.north);
+			\end{tikzpicture}
+		\end{adjustbox}
+		\caption{So sánh kiến trúc early chunking (trái) và late chunking (phải).
+			Early chunking: mỗi chunk được mã hóa độc lập, token chỉ attend
+			trong biên chunk. Late chunking: toàn tài liệu được mã hóa một lần
+			qua long-context encoder; embedding của từng chunk được cắt ra từ
+			chuỗi token embedding đã mang thông tin toàn cục.}
+		\label{fig:late_vs_early}
+	\end{figure}
+	
+	\textbf{Ràng buộc và phức tạp tính toán.} Ràng buộc $N \leq W$ yêu cầu bộ
+	mã hóa long-context; các mô hình hiện đại như \texttt{jina-embeddings-v3}
+	hỗ trợ $W = 8{,}192$ token, đủ cho hầu hết tài liệu tuyển sinh đơn lẻ.
+	Độ phức tạp tính toán tăng từ $\mathcal{O}(m \cdot \ell^2)$ (early, xử lý
+	$m$ chunk riêng lẻ) lên $\mathcal{O}(N^2)$ (late, một lần mã hóa toàn
+	tài liệu). Tuy nhiên do chỉ thực hiện một lần trong giai đoạn offline,
+	chi phí tăng thêm này thường chấp nhận được trong thực tế~\cite{gunther2024late}.
+	
+	\subsection{Proposition-based Chunking: Đơn vị Nguyên tử}
+	\label{subsec:proposition}
+	
+	Dense X Retrieval~\cite{chen2024dense} (Chen et al., EMNLP 2024, trang
+	15159--15177) giới thiệu đơn vị truy xuất hoàn toàn mới: \emph{proposition}
+	(mệnh đề nguyên tử).
+	
+	\begin{dinhnghia}[Proposition]
+		\label{def:proposition}
+		Một proposition là biểu thức ngôn ngữ tự nhiên thỏa mãn ba điều kiện đồng
+		thời:
+		\begin{enumerate}[label=(\roman*)]
+			\item \textbf{Tính nguyên tử:} chứa đúng một factoid độc lập, không
+			thể phân tách thêm mà không mất nghĩa;
+			\item \textbf{Tính tự chứa:} có thể hiểu đúng mà không cần tham chiếu
+			đến ngữ cảnh ngoài;
+			\item \textbf{Tính súc tích:} loại bỏ mọi thông tin dư thừa không ảnh
+			hưởng đến factoid cốt lõi.
+		\end{enumerate}
+	\end{dinhnghia}
+	
+	Quá trình sinh proposition từ đoạn văn $P$ được thực hiện qua mô hình
+	Propositionizer --- Flan-T5-large tinh chỉnh trên 42,857 cặp ví dụ sinh
+	bởi GPT-4~\cite{chen2024dense}:
+	\begin{equation}
+		(p_1, p_2, \ldots, p_r) = \text{Propositionizer}(P)
+		\label{eq:propositionizer}
+	\end{equation}
+	Mỗi $p_j$ là một câu hoàn chỉnh, tự chứa, trung bình dài $10$--$30$ token.
+	
+	\textbf{Kết quả thực nghiệm đã công bố.} Chen và cộng sự tiến hành so sánh
+	trên năm tập hỏi đáp mở (NQ, TriviaQA, WebQ, SQuAD, EntityQuestions) với
+	ba đơn vị truy xuất: passage ($100$ từ), sentence, và proposition. Kết quả
+	chính với unsupervised dense retrievers:
+	\begin{equation}
+		\Delta \text{Recall}@20(\text{prop vs.\ passage}) = +10.1\%
+		\text{ (trung bình 5 tập)}
+		\label{eq:prop_recall20}
+	\end{equation}
+	Với supervised retrievers (đã huấn luyện trên passage-query pairs):
+	\begin{equation}
+		\Delta \text{Recall}@20(\text{prop vs.\ passage}) = +2.7\%
+		\text{ (trung bình 5 tập)}
+		\label{eq:prop_recall20_sup}
+	\end{equation}
+	Lợi thế của proposition tăng mạnh với long-tail entities: trên tập
+	EntityQuestions với unsupervised retrievers, mức cải thiện Recall@5 đạt
+	$17$--$25\%$ theo tương đối~\cite{chen2024dense}. Giải thích toán học:
+	khi tài liệu được phân thành propositions, mỗi vector nhúng tập trung biểu
+	diễn một factoid duy nhất, giảm đáng kể nhiễu attention từ các ý tưởng
+	thứ yếu trong cùng passage.
+	
+	\begin{vidu}[Proposition trong văn bản tuyển sinh]
+		Đoạn gốc: ``Ngành Công Nghệ Thông Tin (CNTT) có chỉ tiêu 60 sinh viên cho
+		chương trình đại trà và 20 sinh viên cho chương trình chất lượng cao. Điểm
+		chuẩn năm 2024 là 24,5 theo tổ hợp A00.''
+		
+		Sau propositionization:
+		\begin{enumerate}
+			\item ``Ngành Công Nghệ Thông Tin (CNTT) có chỉ tiêu 60 sinh viên
+			cho chương trình đại trà.''
+			\item ``Ngành Công Nghệ Thông Tin (CNTT) có chỉ tiêu 20 sinh viên
+			cho chương trình chất lượng cao.''
+			\item ``Điểm chuẩn ngành Công Nghệ Thông Tin năm 2024 là 24,5 theo
+			tổ hợp A00.''
+		\end{enumerate}
+		Mỗi proposition chứa tên ngành tường minh --- tránh hoàn toàn hiệu ứng
+		coreference loss mô tả tại Mục~\ref{subsec:early_chunking_limit}.
+	\end{vidu}
+	
+	% -------------------------------------------------------------------
+	\section{Thế hệ G4: Phân đoạn Đa cấp và Tăng cường Ngữ cảnh}
+	\label{sec:g4}
+	
+	\subsection{RAPTOR: Cây Tóm tắt Đệ quy}
+	\label{subsec:raptor}
+	
+	RAPTOR~\cite{sarthi2024raptor} (Sarthi et al., ICLR 2024) tiếp cận bài toán
+	chunking từ góc độ hoàn toàn khác: thay vì tìm ranh giới phân đoạn tốt hơn,
+	RAPTOR xây dựng một cây tóm tắt đa cấp cho phép truy xuất đồng thời ở nhiều
+	mức trừu tượng.
+	
+	\textbf{Xây dựng cây (từ dưới lên).} Bước 1: Leaf nodes là các chunk văn
+	bản gốc; mỗi chunk được nhúng và giảm chiều qua UMAP xuống không gian thấp
+	chiều. Bước 2: Phân cụm bằng Gaussian Mixture Model (GMM):
+	\begin{equation}
+		p(\mathbf{v}) = \sum_{k=1}^{K} \pi_k\,
+		\mathcal{N}(\mathbf{v};\, \boldsymbol{\mu}_k,\, \boldsymbol{\Sigma}_k)
+		\label{eq:gmm}
+	\end{equation}
+	Số cụm $K$ được xác định bằng BIC (Bayesian Information Criterion). Bước
+	3: Mỗi cụm được tóm tắt thành node cha bằng LLM. Bước 4: Lặp lại bước 1--3
+	trên các node cha cho đến khi chỉ còn một root node.
+	
+	\textbf{Chiến lược truy xuất Tree Collapse.} Tại thời điểm truy vấn, toàn
+	bộ node từ mọi cấp $l = 0, 1, \ldots, L$ được đưa vào một flat index duy
+	nhất:
+	\begin{equation}
+		\mathcal{R}_{\text{RAPTOR}}(q, k) =
+		\operatorname{Top-}k_{\,n \in \bigcup_{l=0}^L T_l}
+		S_C(\phi(q),\, \phi(n))
+		\label{eq:raptor_collapse}
+	\end{equation}
+	Cơ chế này cho phép một truy vấn trả về đồng thời cả leaf nodes (chi tiết
+	cụ thể) và summary nodes (bức tranh tổng quan), giải quyết bài toán câu
+	hỏi so sánh phân loại tại Bảng~\ref{tab:husc_query_types}.
+	
+	\textbf{Kết quả thực nghiệm đã công bố.} Kết hợp RAPTOR retrieval với
+	GPT-4 cải thiện kết quả tốt nhất trước đó trên QuALITY benchmark (đánh
+	giá hiểu văn bản dài) thêm $20\%$ (tuyệt đối)~\cite{sarthi2024raptor}.
+	
+	\subsection{Contextual Retrieval: Bổ sung Ngữ cảnh Tường minh}
+	\label{subsec:contextual_retrieval}
+	
+	Contextual Retrieval~\cite{anthropic2024contextual} (Anthropic, 2024) tiếp
+	cận vấn đề từ hướng khác: bổ sung ngữ cảnh một cách tường minh cho mỗi
+	chunk trước khi nhúng, thay vì thay đổi kiến trúc encoder.
+	
+	Với mỗi chunk $C_i$, LLM sinh đoạn mô tả ngữ cảnh $\kappa_i$ dài
+	$50$--$100$ token, đặt chunk vào bối cảnh tài liệu gốc:
+	\begin{equation}
+		\kappa_i = \text{LLM}(D,\; C_i,\; \texttt{prompt}_{\text{ctx}})
+		\label{eq:contextualize}
+	\end{equation}
+	Chunk được làm giàu: $C_i^+ = \kappa_i \oplus C_i$. Toàn bộ corpus sau
+	đó được lập chỉ mục theo chiến lược lai BM25 + dense, kết quả hợp nhất
+	bằng RRF:
+	\begin{equation}
+		\text{RRF}(d) = \frac{w_{\text{BM25}}}{k_0 + r_{\text{BM25}}(d)}
+		+ \frac{w_{\text{dense}}}{k_0 + r_{\text{dense}}(d)}
+		\label{eq:rrf}
+	\end{equation}
+	
+	Chi phí của Contextual Retrieval tập trung hoàn toàn ở giai đoạn indexing
+	offline: mỗi chunk yêu cầu một lời gọi LLM với toàn tài liệu làm ngữ cảnh.
+	Merola \& Singh~\cite{merola2025reconstructing} ghi nhận mức sử dụng VRAM
+	$\approx 20$~GB trên RTX~4090 khi xử lý tập NFCorpus, khẳng định đây là
+	chiến lược G4 tốn kém tài nguyên nhất nhưng không ảnh hưởng đến latency
+	truy vấn trực tuyến.
+	
+	% -------------------------------------------------------------------
+	\section{Phân tích So sánh và Tổng kết Lý thuyết}
+	\label{sec:theory_comparison}
+	
+	Bảng~\ref{tab:chunking_comparison_full} tổng hợp đặc trưng của bốn thế hệ
+	chiến lược. Hình~\ref{fig:pareto_frontier} biểu diễn đường cận Pareto trong
+	không gian thiết kế (chi phí -- chất lượng ngữ cảnh).
+	
+	\begin{table}[htbp]
+		\centering
+		\caption{So sánh bốn thế hệ chiến lược chunking. Ký hiệu: $\checkmark$ tốt,
+			$\sim$ trung bình, $\times$ kém, (?) cần đánh giá thực nghiệm.}
+		\label{tab:chunking_comparison_full}
+		\begin{adjustbox}{max width=\linewidth}
+			\begin{tabular}{lccccc}
+				\toprule
+				\textbf{Chiến lược}
+				& \textbf{Ngữ cảnh toàn cục}
+				& \textbf{Factoid}
+				& \textbf{Câu hỏi tổng hợp}
+				& \textbf{Chi phí Index}
+				& \textbf{Yêu cầu} \\
+				\midrule
+				Fixed-size (G1)      & $\times$     & $\sim$     & $\times$     & Rất thấp & Không \\
+				Recursive (G1)       & $\times$     & $\sim$     & $\times$     & Thấp     & Không \\
+				Semantic (G2)        & $\sim$       & $\checkmark$ & $\sim$     & Trung bình & Embedding \\
+				Parent Doc (G2)      & $\sim$       & $\checkmark$ & $\sim$     & Thấp     & Không \\
+				Late Chunking (G3)   & $\checkmark$ & $\checkmark$ & $\sim$     & Trung bình & Long-ctx encoder \\
+				Proposition (G3)     & $\checkmark$ & $\checkmark$ & $\sim$     & Cao      & LLM fine-tuned \\
+				RAPTOR (G4)          & $\checkmark$ & $\sim$     & $\checkmark$ & Cao      & LLM + GMM \\
+				Contextual (G4)      & $\checkmark$ & $\checkmark$ & $\checkmark$ & Rất cao & LLM + GPU \\
+				\bottomrule
+			\end{tabular}
+		\end{adjustbox}
+	\end{table}
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{tikzpicture}
+			\begin{axis}[
+				width=10cm, height=7cm,
+				xlabel={Chi phí tính toán (tương đối)},
+				ylabel={Chất lượng bảo toàn ngữ cảnh},
+				xlabel style={font=\small},
+				ylabel style={font=\small},
+				xmin=0.5, xmax=5.2,
+				ymin=0.5, ymax=5.0,
+				xtick={1,2,3,4,5},
+				xticklabels={Rất thấp, Thấp, Trung bình, Cao, Rất cao},
+				ytick={1,2,3,4},
+				yticklabels={Rất thấp, Thấp, Trung bình, Cao},
+				xticklabel style={font=\footnotesize},
+				yticklabel style={font=\footnotesize},
+				grid=major,
+				grid style={draw=gray!20},
+				legend style={at={(0.03,0.97)}, anchor=north west, font=\footnotesize},
+				]
+				\addplot[only marks, mark=square*, mark size=4pt,
+				mark options={fill=gray!60}]
+				coordinates {(1.0,1.2)(1.6,1.7)};
+				\addlegendentry{G1}
+				
+				\addplot[only marks, mark=triangle*, mark size=4pt,
+				mark options={fill=blue!60}]
+				coordinates {(2.3,2.4)(1.9,2.1)};
+				\addlegendentry{G2}
+				
+				\addplot[only marks, mark=diamond*, mark size=4pt,
+				mark options={fill=orange!70}]
+				coordinates {(2.9,3.2)(3.4,3.5)};
+				\addlegendentry{G3}
+				
+				\addplot[only marks, mark=*, mark size=4pt,
+				mark options={fill=red!70}]
+				coordinates {(4.1,4.2)(4.8,4.6)};
+				\addlegendentry{G4}
+				
+				\node[font=\tiny, right] at (axis cs:1.0,1.2) {Fixed};
+				\node[font=\tiny, right] at (axis cs:1.6,1.7) {Recursive};
+				\node[font=\tiny, right] at (axis cs:2.3,2.4) {Semantic};
+				\node[font=\tiny, right] at (axis cs:1.9,2.1) {Parent};
+				\node[font=\tiny, right] at (axis cs:2.9,3.2) {Late};
+				\node[font=\tiny, right] at (axis cs:3.4,3.5) {Proposition};
+				\node[font=\tiny, left]  at (axis cs:4.1,4.2) {RAPTOR};
+				\node[font=\tiny, left]  at (axis cs:4.8,4.6) {Contextual};
+				
+				\addplot[dashed, gray!60, thick, smooth]
+				coordinates {(1.0,1.2)(1.6,1.7)(2.3,2.4)(2.9,3.2)(4.1,4.2)(4.8,4.6)};
+			\end{axis}
+		\end{tikzpicture}
+		\caption{Đường cận Pareto (đứt nét) trong không gian thiết kế chunking.
+			Không có chiến lược nào vượt trội đồng thời trên cả hai chiều. Vị trí
+			các điểm là ước lượng định tính tổng hợp từ
+			\cite{chroma2024eval, merola2025reconstructing}; không phản ánh số liệu
+			thực nghiệm tuyệt đối trên một tập dữ liệu cụ thể nào.}
+		\label{fig:pareto_frontier}
+	\end{figure}
+	
+	% ============================================================
+	% CHƯƠNG 3: THIẾT KẾ THỰC NGHIỆM VÀ KẾT QUẢ
+	% ============================================================
+	
+	\chapter{Thiết kế Thực nghiệm và Đánh giá}
+	\label{chap:experiments}
+	
+	\section{Khung Đánh giá}
+	\label{sec:eval_framework}
+	
+	Để so sánh các chiến lược chunking một cách công bằng và có thể tái lập,
+	khoá luận áp dụng khung đánh giá theo ba chỉ số độc lập, mỗi chỉ số phản
+	ánh một tầng khác nhau trong pipeline RAG.
+	
+	\subsection{Chỉ số Tầng Truy xuất}
+	\label{subsec:retrieval_metrics}
+	
+	\textbf{Recall@$k$} đo tỷ lệ câu trả lời chuẩn được tìm thấy trong tập
+	$k$ chunk truy xuất hàng đầu. Gọi $\mathcal{G}_q$ là tập token gold cần
+	thiết và $\mathcal{R}(q,k;\pi)$ là tập token trong $k$ chunk được truy xuất:
+	\begin{equation}
+		\text{Recall}@k(q;\pi) =
+		\frac{|\mathcal{R}(q,k;\pi) \cap \mathcal{G}_q|}{|\mathcal{G}_q|}
+		\label{eq:recall_k}
+	\end{equation}
+	
+	\textbf{Precision@$k$}:
+	\begin{equation}
+		\text{Precision}@k(q;\pi) =
+		\frac{|\mathcal{R}(q,k;\pi) \cap \mathcal{G}_q|}
+		{|\mathcal{R}(q,k;\pi)|}
+		\label{eq:precision_k}
+	\end{equation}
+	
+	\textbf{Intersection over Union (IoU)} phạt đồng thời thiếu thông tin
+	liên quan và dư thông tin không liên quan:
+	\begin{equation}
+		\text{IoU}(q;\pi) =
+		\frac{|\mathcal{R}(q,k;\pi) \cap \mathcal{G}_q|}
+		{|\mathcal{R}(q,k;\pi) \cup \mathcal{G}_q|}
+		\label{eq:iou}
+	\end{equation}
+	IoU là chỉ số tổng hợp quan trọng nhất vì nó yêu cầu đồng thời Recall cao
+	\emph{và} Precision cao.
+	
+	Chỉ số trung bình trên bộ câu hỏi $\mathcal{Q}_{\text{test}}$:
+	\begin{equation}
+		\overline{\text{IoU}}(\pi) =
+		\frac{1}{|\mathcal{Q}_{\text{test}}|}
+		\sum_{q \in \mathcal{Q}_{\text{test}}} \text{IoU}(q;\pi)
+		\label{eq:mean_iou}
+	\end{equation}
+	
+	\subsection{Chỉ số Tầng Tạo sinh}
+	\label{subsec:gen_metrics}
+	
+	\textbf{Answer Correctness (AC)} đánh giá câu trả lời cuối cùng có đúng
+	so với ground truth hay không, đo bằng Exact Match (EM) cho câu hỏi thực
+	thể và BERTScore~\cite{zhang2020bertscore} cho câu hỏi tổng hợp:
+	\begin{equation}
+		\text{BERTScore}(\hat{a}, a^*) =
+		F_1\!\left(\text{Prec}(\hat{a}, a^*),\;
+		\text{Rec}(\hat{a}, a^*)\right)
+		\label{eq:bertscore}
+	\end{equation}
+	trong đó Precision và Recall được tính trên cơ sở độ tương đồng cosine
+	giữa các token embedding BERT của $\hat{a}$ và $a^*$.
+	
+	% -------------------------------------------------------------------
+	\section{Bộ Dữ liệu và Thiết lập Thực nghiệm}
+	\label{sec:dataset}
+	
+	\subsection{Corpus Tuyển sinh HUSC}
+	\label{subsec:corpus}
+	
+	Corpus sử dụng trong thực nghiệm bao gồm bốn nguồn tài liệu chính thức
+	của HUSC thu thập năm 2025, như liệt kê tại Bảng~\ref{tab:corpus_stats}.
+	Dữ liệu gốc gồm nhiều định dạng (PDF, DOCX, Markdown, TXT, JSONL) và được
+	chuẩn hoá về schema thống nhất hai tầng trước khi truy xuất: \texttt{RawDocument}
+	(đầu vào trước chunking) và \texttt{RAGChunk} (đầu ra sau chunking).
+	
+	\begin{table}[htbp]
+		\centering
+		\caption{Thống kê corpus tuyển sinh HUSC 2025}
+		\label{tab:corpus_stats}
+		\begin{tabular}{lccc}
+			\toprule
+			\textbf{Nguồn tài liệu} & \textbf{Số trang} & \textbf{Token (xấp xỉ)}
+			& \textbf{Cấu trúc} \\
+			\midrule
+			Đề án tuyển sinh 2025 & 96  & 42,000  & Chương, điều, khoản \\
+			Quy chế tuyển sinh Bộ GD\&ĐT & 52 & 23,000 & Chương, điều \\
+			Trang web tuyển sinh HUSC & -- & 18,000  & HTML, bảng \\
+			Thông báo bổ sung 2025 & 14 & 6,000  & Văn bản hành chính \\
+			\midrule
+			\textbf{Tổng cộng} & \textbf{162} & $\mathbf{\approx 89{,}000}$ & \\
+			\bottomrule
+		\end{tabular}
+	\end{table}
+	
+	\subsection{Bộ Câu hỏi Thực nghiệm}
+	\label{subsec:questions}
+	
+	Bộ câu hỏi thực nghiệm gồm $|\mathcal{Q}_{\text{test}}| = 50$ câu hỏi,
+	phân tầng theo ba loại truy vấn đã phân tích tại Bảng~\ref{tab:husc_query_types}
+	với tỷ lệ: 20 câu hỏi thực thể đơn (40\%), 18 câu hỏi đa điều kiện (36\%),
+	12 câu hỏi so sánh/tổng hợp (24\%). Mỗi câu hỏi được xây dựng kèm theo
+	ground-truth answer $a^*_q$ và gold chunk set $\mathcal{G}_q$ xác định
+	tay bởi tác giả khoá luận.
+	
+	\textbf{Vì đây là bộ câu hỏi do tác giả xây dựng và chưa qua đánh giá
+		đồng thuận (inter-annotator agreement), các kết quả ở Mục~\ref{sec:results}
+		cần được hiểu như bằng chứng định hướng (indicative evidence) chứ không
+		phải kết luận tổng quát hóa được.}
+	
+	\subsection{Thiết lập Hệ thống}
+	\label{subsec:system_setup}
+	
+	Pipeline tiền xử lý được thiết kế theo hướng \emph{canonical-first} nhằm tách
+	rõ dữ liệu thô và dữ liệu đã phân đoạn. Cụ thể, dữ liệu đa định dạng được
+	chuẩn hoá về \texttt{RawDocument}, sau đó mới đưa qua bộ chunker để sinh
+	\texttt{RAGChunk}. Mọi tệp \texttt{chunked\_*.jsonl} đều được chuẩn hoá lại về
+	schema thống nhất trước khi ingest vào vector store.
+	
+	\begin{equation}
+		\text{Raw Files} \rightarrow \texttt{RawDocument} \rightarrow \text{Chunker}
+		\rightarrow \texttt{RAGChunk} \rightarrow \text{Vector Store}
+		\label{eq:canonical_pipeline}
+	\end{equation}
+	
+	Để bảo toàn cấu trúc tài liệu hành chính/pháp lý tiếng Việt, khoá luận áp dụng
+	chiến lược \emph{markdown-first chunking}: nhận diện tiêu đề bậc cấu trúc
+	(\texttt{PHẦN}, \texttt{CHƯƠNG}, \texttt{MỤC}, \texttt{Điều}, \texttt{Khoản})
+	thành heading Markdown trước khi tách theo cửa sổ token có overlap. Cách làm
+	này giúp giảm cắt gãy mệnh đề pháp lý và cải thiện khả năng truy xuất theo
+	breadcrumbs ngữ nghĩa.
+	
+	Tất cả thực nghiệm sử dụng cùng một embedding model (\texttt{bge-m3}
+	hỗ trợ tiếng Việt), cùng vector store (FAISS), và cùng LLM generation
+	model (\texttt{gpt-4o-mini}) để đảm bảo sự khác biệt giữa các chiến lược
+	chunking là nguyên nhân duy nhất gây ra sự khác biệt về chỉ số.
+	
+	\begin{table}[htbp]
+		\centering
+		\caption{Cấu hình thực nghiệm thống nhất cho tất cả chiến lược chunking}
+		\label{tab:exp_config}
+		\begin{tabular}{ll}
+			\toprule
+			\textbf{Thành phần} & \textbf{Cấu hình} \\
+			\midrule
+			Embedding model & \texttt{BAAI/bge-m3} (1024-dim, hỗ trợ tiếng Việt) \\
+			Vector store    & FAISS (IndexFlatIP) \\
+			Retrieval top-$k$ & $k = 5$ \\
+			LLM generation  & \texttt{gpt-4o-mini} (temperature = 0) \\
+			\midrule
+			\textit{Tham số riêng cho từng chiến lược:} & \\
+			Fixed-size      & $\ell \in \{200, 400, 600\}$, $s = 0.2\ell$ \\
+			Recursive       & $\ell \in \{200, 400, 600\}$, $\Sigma$ = mặc định \\
+			Semantic        & $p = 0.95$ (phân vị ngưỡng) \\
+			Late Chunking   & \texttt{jina-embeddings-v3} ($W = 8{,}192$) \\
+			Proposition     & Propositionizer = Flan-T5-large fine-tuned \\
+			RAPTOR          & GPT-4o-mini tóm tắt, GMM phân cụm \\
+			\bottomrule
+		\end{tabular}
+	\end{table}
+	
+	% -------------------------------------------------------------------
+	\section{Kết quả Thực nghiệm}
+	\label{sec:results}
+	
+	Mục này trình bày kết quả thực nghiệm trên bộ câu hỏi tuyển sinh HUSC.
+	Bảng~\ref{tab:main_results} tổng hợp ba chỉ số chính ($\overline{\text{Recall}@5}$,
+	$\overline{\text{Precision}@5}$, $\overline{\text{IoU}}$) và Answer
+	Correctness cho tất cả chiến lược được so sánh.
+	
+	\begin{table}[htbp]
+		\centering
+		\caption{Kết quả thực nghiệm so sánh các chiến lược chunking trên bộ câu
+			hỏi tuyển sinh HUSC ($n = 50$ câu hỏi, $k = 5$, LLM = gpt-4o-mini).
+			\textbf{In đậm} = kết quả tốt nhất trên từng chỉ số.
+			\dag{} = kết quả của tác giả; các số liệu khác cần được điền sau khi
+			hoàn thành thực nghiệm.}
+		\label{tab:main_results}
+		\begin{adjustbox}{max width=\linewidth}
+			\begin{tabular}{lcccc}
+				\toprule
+				\textbf{Chiến lược}
+				& $\overline{\text{Recall}@5}$
+				& $\overline{\text{Precision}@5}$
+				& $\overline{\text{IoU}}$
+				& \textbf{AC (BERTScore)} \\
+				\midrule
+				Fixed-size ($\ell$=200)  & -- & -- & -- & -- \\
+				Fixed-size ($\ell$=400)  & -- & -- & -- & -- \\
+				Fixed-size ($\ell$=600)  & -- & -- & -- & -- \\
+				Recursive ($\ell$=400)   & -- & -- & -- & -- \\
+				Semantic (baseline)      & -- & -- & -- & -- \\
+				Late Chunking            & -- & -- & -- & -- \\
+				Proposition-based        & -- & -- & -- & -- \\
+				RAPTOR (3 levels)        & -- & -- & -- & -- \\
+				\midrule
+				\textbf{Hybrid} (Semantic + Proposition) & -- & -- & -- & -- \\
+				\bottomrule
+			\end{tabular}
+		\end{adjustbox}
+	\end{table}
+	
+	\noindent\textit{Ghi chú: Các ô ``--'' sẽ được điền bằng kết quả thực nghiệm
+		của tác giả khi hoàn thành triển khai. Không có số liệu nào được đặt trước
+		trong khoá luận này; mọi con số trong bảng kết quả sẽ xuất phát từ chạy
+		thực nghiệm trực tiếp trên corpus HUSC với hệ thống được mô tả tại
+		Bảng~\ref{tab:exp_config}.}
+	
+	% -------------------------------------------------------------------
+	\section{Phân tích Kết quả theo Loại Truy vấn}
+	\label{sec:analysis_by_type}
+	
+	Ngoài chỉ số tổng hợp, khoá luận phân tích kết quả tách biệt theo ba loại
+	truy vấn đã định nghĩa tại Mục~\ref{sec:husc_problem}. Phân tích này quan
+	trọng vì một chiến lược có thể đạt IoU trung bình cao nhờ vượt trội ở loại
+	truy vấn thực thể đơn (40\% tập câu hỏi) trong khi thất bại ở loại câu hỏi
+	so sánh (25\%).
+	
+	Dựa trên lý thuyết tại Chương~\ref{chap:chunking_theory}, các giả thuyết
+	thực nghiệm cụ thể được phát biểu như sau:
+	
+	\begin{menh}[Giả thuyết H1]
+		Với câu hỏi thực thể đơn, Proposition-based chunking đạt Recall@5 cao hơn
+		Fixed-size ($\ell = 400$) ít nhất $5\%$ (tuyệt đối), phù hợp với kết quả
+		$+10.1\%$ trên unsupervised retrievers của Chen et al.~\cite{chen2024dense}
+		--- tuy nhiên không thể kỳ vọng cùng biên độ vì retriever trong thực
+		nghiệm này (\texttt{bge-m3}) là supervised model và corpus tiếng Việt khác
+		về phân phối so với Wikipedia tiếng Anh.
+	\end{menh}
+	
+	\begin{menh}[Giả thuyết H2]
+		Với câu hỏi so sánh/tổng hợp, RAPTOR đạt Answer Correctness (BERTScore)
+		cao hơn tất cả chiến lược G1--G3, nhờ cơ chế tree collapse cho phép truy
+		xuất đồng thời ở nhiều cấp trừu tượng.
+	\end{menh}
+	
+	\begin{menh}[Giả thuyết H3]
+		Chiến lược Hybrid (Semantic chunking cho vector search kết hợp Proposition
+		extraction cho đồ thị tri thức) đạt $\overline{\text{IoU}}$ tổng hợp cao
+		nhất, đánh đổi giữa chi phí tính toán và chất lượng trên cả ba loại truy
+		vấn.
+	\end{menh}
+	
+	% -------------------------------------------------------------------
+	\section{Phân tích Chi phí -- Lợi ích}
+	\label{sec:cost_benefit}
+	
+	Hình~\ref{fig:latency_quality} trình bày không gian đánh đổi giữa
+	$\overline{\text{IoU}}$ (chất lượng truy xuất) và thời gian xây dựng chỉ
+	mục (indexing latency) cho mỗi chiến lược. Đây là thước đo thực tiễn quan
+	trọng: trong môi trường học thuật với tài nguyên GPU hạn chế, một chiến
+	lược đạt IoU cao hơn 5\% nhưng tốn thời gian index gấp 10 lần có thể không
+	khả thi cho triển khai thực tế.
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{adjustbox}{max width=\linewidth}
+			\begin{tikzpicture}[
+				row1/.style={rectangle, draw=black!30, fill=gray!8,
+					minimum height=0.75cm, align=center, font=\footnotesize},
+				rowG/.style={rectangle, draw=black!30,
+					minimum height=0.75cm, align=center, font=\footnotesize},
+				hdr/.style={rectangle, draw=black!50, fill=black!12,
+					minimum height=0.75cm, align=center, font=\footnotesize\bfseries},
+				bar/.style={rectangle, draw=none, minimum height=0.55cm},
+				]
+				% Header
+				\node[hdr, text width=2.8cm] (h1) at (0,    0) {Chiến lược};
+				\node[hdr, text width=3.5cm] (h2) at (3.3,  0) {Chi phí indexing};
+				\node[hdr, text width=4.0cm] (h3) at (7.25, 0) {IoU (sau thực nghiệm)};
+				
+				% Rows
+				\foreach \i/\strat/\cost/\costw/\col in {
+					1/Fixed-size (G1)/Rất thấp/0.5cm/gray!50,
+					2/Recursive (G1)/Thấp/1.0cm/gray!60,
+					3/Semantic (G2)/Trung bình/1.8cm/blue!50,
+					4/Late Chunking (G3)/Trung bình/1.8cm/orange!60,
+					5/Proposition (G3)/Cao/2.8cm/orange!70,
+					6/RAPTOR (G4)/Cao/2.8cm/red!55,
+					7/Contextual (G4)/Rất cao/3.8cm/red!70
+				}{
+					\node[rowG, text width=2.8cm, fill=white,
+					draw=black!20] at (0, -\i*0.8)
+					{\strat};
+					\node[rowG, text width=3.5cm, fill=white,
+					draw=black!20] at (3.3, -\i*0.8)
+					{\cost};
+					% Bar placeholder for IoU
+					\node[rowG, text width=4.0cm, fill=gray!5,
+					draw=black!20] at (7.25, -\i*0.8)
+					{\textit{--}};
+					% Cost bar
+					\node[bar, minimum width=\costw, fill=\col, opacity=0.7]
+					at ({1.6 + \costw/2 - 0.1cm}, -\i*0.8) {};
+				}
+				
+				% Footnote line
+				\node[font=\tiny\itshape, text=gray!70, text width=9cm]
+				at (3.6, -6.5)
+				{Cột IoU sẽ được điền bằng kết quả thực nghiệm.
+					Chi phí indexing là thứ bậc định tính, không phải số tuyệt đối.};
+			\end{tikzpicture}
+		\end{adjustbox}
+		\caption{Đánh đổi chi phí indexing -- chất lượng truy xuất ($\overline{\text{IoU}}$)
+			của các chiến lược chunking. Cột IoU sẽ được điền bằng kết quả thực
+			nghiệm; cột chi phí indexing là thứ bậc định tính dựa trên phân tích
+			độ phức tạp tính toán lý thuyết.}
+		\label{fig:latency_quality}
+	\end{figure}
+	
+	% -------------------------------------------------------------------
+	\section{Hạn chế Dữ liệu và Tiền xử lý}
+	\label{sec:data_preprocess_limits}
+	
+	Mặc dù pipeline chuẩn hoá đã giảm đáng kể sai khác cấu trúc giữa các nguồn,
+	một số hạn chế kỹ thuật vẫn tồn tại. Thứ nhất, trích xuất văn bản từ PDF dựa
+	trên lớp text có thể suy giảm chất lượng với tài liệu scan ảnh; trong trường
+	hợp này, chunking chịu lỗi lan truyền từ bước OCR. Thứ hai, tài liệu DOCX có
+	thể chứa thông tin quan trọng trong bảng, header/footer hoặc textbox; các thành
+	phần này không phải lúc nào cũng được bảo toàn đầy đủ khi chuyển sang text phẳng.
+	
+	Với văn bản pháp lý/hành chính, khoá luận áp dụng làm sạch heuristic (loại
+	header/footer lặp, nhận diện cấu trúc \texttt{Điều/Khoản/Điểm}). Tuy nhiên,
+	heuristic vẫn có rủi ro loại nhầm trong các mẫu trình bày không chuẩn hoá.
+	Do đó, kết quả thực nghiệm cần được hiểu trong bối cảnh pipeline hiện tại, và
+	một hướng mở quan trọng là tái tạo corpus từ bản gốc có cấu trúc giàu hơn
+	(HTML/PDF có layout) thay vì chỉ dựa trên text extraction tuyến tính.
+	
+	% -------------------------------------------------------------------
+	\section{Xu hướng Chunking năm 2026 và Hàm ý cho HUSC}
+	\label{sec:trend_2026_chunking}
+	
+	Các kết quả gần đây cho thấy không còn xu hướng chọn một kỹ thuật chunking duy
+	nhất cho toàn hệ thống. Thay vào đó, hướng đi nổi bật là kiến trúc đa tầng:
+	chunk nhỏ để tăng độ nhạy truy xuất, đồng thời duy trì chunk cha lớn hơn để
+	khôi phục ngữ cảnh khi cần. Phân tích của Merola \& Singh cho thấy các kỹ thuật
+	``giữ ngữ cảnh'' như late/contextual chunking cải thiện rõ rệt chất lượng trả
+	lời nhưng đổi lại là chi phí indexing cao~\cite{merola2025reconstructing}.
+	Ở một hướng khác, HiChunk chỉ ra rằng biểu diễn phân cấp giúp hệ thống cân bằng
+	được giữa câu hỏi factoid và câu hỏi tổng hợp dài hơi~\cite{lu2025hichunk}.
+	
+	Trên bình diện triển khai, các framework RAG năm 2026 đều hội tụ về cùng một
+	mẫu thiết kế: tạo cây chunk nhiều mức (coarse-to-fine), sau đó hợp nhất ngữ
+	cảnh theo truy vấn thay vì cố định ngay từ đầu~\cite{llamaindex2026docs}.
+	Với bộ tách recursive, thực hành phổ biến vẫn là giữ overlap vừa phải để giảm
+	hiệu ứng biên, rồi nâng cấp bằng semantic/hierarchical khi bài toán đòi hỏi
+	tính suy luận cao hơn~\cite{langchain2026docs}.
+	
+	% -------------------------------------------------------------------
+	\section{Đề xuất Chiến lược cho Bài toán HUSC}
+	\label{sec:recommendation}
+	
+	Từ đặc thù dữ liệu tuyển sinh (nhiều điều kiện, nhiều ngoại lệ, nhiều văn bản
+	pháp lý), khoá luận không chọn một ``siêu chiến lược'' duy nhất. Thay vào đó,
+	hệ thống dùng chunking thích ứng theo truy vấn, trên cùng một corpus đã chuẩn
+	hoá markdown-first.
+	
+	\textbf{Lớp 1 --- Retrieval hạt mịn.} Tài liệu được tách semantic/recursive ở
+	mức $\ell \approx 200$--$420$ token (tuỳ profile), overlap khoảng $10$--$25\%$.
+	Lớp này tối ưu cho câu hỏi thực thể và tra cứu điều kiện ngắn.
+	
+	\textbf{Lớp 2 --- Retrieval ngữ cảnh phân cấp.} Trên cùng tài liệu, hệ thống
+	duy trì cây chunk cha--con (ví dụ các mức 2048$\rightarrow$512$\rightarrow$128)
+	để có thể ``nâng ngữ cảnh'' khi truy vấn cần đọc xuyên nhiều đoạn~\cite{llamaindex2026docs}.
+	Điều kiện hợp nhất nút cha được mô tả bởi:
+	\begin{equation}
+		r(p)=\frac{|\mathcal{C}_{\text{hit}}(p)|}{|\mathcal{C}(p)|},
+		\qquad
+		r(p)>\tau_{\text{merge}} \Rightarrow p\ \text{được đưa vào ngữ cảnh}
+		\label{eq:auto_merge_ratio}
+	\end{equation}
+	trong đó $\tau_{\text{merge}}$ là ngưỡng hợp nhất (thực nghiệm khởi tạo ở mức
+	$0.5$).
+	
+	\textbf{Lớp 3 --- Proposition/Graph cho truy vấn đa bước.} Với câu hỏi so sánh
+	hoặc cần liên kết nhiều fact rời, hệ thống dùng thêm lớp proposition để tạo
+	đồ thị tri thức, sau đó hợp nhất điểm xếp hạng với dense retrieval bằng RRF.
+	
+	Về điều phối truy vấn, hệ thống dùng trọng số động theo loại câu hỏi:
+	\begin{equation}
+		\mathbf{w}(q) = \big(w_f(q),\, w_h(q),\, w_p(q)\big),
+		\quad
+		w_f+w_h+w_p=1
+		\label{eq:adaptive_weight}
+	\end{equation}
+	trong đó $w_f$ ưu tiên lớp hạt mịn, $w_h$ ưu tiên lớp phân cấp, và $w_p$ ưu
+	tiên lớp proposition. Với truy vấn thực thể, $w_f$ thường lớn nhất; với truy
+	vấn so sánh/tổng hợp, $w_h$ và $w_p$ được tăng lên để tránh thiếu ngữ cảnh.
+	
+	Lựa chọn này phù hợp với xu hướng 2026: \emph{hybrid + hierarchical + adaptive}
+	thay vì cố ép toàn bộ hệ thống vào một kích thước chunk cố định.
+	
+	\clearpage
+	\addcontentsline{toc}{chapter}{Tài liệu tham khảo}
+	
+	\begin{thebibliography}{99}
+		
+		\bibitem{vaswani2017attention}
+		Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.~N.,
+		Kaiser, L., \& Polosukhin, I. (2017).
+		\textit{Attention Is All You Need}.
+		\textit{Advances in Neural Information Processing Systems} (NeurIPS), 30,
+		5998--6008.
+		
+		\bibitem{lewis2020retrieval}
+		Lewis, P., Perez, E., Piktus, A., Petroni, F., Karpukhin, V., Goyal, N.,
+		Küttler, H., Lewis, M., Yih, W., Rocktäschel, T., Riedel, S., \& Kiela, D.
+		(2020).
+		\textit{Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks}.
+		\textit{Advances in Neural Information Processing Systems} (NeurIPS), 33,
+		9459--9474.
+		
+		\bibitem{barnett2024seven}
+		Barnett, S., Kurniawan, S., Thudumu, S., Brannelly, Z., \& Abdelrazek, M.
+		(2024).
+		\textit{Seven Failure Points When Engineering a Retrieval Augmented Generation
+			System}.
+		In \textit{Proceedings of the 3rd International Workshop on Software
+			Engineering and AI for Data Quality (SEA4DQ)}, co-located with ICSE 2024.
+		arXiv:2401.05856.
+		
+		\bibitem{chroma2024eval}
+		Chroma Research. (2024).
+		\textit{Evaluating Chunking Strategies for Retrieval}.
+		Technical Report.
+		\url{https://research.trychroma.com/evaluating-chunking}
+		
+		\bibitem{gunther2024late}
+		Günther, M., Mohr, I., Williams, D.~J., Wang, B., \& Xiao, H. (2024).
+		\textit{Late Chunking: Contextual Chunk Embeddings Using Long-Context Embedding
+			Models}.
+		arXiv preprint arXiv:2409.04701.
+		
+		\bibitem{chen2024dense}
+		Chen, T., Wang, H., Chen, S., Yu, W., Ma, K., Zhao, X., Zhang, H., \& Yu, D.
+		(2024).
+		\textit{Dense X Retrieval: What Retrieval Granularity Should We Use?}
+		In \textit{Proceedings of the 2024 Conference on Empirical Methods in Natural
+			Language Processing} (EMNLP), Miami, Florida, pp.\ 15159--15177.
+		Association for Computational Linguistics.
+		\url{https://aclanthology.org/2024.emnlp-main.845/}
+		
+		\bibitem{sarthi2024raptor}
+		Sarthi, P., Abdullah, S., Tuli, A., Khanna, S., Goldie, A., \& Manning,
+		C.~D. (2024).
+		\textit{RAPTOR: Recursive Abstractive Processing for Tree-Organized Retrieval}.
+		In \textit{Proceedings of the 12th International Conference on Learning
+			Representations} (ICLR 2024).
+		\url{https://openreview.net/forum?id=GN921JHCRw}
+		
+		\bibitem{anthropic2024contextual}
+		Anthropic. (2024).
+		\textit{Contextual Retrieval}.
+		Technical Blog.
+		\url{https://www.anthropic.com/news/contextual-retrieval}
+		
+		\bibitem{merola2025reconstructing}
+		Merola, C., \& Singh, J. (2025).
+		\textit{Reconstructing Context: Evaluating Advanced Chunking Strategies for
+			Retrieval-Augmented Generation}.
+		arXiv preprint arXiv:2504.19754.
+		Presented at the Second Workshop on Knowledge-Enhanced Information Retrieval,
+		ECIR 2025.
+		
+		\bibitem{lu2025hichunk}
+		Lu, W., Chen, K., Qiao, R., \& Sun, X. (2025).
+		\textit{HiChunk: Evaluating and Enhancing Retrieval-Augmented Generation
+			with Hierarchical Chunking}.
+		arXiv preprint arXiv:2509.11552.
+		
+		\bibitem{llamaindex2026docs}
+		LlamaIndex. (2026).
+		\textit{Hierarchical Node Parser and Auto-Merging Retriever Documentation}.
+		Official Documentation.
+		\url{https://developers.llamaindex.ai/python/framework/module_guides/loading/node_parsers/modules}
+		
+		\bibitem{langchain2026docs}
+		LangChain. (2026).
+		\textit{RecursiveCharacterTextSplitter Documentation}.
+		Official Documentation.
+		\url{https://docs.langchain.com/oss/python/integrations/splitters/recursive_text_splitter}
+		
+		\bibitem{robertson2009bm25}
+		Robertson, S., \& Zaragoza, H. (2009).
+		\textit{The Probabilistic Relevance Framework: BM25 and Beyond}.
+		\textit{Foundations and Trends in Information Retrieval}, 3(4), 333--389.
+		
+		\bibitem{cormack2009rrf}
+		Cormack, G.~V., Clarke, C.~L.~A., \& Buettcher, S. (2009).
+		\textit{Reciprocal Rank Fusion Outperforms Condorcet and Individual Rank
+			Learning Methods}.
+		In \textit{Proceedings of the 32nd Annual International ACM SIGIR Conference},
+		pp.\ 758--759.
+		
+		\bibitem{zhang2020bertscore}
+		Zhang, T., Kishore, V., Wu, F., Weinberger, K.~Q., \& Artzi, Y. (2020).
+		\textit{BERTScore: Evaluating Text Generation with BERT}.
+		In \textit{Proceedings of the 8th International Conference on Learning
+			Representations} (ICLR 2020).
+		
+		\bibitem{ethayarajh2019contextual}
+		Ethayarajh, K. (2019).
+		\textit{How Contextual are Contextualized Word Representations?
+			Comparing the Geometry of BERT, ELMo, and GPT-2 Embeddings}.
+		In \textit{Proceedings of the 2019 Conference on Empirical Methods in
+			Natural Language Processing} (EMNLP-IJCNLP), pp.\ 55--65.
+		
+	\end{thebibliography}
+	
+\end{document}

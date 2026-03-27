@@ -1,0 +1,184 @@
+{
+  "SECTION_A": {
+    "title": "Pipeline Construction Steps",
+    "steps": [
+      "1. Improving LLM accuracy",
+      "2. Vector similarity search and hybrid search",
+      "3. Advanced vector retrieval strategies",
+      "4. Generating Cypher queries from natural language questions",
+      "5. Agentic RAG",
+      "6. Constructing knowledge graphs with LLMs",
+      "7. Microsoft's GraphRAG implementation",
+      "8. RAG application evaluation"
+    ]
+  },
+  "SECTION_B": {
+    "title": "Retrieval Variants",
+    "variants": [
+      {
+        "name": "Vector Similarity Search",
+        "description": "Basic vector-based retrieval using cosine similarity or Euclidean distance to find semantically similar text chunks."
+      },
+      {
+        "name": "Hybrid Search",
+        "description": "Combines vector similarity search with full-text search for improved retrieval accuracy."
+      },
+      {
+        "name": "Step-back Prompting",
+        "description": "Query rewriting technique that broadens specific queries to more general questions to improve vector retrieval accuracy."
+      },
+      {
+        "name": "Parent Document Retriever",
+        "description": "Strategy that splits documents into smaller child chunks for embedding while returning the full parent document for context."
+      },
+      {
+        "name": "Hypothetical Question Strategy",
+        "description": "Generates hypothetical questions that documents can answer and embeds those questions instead of the original text."
+      },
+      {
+        "name": "Text2Cypher",
+        "description": "Generates Cypher queries from natural language questions to query graph databases directly."
+      },
+      {
+        "name": "Agentic RAG",
+        "description": "System with multiple retrieval agents and a retriever router that selects the best retriever for each query."
+      },
+      {
+        "name": "Global Search (Microsoft GraphRAG)",
+        "description": "Uses community summaries in a map-reduce approach to answer broad, thematic queries across the entire dataset."
+      },
+      {
+        "name": "Local Search (Microsoft GraphRAG)",
+        "description": "Combines vector similarity search with graph traversal to answer entity-focused queries using connected entities, text chunks, and community summaries."
+      }
+    ]
+  },
+  "SECTION_C": {
+    "title": "Graph Schema Recommendations",
+    "schemas": [
+      {
+        "context": "Basic RAG with Vector Search",
+        "node_labels": ["Chunk"],
+        "relationship_types": [],
+        "properties": {
+          "Chunk": ["text", "embedding", "index"]
+        }
+      },
+      {
+        "context": "Parent Document Retriever",
+        "node_labels": ["PDF", "Parent", "Child"],
+        "relationship_types": ["HAS_PARENT", "HAS_CHILD"],
+        "properties": {
+          "PDF": ["title", "arxiv_nr"],
+          "Parent": ["text"],
+          "Child": ["text", "embedding"]
+        }
+      },
+      {
+        "context": "Contract Knowledge Graph",
+        "node_labels": ["Contract", "Organization", "Location"],
+        "relationship_types": ["HAS_PARTY", "LOCATED_AT"],
+        "properties": {
+          "Contract": ["id", "contractType", "effectiveDate", "endDate", "totalAmount", "term", "contractScope", "governingLaw"],
+          "Organization": ["name", "role"],
+          "Location": ["fullAddress", "address", "city", "state", "country"]
+        }
+      },
+      {
+        "context": "Microsoft GraphRAG",
+        "node_labels": ["__Entity__", "__Chunk__", "__Community__"],
+        "relationship_types": ["RELATIONSHIP", "SUMMARIZED_RELATIONSHIP", "HAS_ENTITY", "IN_COMMUNITY"],
+        "properties": {
+          "__Entity__": ["name", "description", "summary", "embedding"],
+          "__Chunk__": ["text"],
+          "__Community__": ["title", "summary", "rating"]
+        }
+      }
+    ]
+  },
+  "SECTION_D": {
+    "title": "Known Problems and Solutions",
+    "problems": [
+      {
+        "problem": "LLM Knowledge Cutoff",
+        "description": "LLMs are unaware of events or information not included in their training dataset.",
+        "solution": "RAG - Provide external knowledge base and retrieve relevant information at runtime."
+      },
+      {
+        "problem": "LLM Hallucinations",
+        "description": "LLMs provide confident but incorrect or fabricated information.",
+        "solution": "Ground responses in retrieved factual information from trusted sources."
+      },
+      {
+        "problem": "Lack of Private Information",
+        "description": "LLMs cannot access proprietary or internal company information.",
+        "solution": "Use RAG with company-specific knowledge bases and maintain data privacy."
+      },
+      {
+        "problem": "Mixed Context from Multiple Contracts",
+        "description": "Vector retrieval may pull information from different contracts, mixing relevant and irrelevant chunks.",
+        "solution": "Extract structured data from contracts and use knowledge graphs to maintain document boundaries."
+      },
+      {
+        "problem": "Poor Retrieval Accuracy with Complex Queries",
+        "description": "Simple vector similarity search struggles with queries requiring filtering, aggregation, or complex relationships.",
+        "solution": "Use structured data extraction, text2cypher, and knowledge graphs for complex queries."
+      },
+      {
+        "problem": "Entity Resolution Issues",
+        "description": "Different representations of the same entity (e.g., 'UTI Asset Management Company' vs 'UTI Asset Management Company Ltd') create duplicates.",
+        "solution": "Implement entity resolution with domain-specific rules, string matching, and clustering algorithms."
+      },
+      {
+        "problem": "Tool Selection Errors in Agentic RAG",
+        "description": "LLM may select wrong retrieval tool or fail to map user input to correct database values.",
+        "solution": "Use few-shot examples, clear tool descriptions, and implement answer critic for validation."
+      }
+    ]
+  },
+  "SECTION_E": {
+    "title": "Benchmark Numbers and Performance Comparisons",
+    "metrics": [
+      {
+        "context": "Chunk Size vs Entity Extraction",
+        "description": "Smaller chunk sizes (600 tokens) extract more entity references than larger chunks (2400 tokens). More self-reflection iterations also increase entity extraction.",
+        "source": "Microsoft GraphRAG paper (Edge et al., 2024)"
+      },
+      {
+        "context": "RAG Evaluation Metrics",
+        "description": "Sample benchmark evaluation showed: Answer Correctness: 0.7774, Context Recall: 0.7941, Faithfulness: 0.9657",
+        "source": "Chapter 8 RAG application evaluation"
+      },
+      {
+        "context": "Performance Comparison",
+        "description": "Latency significantly lower for queries that don't require text2cypher, as avoiding additional LLM call speeds up response.",
+        "source": "Chapter 8 evaluation observations"
+      }
+    ]
+  },
+  "SECTION_F": {
+    "title": "Real-time / Incremental Update Approaches",
+    "approaches": [
+      {
+        "name": "Continuous Query Updating",
+        "description": "In agentic RAG systems, answers from previous questions can be used to rewrite and update subsequent questions with new information."
+      },
+      {
+        "name": "Entity and Relationship Summarization",
+        "description": "MS GraphRAG merges multiple descriptions of the same entity or relationship using LLMs to generate concise summaries, ensuring key contextual details are preserved."
+      },
+      {
+        "name": "Community Detection Updates",
+        "description": "As new entities and relationships are added to the graph, community detection algorithms can be rerun to update community structures and summaries."
+      },
+      {
+        "name": "Answer Critic Loop",
+        "description": "In agentic RAG, if answers are incomplete or incorrect, the answer critic generates new questions to retrieve missing information and goes through another retrieval cycle."
+      },
+      {
+        "name": "Dynamic Tool Selection",
+        "description": "Agentic RAG systems can dynamically select the most appropriate retrieval tool based on the query, allowing for adaptive and optimized retrieval strategies."
+      }
+    ]
+  }
+}

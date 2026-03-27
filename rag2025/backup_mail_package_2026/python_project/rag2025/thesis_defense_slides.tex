@@ -1,0 +1,248 @@
+\documentclass[aspectratio=169,xcolor=table]{beamer}
+\usetheme{Madrid}
+\usecolortheme{whale}
+
+\usepackage[T5]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[vietnamese]{babel}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{hyperref}
+
+% Information
+\title[Chuyển đổi từ Naive RAG sang GraphRAG]{Báo cáo Khóa luận Kỹ sư Trí tuệ Nhân tạo:\\Chuyển đổi từ Naive RAG sang GraphRAG}
+\subtitle{Khắc phục Giới hạn Không gian Véc-tơ bằng Đồ thị Tri thức}
+\author[Kỹ sư AI]{Người trình bày: Kỹ sư AI\\Giáo viên hướng dẫn: TS. [Tên GVHD]}
+\institute[ĐH XYZ]{Trường Đại học [Tên Trường]\\Khoa Công nghệ Thông tin}
+\date{\today}
+
+\begin{document}
+
+% Slide 1: Title & Presenter
+\begin{frame}
+    \titlepage
+\end{frame}
+
+% Slide 2: Outline
+\begin{frame}{Nội dung trình bày}
+    \tableofcontents
+\end{frame}
+
+% Section 1
+\section{Giới hạn của Naive RAG}
+
+% Slide 3: Limits of Naive RAG (Cosine similarity limits)
+\begin{frame}{1. Giới hạn của Naive RAG}
+    \framesubtitle{Độ đo Cosine và Hiện tượng Tập trung}
+    Naive RAG chủ yếu dựa trên độ tương đồng Cosine:
+    \begin{equation}
+        \text{sim}(\mathbf{q}, \mathbf{d}) = \frac{\mathbf{q} \cdot \mathbf{d}}{\|\mathbf{q}\| \|\mathbf{d}\|}
+    \end{equation}
+    
+    \textbf{Vấn đề gặp phải:}
+    \begin{itemize}
+        \item \textbf{Mù ngữ cảnh toàn cục (Global Context Blindness):} Chỉ tìm kiếm các đoạn văn bản có độ tương đồng bề mặt cao.
+        \item \textbf{Khó xử lý các truy vấn phức hợp (Multi-hop Reasoning):} Không kết nối được thông tin phân tán.
+        \item \textbf{Sự sụp đổ của Không gian Véc-tơ (Anisotropy):} Các véc-tơ nhúng (embeddings) thường hội tụ về một góc hẹp trong không gian nhiều chiều.
+    \end{itemize}
+\end{frame}
+
+% Slide 4: Limits of Naive RAG (Narrow cone-effect math)
+\begin{frame}{1. Giới hạn của Naive RAG}
+    \framesubtitle{Hiệu ứng Hình nón Hẹp (Narrow Cone-Effect)}
+    Sự bất đẳng hướng (Anisotropy) của không gian nhúng khiến các véc-tơ bị "nén" vào một hình nón hẹp (narrow cone).
+    
+    Góc trung bình giữa hai véc-tơ ngẫu nhiên $\mathbf{x}, \mathbf{y} \in \mathbb{R}^d$:
+    \begin{equation}
+        \mathbb{E}[\theta(\mathbf{x}, \mathbf{y})] = \arccos\left(\frac{\mathbf{x} \cdot \mathbf{y}}{\|\mathbf{x}\| \|\mathbf{y}\|}\right) \ll \frac{\pi}{2}
+    \end{equation}
+    
+    Độ trải rộng (Isotropy score) của ma trận hiệp phương sai $\Sigma$:
+    \begin{equation}
+        I(\Sigma) = \frac{\min_{\|\mathbf{v}\|=1} \mathbf{v}^T \Sigma \mathbf{v}}{\max_{\|\mathbf{v}\|=1} \mathbf{v}^T \Sigma \mathbf{v}} \approx 0
+    \end{equation}
+    \textit{Hậu quả:} Mọi văn bản đều có vẻ "tương đồng" với truy vấn, gây ra ảo giác (hallucination) trong sinh văn bản.
+\end{frame}
+
+% Section 2
+\section{Đồ thị Tri thức và Phân tích Ngữ nghĩa}
+
+% Slide 5: Graph Topology & Semantic Parsing
+\begin{frame}{2. Cấu trúc Đồ thị \& Phân tích Ngữ nghĩa}
+    \framesubtitle{Cơ sở Toán học của Đồ thị Tri thức}
+    Mô hình hóa dữ liệu văn bản dưới dạng Đồ thị Tri thức (Knowledge Graph) có hướng:
+    \begin{equation}
+        \mathcal{G} = (\mathcal{V}, \mathcal{E}, \mathcal{R})
+    \end{equation}
+    Trong đó:
+    \begin{itemize}
+        \item $\mathcal{V} = \{v_1, v_2, \dots, v_n\}$ là tập hợp các thực thể (Nodes).
+        \item $\mathcal{R}$ là tập hợp các loại quan hệ (Relation types).
+        \item $\mathcal{E} \subseteq \mathcal{V} \times \mathcal{R} \times \mathcal{V}$ là tập hợp các cạnh (Edges), với mỗi $e = (v_h, r, v_t)$ mô tả quan hệ $r$ giữa thực thể đầu (head) $v_h$ và thực thể đuôi (tail) $v_t$.
+    \end{itemize}
+\end{frame}
+
+% Slide 6: LLM Attention as a parser
+\begin{frame}{2. Cấu trúc Đồ thị \& Phân tích Ngữ nghĩa}
+    \framesubtitle{LLM Attention như một Trình phân tích cú pháp (Parser)}
+    Sử dụng LLM (Large Language Models) để trích xuất thực thể và quan hệ thông qua cơ chế Self-Attention:
+    \begin{equation}
+        \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+    \end{equation}
+    
+    Khả năng ánh xạ từ token sang thực thể (Entity Alignment):
+    \begin{equation}
+        P(e \mid X) = \sum_{i=1}^{|X|} \alpha_{i} \cdot f_{\theta}(x_i)
+    \end{equation}
+    Trong đó, $X$ là chuỗi token đầu vào, $e$ là thực thể trích xuất, và $\alpha_{i}$ là trọng số attention.
+\end{frame}
+
+% Slide 7: Graph Topology Optimization
+\begin{frame}{2. Cấu trúc Đồ thị \& Phân tích Ngữ nghĩa}
+    \framesubtitle{Tối ưu hóa Cấu trúc Đồ thị}
+    Xóa bỏ các cạnh nhiễu (Pruning) để tối ưu hóa đồ thị bằng cách đo lường độ gắn kết (Cohesion):
+    
+    Hàm mục tiêu làm sạch đồ thị:
+    \begin{equation}
+        \min_{\mathcal{E}' \subset \mathcal{E}} \sum_{(v_i, r, v_j) \in \mathcal{E}'} \left\| h(v_i) + h(r) - h(v_j) \right\|_2^2 + \lambda |\mathcal{E}'|
+    \end{equation}
+    (Dựa trên nguyên lý của mô hình TransE với chuẩn hóa $L_2$).
+    Điều này giúp duy trì các mối quan hệ ngữ nghĩa cốt lõi mạnh nhất.
+\end{frame}
+
+% Section 3
+\section{Hệ biến hóa Neo4j}
+
+% Slide 8: Neo4j Paradigm (Leiden clustering equation)
+\begin{frame}{3. Hệ biến hóa Neo4j}
+    \framesubtitle{Phân cụm Leiden (Leiden Clustering)}
+    GraphRAG sử dụng thuật toán phân cụm để tạo bối cảnh phân cấp (Hierarchical Context).
+    
+    Thuật toán Leiden tối đa hóa Modularity $\mathcal{Q}$:
+    \begin{equation}
+        \mathcal{Q} = \frac{1}{2m} \sum_{i,j} \left[ A_{ij} - \gamma \frac{k_i k_j}{2m} \right] \delta(c_i, c_j)
+    \end{equation}
+    Trong đó:
+    \begin{itemize}
+        \item $A_{ij}$: Trọng số cạnh giữa nút $i$ và $j$.
+        \item $k_i = \sum_j A_{ij}$: Bậc của nút $i$.
+        \item $m = \frac{1}{2} \sum_{ij} A_{ij}$: Tổng trọng số các cạnh.
+        \item $\gamma$: Tham số độ phân giải (Resolution parameter).
+        \item $\delta(c_i, c_j) = 1$ nếu $i, j$ cùng cụm $c$, ngược lại bằng $0$.
+    \end{itemize}
+\end{frame}
+
+% Slide 9: Latent space to Cypher AST
+\begin{frame}{3. Hệ biến hóa Neo4j}
+    \framesubtitle{Từ Không gian Tiềm ẩn (Latent Space) đến Cypher AST}
+    Để LLM truy vấn Neo4j, hệ thống dịch truy vấn ngôn ngữ tự nhiên thành Cây cú pháp trừu tượng (AST) của Cypher:
+    
+    Hàm ánh xạ $\Phi: \mathbb{R}^d \rightarrow \mathcal{A}$ (AST space):
+    \begin{equation}
+        \mathcal{L}_{\text{Text2Cypher}} = - \sum_{t=1}^{T} \log P(y_t \mid y_{<t}, \mathbf{q}, \mathcal{G}_{\text{schema}})
+    \end{equation}
+    Với $\mathcal{G}_{\text{schema}}$ là lược đồ đồ thị (Node labels, Relationship types).
+\end{frame}
+
+% Slide 10: PageRank
+\begin{frame}{3. Hệ biến hóa Neo4j}
+    \framesubtitle{Lọc thông tin với PageRank}
+    Đánh giá độ quan trọng của các thực thể trong mạng lưới thông qua PageRank:
+    \begin{equation}
+        PR(v_i) = \frac{1 - d}{N} + d \sum_{v_j \in \text{In}(v_i)} \frac{PR(v_j)}{|\text{Out}(v_j)|}
+    \end{equation}
+    Trong đó:
+    \begin{itemize}
+        \item $d$: Hệ số suy giảm (Damping factor, thường $d=0.85$).
+        \item $\text{In}(v_i)$: Tập các nút trỏ đến $v_i$.
+        \item $\text{Out}(v_j)$: Tập các cạnh xuất phát từ $v_j$.
+    \end{itemize}
+\end{frame}
+
+% Section 4
+\section{Truy xuất Lai (Hybrid Retrieval)}
+
+% Slide 11: Hybrid Retrieval (RRF equation)
+\begin{frame}{4. Truy xuất Lai (Hybrid Retrieval)}
+    \framesubtitle{Kết hợp Vector Search và Graph Search (RRF)}
+    Kết hợp kết quả tìm kiếm thông qua Reciprocal Rank Fusion (RRF):
+    \begin{equation}
+        \text{RRF\_Score}(d) = \sum_{r \in R} \frac{1}{k + \text{rank}_r(d)}
+    \end{equation}
+    Trong đó:
+    \begin{itemize}
+        \item $R$: Tập các bộ truy xuất (ví dụ: Vector DB, Neo4j Graph).
+        \item $\text{rank}_r(d)$: Thứ hạng của tài liệu/thực thể $d$ trong bộ truy xuất $r$.
+        \item $k$: Hằng số làm mịn (thường chọn $k=60$).
+    \end{itemize}
+\end{frame}
+
+% Slide 12: Hybrid Retrieval (Loss function for hyperplanes)
+\begin{frame}{4. Truy xuất Lai (Hybrid Retrieval)}
+    \framesubtitle{Tối ưu hóa Không gian Lai (Loss function for hyperplanes)}
+    Để tinh chỉnh không gian biểu diễn lai, tối ưu hóa các siêu phẳng (hyperplanes) phân tách giữa các tài liệu liên quan ($d^+$) và không liên quan ($d^-$):
+    
+    Hàm mất mát Contrastive Loss (Triplet Loss):
+    \begin{equation}
+        \mathcal{L}_{\text{hybrid}} = \max\left(0, \gamma - d(\mathbf{q}, \mathbf{d}^+) + d(\mathbf{q}, \mathbf{d}^-)\right) + \lambda \|\mathbf{W}_{\text{graph}} \mathbf{h}_{\text{graph}} - \mathbf{h}_{\text{vec}}\|_2^2
+    \end{equation}
+    Trong đó:
+    \begin{itemize}
+        \item $\gamma$: Ngưỡng lề (Margin).
+        \item Thành phần sau: Điều chuẩn căn chỉnh (Alignment regularization) giữa biểu diễn đồ thị $\mathbf{h}_{\text{graph}}$ và véc-tơ $\mathbf{h}_{\text{vec}}$.
+    \end{itemize}
+\end{frame}
+
+% Section 5
+\section{Đánh giá Hiệu năng (Evaluation)}
+
+% Slide 13: Evaluation (GC-NDCG, Faithfulness)
+\begin{frame}{5. Đánh giá Hiệu năng}
+    \framesubtitle{Đo lường Chất lượng Truy xuất (GC-NDCG \& Faithfulness)}
+    \textbf{1. GC-NDCG (Graph-Contextualized NDCG):}
+    Tích hợp khoảng cách đồ thị vào độ lợi phân hạng:
+    \begin{equation}
+        \text{GC-NDCG@k} = \frac{1}{\text{IDCG@k}} \sum_{i=1}^{k} \frac{2^{rel_i} - 1}{\log_2(i + 1)} \cdot \phi(\text{dist}_{\mathcal{G}}(d_i, q))
+    \end{equation}
+    Với $\phi$ là hàm suy giảm theo khoảng cách trên đồ thị $\mathcal{G}$.
+
+    \textbf{2. Độ trung thực (Faithfulness):}
+    Tỷ lệ thông tin sinh ra có thể được minh chứng bởi nguồn:
+    \begin{equation}
+        \text{Faithfulness} = \frac{|E_{\text{generated}} \cap E_{\text{retrieved}}|}{|E_{\text{generated}}|}
+    \end{equation}
+\end{frame}
+
+% Slide 14: Evaluation (KL-Divergence)
+\begin{frame}{5. Đánh giá Hiệu năng}
+    \framesubtitle{Đo lường Hiện tượng Ảo giác (KL-Divergence)}
+    Đánh giá độ lệch giữa phân phối thông tin sinh ra $P(x)$ và phân phối thông tin thực tế từ đồ thị $Q(x)$ bằng Kullback-Leibler Divergence:
+    \begin{equation}
+        D_{KL}(P \parallel Q) = \sum_{x \in \mathcal{X}} P(x) \log \left( \frac{P(x)}{Q(x)} \right)
+    \end{equation}
+    \begin{itemize}
+        \item $D_{KL}$ càng nhỏ, mô hình càng tuân thủ chặt chẽ thông tin từ đồ thị.
+        \item GraphRAG giảm thiểu đáng kể $D_{KL}$ so với Naive RAG, chứng tỏ khả năng hạn chế Hallucination (ảo giác).
+    \end{itemize}
+\end{frame}
+
+% Conclusion
+% Slide 15: Conclusion
+\begin{frame}{Kết luận}
+    \textbf{Tóm tắt đóng góp chính:}
+    \begin{enumerate}
+        \item \textbf{Khắc phục giới hạn:} Giải quyết triệt để hiệu ứng "hình nón hẹp" (narrow cone) của không gian véc-tơ thông qua Cấu trúc Đồ thị.
+        \item \textbf{Khả năng Suy luận đa bước (Multi-hop):} Tận dụng thuật toán Leiden và PageRank trên Neo4j để tổng hợp ngữ cảnh cục bộ và toàn cục.
+        \item \textbf{Truy xuất tối ưu:} Hybrid Search (RRF) kết hợp tính chính xác của Graph và tính linh hoạt của Dense Vector.
+        \item \textbf{Độ tin cậy cao:} Đánh giá qua GC-NDCG và Faithfulness cho thấy GraphRAG giảm đáng kể ảo giác.
+    \end{enumerate}
+    
+    \vspace{0.5cm}
+    \begin{center}
+        \textbf{\Large XIN TRÂN TRỌNG CẢM ƠN QUÝ THẦY CÔ VÀ HỘI ĐỒNG!}
+    \end{center}
+\end{frame}
+
+\end{document}

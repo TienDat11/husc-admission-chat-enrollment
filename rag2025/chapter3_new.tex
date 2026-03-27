@@ -1,0 +1,142 @@
+\section{Thiết kế và Kết quả Thực nghiệm}
+
+\subsection{Thiết kế Thực nghiệm}
+Thực nghiệm được thiết kế để so sánh hiệu suất giữa hai hệ thống truy vấn thông tin: Naive RAG (Retrieval-Augmented Generation cơ bản) và GraphRAG (Graph-based Retrieval-Augmented Generation). Bộ dữ liệu thử nghiệm bao gồm 50 câu hỏi được phân loại theo ba loại chính: câu hỏi đơn giản (simple), câu hỏi đa bước (multihop), và câu hỏi so sánh (comparative). Bảng~\ref{tab:category_breakdown} trình bày phân bố chi tiết theo từng loại câu hỏi.
+
+\begin{table}[htbp]
+\centering
+\caption{Phân bố câu hỏi theo loại}
+\label{tab:category_breakdown}
+\begin{tabular}{lcc}
+\toprule
+Loại câu hỏi & Số lượng & Tỷ lệ (\%) \\
+\midrule
+Đơn giản (simple) & 20 & 40.0 \\
+Đa bước (multihop) & 20 & 40.0 \\
+So sánh (comparative) & 10 & 20.0 \\
+\midrule
+Tổng cộng & 50 & 100.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Môi trường và Cài đặt}
+Thực nghiệm được thực hiện trên hệ thống PaddedRAG hiện tại sử dụng kho lưu trữ vector Qdrant với nhúng BGE-M3 (1024 chiều). Tuy nhiên, quá trình thực nghiệm gặp sự cố kết nối với phiên bản Qdrant đám mây tại địa chỉ \texttt{https://c0fa9bf1-f301-4bad-8743-c20848b726fc.us-east4-0.gcp.cloud.qdrant.io:6333}, dẫn đến lỗi ``Server disconnected without sending response''. Hệ thống hiện tại không tích hợp Neo4j và không có khả năng truy vấn đồ thị, do đó việc triển khai kiến trúc GraphRAG đầy đủ chưa được thực hiện. Các kiểm tra trước thực nghiệm cho thấy: Neo4j không áp dụng (hệ thống không sử dụng Neo4j), Qdrant thất bại (kết nối đến phiên bản Qdrant đám mây thất bại), và PaddedRAG ở trạng thái một phần (cài đặt được tải nhưng kết nối Qdrant thất bại).
+
+\subsection{Mô tả Dữ liệu và Bộ Test}
+Bộ dữ liệu thử nghiệm bao gồm 50 câu hỏi dựa trên thông tin tuyển sinh thực tế từ Đại học Khoa học Huế năm 2025. Bảng~\ref{tab:test_questions_stats} cung cấp thống kê chi tiết về phạm vi và chất lượng của bộ câu hỏi thử nghiệm.
+
+\begin{table}[htbp]
+\centering
+\caption{Thống kê bộ câu hỏi thử nghiệm}
+\label{tab:test_questions_stats}
+\begin{tabular}{lc}
+\toprule
+Chỉ số & Giá trị \\
+\midrule
+Tổng số câu hỏi & 50 \\
+Câu hỏi về chương trình đại học & 5 \\
+Câu hỏi về chính sách tuyển sinh & 15 \\
+Câu hỏi về thông tin chỉ tiêu & 10 \\
+Câu hỏi về phân tích tổ hợp & 10 \\
+Câu hỏi về phân tích so sánh & 10 \\
+Chất lượng dữ liệu & Câu hỏi dựa trên dữ liệu chunked thực tế từ thông tin tuyển sinh HUSC \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Kết quả Định lượng}
+Do sự cố kết nối với Qdrant, tất cả các phép đo định lượng đều không thể thực hiện được. Bảng~\ref{tab:overall_metrics} và Bảng~\ref{tab:metrics_by_category} dưới đây được đánh dấu với chú thích TODO cho thấy các chỉ số không khả dụng.
+
+\begin{table}[htbp]
+\centering
+\caption{Chỉ số hiệu suất tổng thể}
+\label{tab:overall_metrics}
+\begin{tabular}{lcc}
+\toprule
+Chỉ số & Naive RAG & GraphRAG \\
+\midrule
+MRR (Mean Reciprocal Rank) & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ \\
+NDCG (Normalized Discounted Cumulative Gain) & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ \\
+Faithfulness & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ \\
+Độ trễ trung vị (ms) & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ \\
+Độ trễ p95 (ms) & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Chỉ số hiệu suất theo loại câu hỏi}
+\label{tab:metrics_by_category}
+\begin{tabular}{lcccccc}
+\toprule
+Loại & \multicolumn{2}{c}{MRR} & \multicolumn{2}{c}{NDCG} & \multicolumn{2}{c}{Faithfulness} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+câu hỏi & Naive & Graph & Naive & Graph & Naive & Graph \\
+\midrule
+Đơn giản & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ \\
+Đa bước & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ \\
+So sánh & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ & % TODO-BLOCKED: Metric unavailable.
+ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Biểu đồ so sánh hiệu suất MRR/NDCG/Faithfulness và biểu đồ so sánh độ trễ theo loại câu hỏi cũng không thể tạo được do thiếu dữ liệu thực nghiệm.
+
+% TODO-BLOCKED: pgfplots bar chart for MRR/NDCG/Faithfulness comparison - Metrics unavailable.
+% TODO-BLOCKED: pgfplots grouped bar chart for latency by category - Metrics unavailable.
+
+\subsection{Phân tích Trường hợp}
+Mặc dù thực nghiệm không thể chạy được, phân tích trường hợp vẫn được thực hiện dựa trên thiết kế câu hỏi và kiến trúc hệ thống.
+
+\textbf{Trường hợp A: Câu hỏi đa bước tốt nhất.} Câu hỏi ví dụ: ``Ngành nào tại Đại học Khoa học Huế có chỉ tiêu cao nhất năm 2025?'' (ID: Q021). Đây là câu hỏi đa bước yêu cầu so sánh chỉ tiêu giữa các ngành. GraphRAG được kỳ vọng sẽ vượt trội so với Naive RAG nhờ khả năng duyệt đồ thị để so sánh nhiều nút chương trình và xác định ngành có chỉ tiêu cao nhất, trong khi Naive RAG có thể bỏ lỡ phép so sánh giữa các chương trình khác nhau. Tuy nhiên, phân tích thực tế không thể thực hiện do thực nghiệm thất bại.
+
+\textbf{Trường hợp B: Câu hỏi đơn giản.} Câu hỏi ví dụ: ``Ngành Công nghệ thông tin tại Đại học Khoa học Huế có chỉ tiêu bao nhiêu sinh viên năm 2025?'' (ID: Q001). Cả hai hệ thống đều được kỳ vọng hoạt động tốt trên các câu hỏi dựa trên sự kiện đơn giản này, vì thông tin chỉ tiêu có thể được truy xuất dễ dàng từ chunk mô tả chương trình. Phân tích thực tế không thể thực hiện do thực nghiệm thất bại.
+
+\textbf{Trường hợp C: Trường hợp thất bại tiềm năng.} Dựa trên phân tích thiết kế câu hỏi và kiến trúc, không có trường hợp nào được xác định rõ ràng mà GraphRAG sẽ hoạt động kém hơn Naive RAG. Tuy nhiên, các kịch bản thất bại tiềm năng có thể bao gồm: (1) Độ trễ duyệt đồ thị cho các truy vấn đơn giản, (2) Ánh xạ lược đồ đồ thị không chính xác, (3) Lỗi phân giải thực thể. Do thực nghiệm thất bại, các giả thuyết này không thể được xác thực.
+
+\subsection{Thảo luận: Khi nào GraphRAG tốt hơn? Khi nào không?}
+Dựa trên phân tích kiến trúc và thiết kế câu hỏi, GraphRAG được kỳ vọng sẽ vượt trội so với Naive RAG đặc biệt trong các tình huống sau:
+
+\begin{itemize}
+    \item \textbf{Câu hỏi đa bước (multihop):} Khi câu hỏi yêu cầu truy xuất thông tin từ nhiều nguồn hoặc thực hiện các phép so sánh phức tạp giữa các thực thể, khả năng duyệt đồ thị của GraphRAG cho phép nó kết nối các thông tin rời rạc một cách hiệu quả.
+    \item \textbf{Câu hỏi so sánh (comparative):} Khi cần so sánh các thuộc tính giữa các thực thể khác nhau (ví dụ: so sánh chỉ tiêu giữa các ngành), GraphRAG có thể duyệt qua các nút liên quan để thực hiện phép so sánh toàn diện.
+\end{itemize}
+
+Ngược lại, GraphRAG có thể không mang lại lợi thế đáng kể hoặc thậm chí có thể hoạt động kém hơn trong các tình huống sau:
+
+\begin{itemize}
+    \item \textbf{Câu hỏi đơn giản (simple):} Đối với các câu hỏi chỉ yêu cầu truy xuất thông tin từ một nguồn duy nhất, overhead của việc duyệt đồ thị có thể làm tăng độ trễ mà không cải thiện độ chính xác.
+    \item \textbf{Hệ thống chưa được triển khai đầy đủ:} Trong trường hợp cụ thể của hệ thống hiện tại, GraphRAG chưa được triển khai vì thiếu tích hợp Neo4j, do đó không thể so sánh hiệu suất thực tế.
+\end{itemize}
+
+Tuy nhiên, do thực nghiệm thất bại vì sự cố kết nối Qdrant, tất cả các kỳ vọng và giả thuyết trên vẫn chưa được xác thực bằng dữ liệu thực nghiệm. Để có kết luận chính xác, cần khắc phục các vấn đề cơ sở hạ tầng và thực hiện lại thực nghiệm.

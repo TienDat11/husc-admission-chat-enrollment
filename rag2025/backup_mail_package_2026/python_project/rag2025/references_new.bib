@@ -1,0 +1,112 @@
+% Phase 1A Research Results - Technical References for RAG and Knowledge Graph Papers
+% Generated: 2026-02-22
+
+% ===========================================================================
+% [L1] HippoRAG — Gutierrez et al. 2024 — arXiv:2405.14831
+% ===========================================================================
+KEY: gutierrez2024hipporag
+BIBTEX:
+@article{gutierrez2024hipporag,
+  title={HippoRAG: Neurobiologically Inspired Long-Term Memory for Large Language Models},
+  author={Guti{\'e}rrez, Bernal Jim{\'e}nez and Shu, Yiheng and Gu, Yu and Yasunaga, Michihiro and Su, Yu},
+  journal={arXiv preprint arXiv:2405.14831},
+  year={2024},
+  url={https://arxiv.org/abs/2405.14831}
+}
+CLAIM_1: HippoRAG uses Personalized PageRank (PPR) on knowledge graphs to perform single-step multi-hop retrieval, compressing multiple retrieval hops into one operation by leveraging graph connectivity to find relevant paths across documents.
+CLAIM_2: Compared to iterative retrieval methods like IRCoT, HippoRAG achieves comparable or better performance while being 10-30 times cheaper and 6-13 times faster, demonstrating 20% improvement over state-of-the-art methods on multi-hop question answering.
+
+% ===========================================================================
+% [L2] LightRAG — He et al. 2024 — arXiv:2410.05779
+% ===========================================================================
+KEY: guo2024lightrag
+BIBTEX:
+@article{guo2024lightrag,
+  title={LightRAG: Simple and Fast Retrieval-Augmented Generation},
+  author={Guo, Zirui and Xia, Lianghao and Yu, Yanhua and Ao, Tu and Huang, Chao},
+  journal={arXiv preprint arXiv:2410.05779},
+  year={2024},
+  url={https://arxiv.org/abs/2410.05779}
+}
+CLAIM_1: LightRAG employs a dual-level retrieval system that combines low-level entity retrieval with high-level knowledge discovery, using graph-enhanced text indexing to capture complex inter-dependencies between entities.
+CLAIM_2: The framework includes an incremental update algorithm that ensures timely integration of new data into the graph structure, maintaining system effectiveness in rapidly changing data environments without requiring complete re-indexing.
+
+% ===========================================================================
+% [L3] Pan et al. 2024 — "Unifying Large Language Models and Knowledge Graphs"
+% ===========================================================================
+KEY: pan2024unifying
+BIBTEX:
+@article{pan2024unifying,
+  title={Unifying Large Language Models and Knowledge Graphs: A Roadmap},
+  author={Pan, Shirui and Luo, Linhao and Wang, Yufei and Chen, Chen and Wang, Jiapu and Wu, Xindong},
+  journal={IEEE Transactions on Knowledge and Data Engineering},
+  volume={36},
+  number={7},
+  pages={3580--3599},
+  year={2024},
+  publisher={IEEE},
+  doi={10.1109/TKDE.2024.3352100}
+}
+CLAIM_1: Proposes a comprehensive taxonomy of KG+LLM integration methods organized into three frameworks: KG-enhanced LLMs (incorporating KGs during pre-training/inference), LLM-augmented KGs (using LLMs for KG tasks), and Synergized LLMs+KGs (bidirectional reasoning).
+CLAIM_2: Identifies that structured knowledge from KGs can enhance LLMs' factual accuracy and interpretability, while LLMs can help with KG construction, completion, and text generation, creating a mutually beneficial ecosystem.
+
+% ===========================================================================
+% [L4] Edge et al. 2024 — arXiv:2404.16130 — Section 3 & 4 ONLY
+% ===========================================================================
+KEY: edge2024graphrag
+BIBTEX:
+@article{edge2024graphrag,
+  title={From Local to Global: A Graph RAG Approach to Query-Focused Summarization},
+  author={Edge, Darren and Trinh, Ha and Cheng, Newman and Bradley, Joshua and Chao, Alex and Mody, Apurva and Truitt, Steven and Metropolitansky, Dasha and Ness, Robert Osazuwa and Larson, Jonathan},
+  journal={arXiv preprint arXiv:2404.16130},
+  year={2024},
+  url={https://arxiv.org/abs/2404.16130}
+}
+CLAIM_1: GraphRAG uses community detection algorithms (Leiden algorithm) to identify groups of closely-related entities in the knowledge graph, then pre-generates community summaries that capture thematic relationships within each group.
+CLAIM_2: The system employs a two-stage summarization process: first generating partial responses from individual community summaries, then combining these into a final global summary, enabling comprehensive answers to global questions about entire document corpora.
+
+% ===========================================================================
+% [L5] KGRAG or KG-RAG — survey "knowledge graph RAG survey 2024 2025"
+% ===========================================================================
+KEY: zhu2025graphrag
+BIBTEX:
+@article{zhu2025graphrag,
+  title={Graph-based Approaches and Functionalities in Retrieval-Augmented Generation: A Comprehensive Survey},
+  author={Zhu, Zulun and Huang, Tiancheng and Wang, Kai and Ye, Junda and Chen, Xinghe and Luo, Siqiang},
+  journal={arXiv preprint arXiv:2504.10499},
+  year={2025},
+  url={https://arxiv.org/abs/2504.10499}
+}
+CLAIM_1: Provides a systematic taxonomy of graph retrieval strategies in RAG, categorizing them into graph-based indexing, graph-guided retrieval, and graph-enhanced generation, with specific algorithms for each stage.
+CLAIM_2: Identifies key failure modes including semantic mishits (retrieving unrelated but similar content), context fragmentation (missing connections between related documents), and scalability challenges with large knowledge graphs.
+
+% ===========================================================================
+% [L6] Entity Resolution in NLP — "entity resolution neural 2023 2024"
+% ===========================================================================
+KEY: tran2024vietnamese
+BIBTEX:
+@inproceedings{tran2024vietnamese,
+  title={Coreference Resolution for Vietnamese Narrative Texts},
+  author={Tran, Hieu-Dai and Nguyen, Duc-Vu and Nguyen, Ngan Luu-Thuy},
+  booktitle={Proceedings of the Pacific Asia Conference on Language, Information and Computation},
+  pages={139--148},
+  year={2024},
+  organization={ACL}
+}
+CLAIM_1: Demonstrates that GPT-4 significantly outperforms GPT-3.5-Turbo on Vietnamese coreference resolution tasks, achieving higher accuracy and consistency in identifying entity mentions and their relationships in low-resource languages.
+CLAIM_2: For Vietnamese abbreviation resolution (e.g., "ĐHKH" = "Đại Học Khoa Học"), the approach involves building comprehensive entity dictionaries and using contextual similarity measures to map abbreviated forms to their full entity representations.
+
+% ===========================================================================
+% [L7] Essential GraphRAG — Neo4j 2024
+% ===========================================================================
+KEY: neo4j2024essential
+BIBTEX:
+@misc{neo4j2024essential,
+  title={Essential GraphRAG: Building Knowledge Graphs for Retrieval-Augmented Generation},
+  author={{Neo4j}},
+  year={2024},
+  url={https://neo4j.com/developer-blog/graph-rag-retrieval-augmented-generation/},
+  note={Neo4j Developer Blog}
+}
+CLAIM_1: Provides practical guidance for building knowledge graphs specifically for RAG applications, including schema design, entity extraction, and relationship modeling.
+CLAIM_2: Recommends key node labels like \texttt{__Entity__}, \texttt{__Chunk__}, and \texttt{__Community__} with specific properties and relationship types optimized for GraphRAG workflows.

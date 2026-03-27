@@ -1,0 +1,16 @@
+{
+  "Context7": {
+    "type": "http",
+    "url": "https://mcp.fastmcp.me/1004a246-7431-4367-a9e5-6625c551109a/5/mcp?fastmcp_gateway_key=TyebTH7qktNXEOCE2HCGTI-3p9qIt06XcKAkSjLyccE",
+    "includeTools": ["resolve-library-id", "query-docs"]
+  },
+  "exa": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "exa-mcp-server"],
+    "env": {
+      "EXA_API_KEY": "${EXA_API_KEY}"
+    },
+    "includeTools": ["web_search_exa", "get_code_context_exa", "search_and_contents"]
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RAGChunk",
+  "description": "JSON Schema for RAG chunk validation (2025 spec)",
+  "type": "object",
+  "required": ["id", "doc_id", "chunk_id", "text", "metadata"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique chunk identifier",
+      "minLength": 1
+    },
+    "doc_id": {
+      "type": "string",
+      "description": "Parent document identifier",
+      "minLength": 1
+    },
+    "chunk_id": {
+      "type": "integer",
+      "description": "Sequential chunk index within document",
+      "minimum": 0
+    },
+    "text": {
+      "type": "string",
+      "description": "Chunk text content",
+      "minLength": 10
+    },
+    "text_plain": {
+      "type": "string",
+      "description": "Plain-text version (optional)"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Human-readable summary (optional)"
+    },
+    "vector": {
+      "type": "array",
+      "description": "Dense embedding vector (must be 768-dim for e5-small-v2)",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 768,
+      "maxItems": 768
+    },
+    "sparse_terms": {
+      "type": "array",
+      "description": "BM25 sparse terms for hybrid search",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Document metadata",
+      "required": ["source"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Document source identifier"
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Effective date (ISO 8601)"
+        },
+        "info_type": {
+          "type": "string",
+          "description": "Information category"
+        },
+        "audience": {
+          "type": "string",
+          "description": "Target audience"
+        },
+        "unit": {
+          "type": "string",
+          "description": "Organizational unit"
+        },
+        "year": {
+          "type": "integer",
+          "description": "Year of publication"
+        },
+        "expired": {
+          "type": "boolean",
+          "description": "Whether document is expired"
+        },
+        "valid_until": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Expiration timestamp (ISO 8601)"
+        },
+        "faq_type": {
+          "type": "string",
+          "description": "FAQ category (if applicable)"
+        },
+        "citations": {
+          "type": "array",
+          "description": "Citation references",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "breadcrumbs": {
+      "type": "array",
+      "description": "Hierarchical context path (e.g., ['Chapter 1', 'Section 2'])",
+      "items": {
+        "type": "string"
+      }
+    },
+    "prev_chunk_id": {
+      "type": "string",
+      "description": "Previous chunk ID for context stitching"
+    },
+    "next_chunk_id": {
+      "type": "string",
+      "description": "Next chunk ID for context stitching"
+    }
+  }
+}

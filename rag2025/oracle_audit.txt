@@ -1,0 +1,114 @@
+# PaddedRAG Architecture Audit Report
+
+## [ARCH] Current PaddedRAG Architecture
+
+### Retriever
+- **Primary**: HybridRetriever (services/retriever.py:24) - Dense + Sparse + Reranking
+- **Components**:
+  - Dense Search: Vector similarity using BGE-M3 (1024-dim)
+  - Sparse Search: BM25 with Vietnamese tokenization
+  - Fusion: Reciprocal Rank Fusion (RRF) with weights (dense=0.6, sparse=0.4)
+  - Reranker: BAAI/bge-reranker-base cross-encoder
+
+### Reranker
+- **Model**: BAAI/bge-reranker-base (config/settings.py:48)
+- **Usage**: Applied to top 50 candidates after RRF fusion
+
+### LLM
+- **Primary**: GLM-4.5 (Z.AI) via ZaiClient (services/llm_generator.py:44)
+- **Fallback**: Groq Llama 3.1 70B (services/llm_generator.py:57)
+- **Generation**: Anti-redundancy optimized prompt (50-120 words target)
+
+## [NEO4J] Neo4j Connection
+- **Status**: NO Neo4j integration found in current architecture
+- **Note**: Only reference found in download_pdf.py:4 (downloads Neo4j GraphRAG PDF)
+- **Authentication**: Not applicable
+- **Database**: Not applicable
+
+## [DATA] Chunked JSONL Loading & Indexing
+
+### File Loading
+- **Pattern**: chunked_*.jsonl files (scripts/ingest_all_chunks.py:67)
+- **Location**: data/chunked/ directory
+- **Processing**: All JSONL files processed except "enhanced" files
+
+### Indexing Pipeline
+1. **Chunking**: Adaptive chunker with profiles (auto, faq, policy)
+2. **Embedding**: BGE-M3 model (1024-dim) with normalization
+3. **Storage**: Qdrant collection with proper payload structure
+4. **Payload Structure**:
+   - text (MANDATORY)
+   - source
+   - chunk_id
+   - metadata (nested)
+   - faq_type (root level)
+
+## [EVAL] Existing Evaluation Code
+
+### Current Status
+- **NO** evaluation code found for MRR/NDCG metrics
+- **NO** existing metric functions in codebase
+- **Testing**: Only unit tests for Qdrant retrieval (tests/test_qdrant_retrieval.py)
+
+### Debug Tools
+- **debug_rag_hallucination.py**: Manual verification tool for program count queries
+- **Verification Checklist**:
+  - Are all listed majors in retrieved chunks?
+  - Does count match number of program chunks?
+  - Any blacklisted majors mentioned?
+
+## [MISSING] Code Required for MRR/NDCG Evaluation
+
+### BLOCKING Issues
+1. **No Evaluation Dataset**: Need labeled query-document pairs
+2. **No Metric Functions**: Missing MRR, NDCG, Precision@K implementations
+3. **No Ground Truth**: No relevance judgments for queries
+4. **No Evaluation Pipeline**: No framework to run batch evaluation
+
+### Required Components
+- **MRR Function**: Mean Reciprocal Rank calculation
+- **NDCG Function**: Normalized Discounted Cumulative Gain
+- **Precision@K**: Precision at different K values
+- **Evaluation Dataset**: Query-relevant document pairs
+- **Batch Evaluation**: Script to run evaluation across queries
+
+## [QDRANT] Qdrant Configuration
+
+### Collection Details
+- **Collection Name**: rag2025 (config/settings.py:75)
+- **Vector Dimension**: 1024 (BGE-M3 compatible)
+- **Distance Metric**: Cosine
+- **Status**: Multi-vector ready architecture
+
+### Connection Details
+- **URL**: http://localhost:6333 (config/settings.py:73)
+- **API Key**: Optional (config/settings.py:74)
+- **API Compliance**: Phase 7 - query_points() API ONLY (no search/search_batch)
+
+### Payload Schema
+```json
+{
+  "text": "string",           // MANDATORY
+  "source": "string",
+  "chunk_id": "string",
+  "metadata": {
+    "title": "string",
+    "language": "string",
+    "created_at": "string"
+  },
+  "faq_type": "string"        // Root level for filtering
+}
+```
+
+## CRITICAL BLOCKING ISSUES
+
+1. **[BLOCKING] No Evaluation Framework**: Cannot run MRR/NDCG evaluation without metric functions
+2. **[BLOCKING] No Ground Truth Data**: Need labeled query-document relevance pairs
+3. **[BLOCKING] No Evaluation Pipeline**: Missing batch evaluation infrastructure
+
+## Recommendations
+
+1. **Create metric_functions.py** with MRR, NDCG, Precision@K implementations
+2. **Build evaluation dataset** with query-document relevance judgments
+3. **Implement evaluation pipeline** to run batch evaluation across queries
+4. **Add evaluation endpoints** to main API for systematic testing

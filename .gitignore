@@ -225,3 +225,7 @@ rag2025/nul
 # OS files
 .DS_Store
 Thumbs.db
+.gitnexus
+
+# Autodev workflow state (runtime, not committed)
+.workflow/

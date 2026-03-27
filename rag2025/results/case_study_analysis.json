@@ -1,0 +1,81 @@
+{
+  "experiment_status": "FAILED",
+  "reason": "Qdrant connectivity issues - Server disconnected without sending response",
+  "preflight_check_summary": {
+    "neo4j": "N/A (system doesn't use Neo4j)",
+    "qdrant": "FAILED - Connection failed to cloud Qdrant instance",
+    "paddedrag": "PARTIAL - Settings load but Qdrant connectivity fails"
+  },
+  "case_studies": {
+    "CASE_A": {
+      "description": "Best multi-hop question where GraphRAG would outperform Naive RAG",
+      "status": "EXPERIMENT_FAILED",
+      "expected_performance": "GraphRAG should significantly outperform Naive RAG on multi-hop questions due to graph traversal capabilities",
+      "example_question": {
+        "id": "Q021",
+        "question": "Ngành nào tại Đại học Khoa học Huế có chỉ tiêu cao nhất năm 2025?",
+        "category": "multihop",
+        "required_hops": 2,
+        "ground_truth_answer": "Ngành Công nghệ thông tin (Cử nhân) tại Đại học Khoa học Huế có chỉ tiêu cao nhất với 510 sinh viên năm 2025.",
+        "expected_graphrag_advantage": "GraphRAG would traverse multiple program nodes to compare quotas and identify the highest one, while Naive RAG might miss the comparison across different programs."
+      },
+      "analysis": "EXPERIMENT_FAILED - Cannot run actual comparison due to Qdrant connectivity issues"
+    },
+    "CASE_B": {
+      "description": "Simple question where both systems should perform well",
+      "status": "EXPERIMENT_FAILED",
+      "expected_performance": "Both systems should perform well on simple fact-based questions",
+      "example_question": {
+        "id": "Q001",
+        "question": "Ngành Công nghệ thông tin tại Đại học Khoa học Huế có chỉ tiêu bao nhiêu sinh viên năm 2025?",
+        "category": "simple",
+        "required_hops": 1,
+        "ground_truth_answer": "Ngành Công nghệ thông tin tại Đại học Khoa học Huế có chỉ tiêu 510 sinh viên năm 2025.",
+        "expected_performance": "Both systems should easily retrieve the exact quota information from the program description chunk."
+      },
+      "analysis": "EXPERIMENT_FAILED - Cannot run actual comparison due to Qdrant connectivity issues"
+    },
+    "CASE_C": {
+      "description": "Failure case where GraphRAG might perform worse than Naive RAG",
+      "status": "EXPERIMENT_FAILED",
+      "expected_performance": "No such case identified - GraphRAG should perform equal or better in all scenarios",
+      "analysis": "Based on the test question design and architecture analysis, GraphRAG should not perform worse than Naive RAG on any question. However, potential failure scenarios could include: 1) Graph traversal overhead for simple queries, 2) Incorrect graph schema mapping, 3) Entity resolution errors. Since the experiment failed, we cannot validate these hypotheses."
+    }
+  },
+  "infrastructure_analysis": {
+    "system_architecture": {
+      "current_system": "PaddedRAG with Qdrant vector store",
+      "graphrag_implementation_status": "Not implemented - System uses traditional vector retrieval without graph capabilities",
+      "neo4j_integration": "No Neo4j integration found in current architecture",
+      "vector_store": "Qdrant with BGE-M3 embeddings (1024-dim)"
+    },
+    "connectivity_issues": {
+      "qdrant_url": "https://c0fa9bf1-f301-4bad-8743-c20848b726fc.us-east4-0.gcp.cloud.qdrant.io:6333",
+      "error": "Server disconnected without sending response",
+      "collection": "hue_admissions_2025",
+      "status": "Connection failed - Cloud Qdrant instance unreachable"
+    },
+    "recommendations": [
+      "Verify Qdrant cloud instance status and credentials",
+      "Check network connectivity to cloud Qdrant endpoint",
+      "Consider using local Qdrant instance for testing",
+      "Implement GraphRAG architecture with Neo4j integration for proper comparison"
+    ]
+  },
+  "test_dataset_analysis": {
+    "total_questions": 50,
+    "category_breakdown": {
+      "simple": 20,
+      "multihop": 20,
+      "comparative": 10
+    },
+    "question_coverage": {
+      "university_programs": 5,
+      "admission_policies": 15,
+      "quota_information": 10,
+      "combination_analysis": 10,
+      "comparative_analysis": 10
+    },
+    "data_quality": "Questions based on actual chunked data from HUSC admission information, ensuring realistic ground truth"
+  }
+}

@@ -1,0 +1,610 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Brand Colors - ĐHKH Huế Blue/Purple */
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 217 91% 70%;
+    --primary-dark: 217 91% 50%;
+    
+    /* Secondary - Vibrant Purple */
+    --secondary: 262 83% 58%;
+    --secondary-foreground: 0 0% 100%;
+    
+    /* Accent - Bright Teal */
+    --accent: 173 80% 40%;
+    --accent-foreground: 0 0% 100%;
+    
+    /* Background - Clean white */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    
+    /* Muted */
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    
+    /* Border & Input */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 217 91% 60%;
+    
+    /* Semantic */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(262 83% 58%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(262 83% 58%) 50%, hsl(173 80% 40%) 100%);
+    
+    /* Shadows - Locket style bold shadows */
+    --shadow-card: 0 4px 0 hsl(220 13% 91%);
+    --shadow-card-hover: 0 6px 0 hsl(220 13% 85%);
+    --shadow-elevated: 0 8px 0 hsl(217 91% 50%);
+    --shadow-glow: 0 0 40px hsl(217 91% 60% / 0.3);
+    
+    /* Sidebar */
+    --sidebar-background: 220 14% 98%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 94%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217 91% 60%;
+    
+    /* Chat - Locket style */
+    --chat-bot: 220 14% 96%;
+    --chat-bot-foreground: 222 47% 11%;
+    --chat-user: 217 91% 60%;
+    --chat-user-foreground: 0 0% 100%;
+    
+    --radius: 1.25rem;
+  }
+
+  .dark {
+    /* Dark mode - Bold and vibrant */
+    --primary: 217 91% 65%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 217 91% 75%;
+    --primary-dark: 217 91% 55%;
+    
+    --secondary: 262 83% 65%;
+    --secondary-foreground: 0 0% 100%;
+    
+    --accent: 173 80% 50%;
+    --accent-foreground: 0 0% 100%;
+    
+    /* Background - Deep dark */
+    --background: 222 47% 8%;
+    --foreground: 210 40% 98%;
+    
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    
+    /* Muted */
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    
+    /* Border & Input */
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 217 91% 65%;
+    
+    /* Sidebar */
+    --sidebar-background: 222 47% 10%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 217 91% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 33% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 22%;
+    
+    /* Chat */
+    --chat-bot: 217 33% 15%;
+    --chat-bot-foreground: 210 40% 98%;
+    --chat-user: 217 91% 60%;
+    --chat-user-foreground: 0 0% 100%;
+    
+    /* Shadows - Bold in dark */
+    --shadow-card: 0 4px 0 hsl(217 33% 12%);
+    --shadow-card-hover: 0 6px 0 hsl(217 33% 8%);
+    --shadow-elevated: 0 8px 0 hsl(217 91% 40%);
+    --shadow-glow: 0 0 60px hsl(217 91% 60% / 0.25);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer components {
+  /* Gradient Text */
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-primary);
+  }
+  
+  .gradient-text-hero {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-hero);
+  }
+
+  /* Locket style background */
+  .mesh-gradient-bg {
+    background: hsl(var(--background));
+  }
+  
+  .dark .mesh-gradient-bg {
+    background: 
+      radial-gradient(at 0% 0%, hsl(217 91% 60% / 0.08) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, hsl(262 83% 58% / 0.08) 0px, transparent 50%),
+      hsl(var(--background));
+  }
+
+  /* Glassmorphism */
+  .glass {
+    @apply bg-background/80 backdrop-blur-xl border border-border/50;
+  }
+  
+  .glass-dark {
+    background: hsl(var(--background) / 0.6);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid hsl(var(--border) / 0.3);
+  }
+  
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-xl border border-border/50 rounded-2xl;
+    box-shadow: var(--shadow-card);
+  }
+  
+  .glass-sidebar {
+    @apply backdrop-blur-xl border-r;
+    background: hsl(var(--sidebar-background) / 0.85);
+    border-color: hsl(var(--sidebar-border) / 0.5);
+  }
+  
+  .dark .glass-sidebar {
+    background: hsl(var(--sidebar-background) / 0.9);
+    border-color: hsl(var(--border) / 0.3);
+  }
+
+  /* Locket-style Chat Bubbles - Bold, blocky, playful */
+  .chat-bubble-bot {
+    @apply rounded-3xl px-5 py-4 max-w-[85%];
+    background: hsl(var(--chat-bot));
+    border: 3px solid hsl(var(--border));
+    color: hsl(var(--chat-bot-foreground));
+    box-shadow: var(--shadow-card);
+    transition: all 0.2s ease;
+  }
+  
+  .chat-bubble-bot:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+  }
+  
+  .dark .chat-bubble-bot {
+    border: 3px solid hsl(var(--border));
+  }
+  
+  .chat-bubble-user {
+    @apply rounded-3xl px-5 py-4 max-w-[85%];
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+    color: hsl(var(--chat-user-foreground));
+    border: 3px solid hsl(var(--primary-dark));
+    box-shadow: 0 4px 0 hsl(var(--primary-dark));
+    transition: all 0.2s ease;
+  }
+  
+  .chat-bubble-user:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 hsl(var(--primary-dark));
+  }
+
+  /* Glow Effects */
+  .glow-primary {
+    box-shadow: var(--shadow-glow);
+  }
+  
+  .glow-button {
+    box-shadow: 0 20px 60px hsl(217 91% 60% / 0.4);
+  }
+
+  /* Animated Gradient Background - Vibrant blue/purple */
+  .animated-gradient-bg {
+    background: linear-gradient(
+      -45deg,
+      hsl(217 91% 55%),
+      hsl(262 83% 58%),
+      hsl(173 80% 45%),
+      hsl(217 91% 60%)
+    );
+    background-size: 400% 400%;
+    animation: gradient-shift 20s ease infinite;
+  }
+  
+  /* Locket-style Card */
+  .locket-card {
+    @apply rounded-3xl p-5 border-3 transition-all duration-200;
+    background: hsl(var(--card));
+    border: 3px solid hsl(var(--border));
+    box-shadow: var(--shadow-card);
+  }
+  
+  .locket-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-card-hover);
+  }
+  
+  .locket-card-primary {
+    @apply rounded-3xl p-5 transition-all duration-200;
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+    border: 3px solid hsl(var(--primary-dark));
+    box-shadow: 0 4px 0 hsl(var(--primary-dark));
+    color: white;
+  }
+  
+  .locket-card-primary:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 0 hsl(var(--primary-dark));
+  }
+  
+  /* Locket-style Button */
+  .locket-btn {
+    @apply px-6 py-3 rounded-2xl font-bold text-base transition-all duration-200;
+    background: hsl(var(--muted));
+    border: 3px solid hsl(var(--border));
+    box-shadow: 0 4px 0 hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+  
+  .locket-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 hsl(var(--border));
+  }
+  
+  .locket-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 hsl(var(--border));
+  }
+  
+  .locket-btn-primary {
+    @apply px-6 py-3 rounded-2xl font-bold text-base transition-all duration-200;
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+    border: 3px solid hsl(var(--primary-dark));
+    box-shadow: 0 4px 0 hsl(var(--primary-dark));
+    color: white;
+  }
+  
+  .locket-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 hsl(var(--primary-dark));
+  }
+  
+  .locket-btn-primary:active {
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 hsl(var(--primary-dark));
+  }
+
+  /* Custom Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+
+  /* Skeleton Shimmer Effect */
+  .skeleton {
+    @apply bg-muted rounded-lg;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--muted-foreground) / 0.08) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s infinite ease-in-out;
+  }
+  
+  .dark .skeleton::after {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(217 33% 25% / 0.5) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+  }
+
+  /* Input Enhanced */
+  .input-enhanced {
+    @apply w-full px-5 py-3.5 rounded-2xl bg-muted border-2 border-transparent;
+    @apply focus:border-primary/50 focus:bg-background;
+    @apply resize-none text-[15px] leading-relaxed font-medium;
+    @apply placeholder:text-muted-foreground/70 placeholder:font-normal;
+    @apply transition-all duration-200 outline-none;
+    @apply disabled:opacity-50;
+  }
+  
+  .input-enhanced:focus {
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.1);
+  }
+  
+  .dark .input-enhanced {
+    background: hsl(217 33% 15%);
+    color: hsl(210 40% 98%);
+  }
+  
+  .dark .input-enhanced::placeholder {
+    color: hsl(215 20% 55%);
+  }
+  
+  .dark .input-enhanced:focus {
+    background: hsl(217 33% 12%);
+    border-color: hsl(var(--primary) / 0.6);
+  }
+
+  /* Message Content Styles */
+  .message-content {
+    @apply text-[15px] leading-[1.7] font-medium;
+    letter-spacing: 0.01em;
+  }
+  
+  .message-content ul {
+    @apply list-none pl-0 my-3 space-y-2;
+  }
+  
+  .message-content li {
+    @apply relative pl-7 text-[15px];
+  }
+  
+  .message-content li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.6em;
+    width: 6px;
+    height: 6px;
+    background: hsl(var(--primary));
+    border-radius: 50%;
+  }
+}
+
+@layer utilities {
+  /* Hover Scale */
+  .hover-lift {
+    @apply transition-all duration-300 ease-out;
+  }
+  
+  .hover-lift:hover {
+    @apply -translate-y-1;
+    box-shadow: var(--shadow-elevated);
+  }
+
+  /* Focus Ring */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background;
+  }
+  
+  /* Text readable on any background */
+  .text-readable {
+    text-shadow: 0 1px 2px hsl(0 0% 0% / 0.1);
+  }
+}
+
+/* Keyframe Animations */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) translateX(0);
+  }
+  25% {
+    transform: translateY(-20px) translateX(10px);
+  }
+  50% {
+    transform: translateY(-10px) translateX(-10px);
+  }
+  75% {
+    transform: translateY(-30px) translateX(5px);
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    transform: scale(0.8);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-8px);
+    opacity: 1;
+  }
+}
+
+@keyframes message-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Particle Animation */
+.particle {
+  animation: float 20s ease-in-out infinite;
+}
+
+.particle:nth-child(2n) {
+  animation-delay: -5s;
+  animation-duration: 25s;
+}
+
+.particle:nth-child(3n) {
+  animation-delay: -10s;
+  animation-duration: 30s;
+}
+
+/* Typing Dots */
+.typing-dot {
+  animation: typing-bounce 1.4s ease-in-out infinite;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+/* Hide scrollbar */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Suggested Questions Scroll - Device-aware behavior */
+.suggested-questions-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Touch devices (mobile/tablet): Enable momentum scrolling, hide scrollbar */
+@media (pointer: coarse) {
+  .suggested-questions-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    touch-action: pan-x;
+  }
+  
+  .suggested-questions-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Non-touch devices (desktop): Show subtle scrollbar for scroll indication */
+@media (pointer: fine) {
+  .suggested-questions-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  
+  .suggested-questions-scroll::-webkit-scrollbar {
+    height: 6px;
+  }
+  
+  .suggested-questions-scroll::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 3px;
+  }
+  
+  .suggested-questions-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+    transition: background 0.2s ease;
+  }
+  
+  .suggested-questions-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+}
+
+/* Message appear animation */
+.message-appear {
+  animation: message-slide-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
