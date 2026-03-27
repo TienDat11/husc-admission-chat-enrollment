@@ -100,12 +100,7 @@ def ingest_lancedb() -> bool:
         )
 
     db = lancedb.connect(settings.LANCEDB_URI)
-    existing_tables = db.list_tables()
-    if settings.LANCEDB_TABLE in existing_tables:
-        table = db.open_table(settings.LANCEDB_TABLE)
-        table.add(records)
-    else:
-        table = db.create_table(settings.LANCEDB_TABLE, data=records)
+    table = db.create_table(settings.LANCEDB_TABLE, data=records, mode="overwrite")
     logger.info(
         f"Ingest complete: table={settings.LANCEDB_TABLE}, rows={table.count_rows()}, uri={settings.LANCEDB_URI}"
     )
