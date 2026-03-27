@@ -6,6 +6,10 @@ Generate final answer from retrieved chunks using:
 - Groq Llama 3.1 (fallback - FREE)
 - Anti-redundancy optimized prompt (50-120 words target)
 """
+# Ensure .env is loaded before reading env vars (handles uvicorn subprocess context)
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 from pathlib import Path
 from typing import List, Dict, Any

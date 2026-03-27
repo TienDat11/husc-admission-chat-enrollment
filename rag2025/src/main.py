@@ -7,17 +7,17 @@ Main API service with:
 - LLM answer generation (Generation Layer)
 - CORS support for UI connection
 """
+# CRITICAL: Load .env BEFORE any imports that use env vars
+from dotenv import load_dotenv
+load_dotenv()
+
 import sys
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
-from dotenv import load_dotenv
 from collections import defaultdict, deque
 from asyncio import Lock
 import time
-
-# Load .env file
-load_dotenv()
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
