@@ -20,10 +20,6 @@ Usage:
 """
 from __future__ import annotations
 
-# Load .env before any service imports (env vars needed by llm_client.py)
-from dotenv import load_dotenv
-load_dotenv()
-
 import argparse
 import asyncio
 import json
@@ -33,6 +29,9 @@ from pathlib import Path
 from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Load .env before any service imports (env vars needed by llm_client.py)
+from src.config import env_loader  # noqa: F401
 
 from src.domain.entities import Chunk
 from src.domain.graph import KnowledgeGraph, KnowledgeGraphBuilder

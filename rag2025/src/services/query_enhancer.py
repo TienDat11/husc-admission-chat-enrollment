@@ -8,10 +8,6 @@ Hypothetical Document Embeddings (HYDE):
 - Auto-estimate top_k based on query complexity
 - Handles Vietnamese slang/abbreviations (đcm, hp, CNTT...)
 """
-# Load .env before any imports that read env vars
-from dotenv import load_dotenv
-load_dotenv()
-
 import os
 import json
 from pathlib import Path

@@ -7,13 +7,16 @@ Main API service with:
 - LLM answer generation (Generation Layer)
 - CORS support for UI connection
 """
-# CRITICAL: Load .env BEFORE any imports that use env vars
-from dotenv import load_dotenv
-load_dotenv()
-
 import sys
 import os
 from pathlib import Path
+
+# Add parent to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
+# CRITICAL: Load .env BEFORE any imports that use env vars
+import config.env_loader  # noqa: F401
+
 from typing import Any, Dict, List, Literal, Optional
 from collections import defaultdict, deque
 from asyncio import Lock
@@ -24,9 +27,6 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from pydantic import BaseModel, Field
-
-# Add parent to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
 
 # Import new services
 from services.query_enhancer import query_enhancer
