@@ -5,6 +5,7 @@ Performs strict validation before server startup:
 1. Configuration integrity check (embedding dimensions)
 2. LanceDB connectivity
 3. Data availability
+4. LLM provider readiness (full vs degraded mode)
 
 Exit codes:
 - 0: All checks passed
@@ -18,7 +19,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
-from config.settings import RAGSettings, settings
+from config.settings import RAGSettings
 from services.vector_store import NumpyVectorStore
 
 # ANSI color codes for Windows
@@ -119,7 +120,8 @@ def check_lancedb_connectivity() -> bool:
         if not adapter.table_exists():
             print_warning(f"Table '{config.LANCEDB_TABLE}' not found. Attempting bootstrap from legacy index...")
             import subprocess
-            result = subprocess.run([sys.executable, "scripts/bootstrap_lancedb.py"], check=False)
+            bootstrap_script = project_root / "scripts" / "bootstrap_lancedb.py"
+            result = subprocess.run([sys.executable, str(bootstrap_script)], cwd=str(project_root), check=False)
             if result.returncode != 0:
                 print_error(f"Table '{config.LANCEDB_TABLE}' not found")
                 print_error("Run: python scripts/ingest_lancedb.py")
@@ -202,6 +204,45 @@ def check_data_availability() -> bool:
         return False
 
 
+def check_llm_readiness() -> bool:
+    """
+    Check 4: LLM Provider Readiness
+
+    Verifies runtime generation provider availability without forcing startup crash.
+
+    Returns:
+        True. Missing providers are reported as degraded-mode warnings.
+    """
+    print_header("CHECK 4: LLM Provider Readiness")
+
+    try:
+        config = RAGSettings()
+
+        providers = []
+        if config.RAMCLOUDS_API_KEY or config.OPENAI_API_KEY:
+            model = getattr(config, "RAMCLOUDS_MODEL", "") or "(default model)"
+            providers.append(f"ramclouds/openai-compat [{model}]")
+        if config.GROQ_API_KEY:
+            providers.append("groq")
+        if config.ZAI_API_KEY:
+            providers.append("zai/glm")
+
+        if providers:
+            print_success(f"Generation providers configured: {', '.join(providers)}")
+            print("")
+            return True
+
+        print_warning("No generation provider key found (RAMCLOUDS_API_KEY/OPENAI_API_KEY/GROQ_API_KEY/ZAI_API_KEY)")
+        print_warning("API can still boot for /docs and health checks, but answer generation may run in degraded fallback mode.")
+        print_warning("Set at least one provider key for full generation quality.")
+        print("")
+        return True
+
+    except Exception as e:
+        print_error(f"LLM readiness check error: {e}")
+        return True
+
+
 def main():
     """Run all preflight checks."""
     print_header("RAG Lab Preflight Checks")
@@ -212,6 +253,7 @@ def main():
         "Configuration": check_configuration(),
         "LanceDB": check_lancedb_connectivity(),
         "Data": check_data_availability(),
+        "LLM": check_llm_readiness(),
     }
     
     # Summary

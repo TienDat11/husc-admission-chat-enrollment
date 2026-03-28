@@ -47,7 +47,8 @@ def bootstrap_lancedb() -> int:
     settings = RAGSettings()
 
     db = lancedb.connect(settings.LANCEDB_URI)
-    if settings.LANCEDB_TABLE in db.list_tables():
+    existing_tables = set(db.table_names())
+    if settings.LANCEDB_TABLE in existing_tables:
         logger.info(f"LanceDB table exists: {settings.LANCEDB_TABLE}")
         return 0
 

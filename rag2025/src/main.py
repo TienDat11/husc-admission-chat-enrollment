@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 # Import new services
 from services.query_enhancer import query_enhancer
 from services.lancedb_retrieval import get_retriever, LanceDBRetrieverConfig
-from services.llm_generator import llm_generator
+from services.llm_generator import get_llm_generator
 from services.reranker import RerankerService
 from services.query_cache import QueryCache
 from services.guardrail import GuardrailService
@@ -270,7 +270,7 @@ async def startup_event():
                 lancedb_retriever_service = None
 
         logger.info("Initializing LLM Generator...")
-        llm_generator_service = llm_generator
+        llm_generator_service = get_llm_generator()
 
         logger.info("Initializing Reranker Service...")
         reranker_service = RerankerService(settings)
@@ -347,7 +347,7 @@ async def root():
             "Qwen3 multilingual retrieval",
             "Score boosting for near-matches",
             "LanceDB embedded vector store",
-            "Multi-LLM fallback (Gemini → GLM-4 → Groq)"
+            "Multi-LLM fallback (ramclouds/gemini → Groq → compat)"
         ],
         "endpoints": {
             "POST /query": "Main RAG query endpoint (simple string input)",

@@ -2,31 +2,35 @@
 LLM Answer Generation Service (Generation Layer)
 
 Generate final answer from retrieved chunks using:
-- GLM-4.5 (Z.AI) - Smartest (NEW!)
-- Groq Llama 3.1 (fallback - FREE)
-- Anti-redundancy optimized prompt (50-120 words target)
+- UnifiedLLMClient provider chain (ramclouds/gemini primary)
+- Groq / OpenAI-compatible fallbacks via llm_client
+- Optional direct GLM-4.5 (Z.AI) path when available
 """
 import os
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from groq import AsyncGroq
 from tenacity import retry, stop_after_attempt, wait_exponential
 from loguru import logger
+
+from services.llm_client import get_llm_client
 
 try:
     from zai import ZaiClient
     ZAI_AVAILABLE = True
 except ImportError:
     ZAI_AVAILABLE = False
-    logger.warning("zai-sdk not installed. GLM-4.5 will be disabled.")
+    logger.warning("zai-sdk not installed. GLM-4.5 direct path will be disabled.")
 
 
 class LLMGenerator:
     """
-    Generate final answer from retrieved chunks
-    Uses optimized anti-redundancy prompt from prompts/generation_system_prompt.txt
+    Generate final answer from retrieved chunks.
 
-    Priority: GLM-4.5 (Z.AI) → Groq (Llama 3.1)
+    Priority for generation:
+    1) UnifiedLLMClient (ramclouds/gemini primary, with built-in fallbacks)
+    2) Optional direct Z.AI GLM client (if configured)
+    3) Fallback static answer
     """
 
     def __init__(self):
@@ -39,29 +43,32 @@ class LLMGenerator:
             logger.warning(f"Generation prompt not found at {prompt_path}, using fallback")
             self.generation_system_prompt = self._get_fallback_prompt()
 
-        # Configure GLM-4.5 client (Z.AI) - Priority 1
+        # Configure optional direct GLM-4.5 client (Z.AI)
         self.zai_key = os.getenv("ZAI_API_KEY")
         if ZAI_AVAILABLE and self.zai_key:
             self.zai_client = ZaiClient(api_key=self.zai_key)
-            logger.info("GLM-4.5 (Z.AI) client initialized")
+            logger.info("GLM-4.5 (Z.AI) direct client initialized")
         else:
             self.zai_client = None
             if not ZAI_AVAILABLE:
-                logger.warning("zai-sdk not installed, GLM-4.5 disabled")
+                logger.warning("zai-sdk not installed, GLM-4.5 direct path disabled")
             else:
-                logger.warning("ZAI_API_KEY not set, GLM-4.5 disabled")
+                logger.warning("ZAI_API_KEY not set, GLM-4.5 direct path disabled")
 
-        # Configure Groq client (Llama 3.1) - Priority 2 (fallback)
+        # Configure optional direct Groq client
         self.groq_key = os.getenv("GROQ_API_KEY")
         if self.groq_key:
             self.groq_client = AsyncGroq(api_key=self.groq_key)
-            logger.info("Groq (Llama 3.1) client initialized (fallback)")
+            logger.info("Groq direct client initialized")
         else:
             self.groq_client = None
-            logger.warning("GROQ_API_KEY not set, Groq disabled")
+            logger.warning("GROQ_API_KEY not set, Groq direct path disabled")
 
-        if not self.zai_client and not self.groq_client:
-            raise Exception("At least one LLM API key required (ZAI_API_KEY or GROQ_API_KEY)!")
+        # Unified client is the default path; it does not hard-fail if no provider is configured.
+        self.unified_client = get_llm_client()
+
+        # Track runtime readiness for diagnostics/preflight parity
+        self.has_any_provider = bool(self.zai_client or self.groq_client or getattr(self.unified_client, "_providers", []))
 
     def _get_fallback_prompt(self) -> str:
         """Fallback generation prompt if file not found"""
@@ -162,48 +169,62 @@ QUY TẮC ANTI-REDUNDANCY (QUAN TRỌNG):
         # Token limit for different query types
         max_tokens = 2000 if is_program_list_query else 800
 
-        # Priority: Groq (Llama 3.1) → GLM-4.5 (Z.AI)
+        # Priority: UnifiedLLMClient → direct Groq → direct GLM-4.5
         answer = ""
         provider = ""
 
         try:
-            # Try Groq first (Llama 3.3) - Primary
-            if self.groq_client:
-                logger.info("Generation: Using Groq (Llama 3.3)")
+            # Primary path: Unified provider chain (ramclouds/gemini → groq → compat)
+            if getattr(self.unified_client, "_providers", []):
+                logger.info("Generation: Using UnifiedLLMClient provider chain")
+                unified_resp = await self.unified_client.chat(
+                    user_message=f"CONTEXT:\n{context}\n\n---\n\nCÂU HỎI: {query}\n\nHãy trả lời dựa trên context trên. Nếu context có thông tin về học phí (ví dụ: 545.000 VNĐ/tín chỉ), hãy sử dụng số liệu đó.",
+                    system_message=self.generation_system_prompt,
+                    temperature=0.1,
+                    max_tokens=max_tokens,
+                )
+                answer = unified_resp.content.strip()
+                provider = f"{unified_resp.model} ({unified_resp.provider})"
 
-                # Use system + user messages for better instruction following
+            # Secondary: direct Groq path
+            elif self.groq_client:
+                logger.info("Generation: Using direct Groq (Llama 3.3)")
                 response = await self.groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",  # Use Llama 3.3 70B
+                    model="llama-3.3-70b-versatile",
                     messages=[
                         {"role": "system", "content": self.generation_system_prompt},
                         {"role": "user", "content": f"CONTEXT:\n{context}\n\n---\n\nCÂU HỎI: {query}\n\nHãy trả lời dựa trên context trên. Nếu context có thông tin về học phí (ví dụ: 545.000 VNĐ/tín chỉ), hãy sử dụng số liệu đó."}
                     ],
                     temperature=0.1,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
                 )
                 answer = response.choices[0].message.content.strip()
-                provider = "Llama-3.3-70B (Groq)"
+                provider = "Llama-3.3-70B (Groq-direct)"
 
-            # Fallback to GLM-4.5 (Z.AI) if Groq unavailable
+            # Tertiary: direct GLM-4.5 path
             elif self.zai_client:
-                logger.info("Generation: Falling back to GLM-4.5 (Z.AI)")
+                logger.info("Generation: Falling back to direct GLM-4.5 (Z.AI)")
                 response = self.zai_client.chat.completions.create(
                     model="glm-4-32b-0414-128k",
                     messages=[
                         {"role": "user", "content": full_prompt}
                     ],
-                    thinking={"type": "enabled"},  # Enable thinking for better reasoning
+                    thinking={"type": "enabled"},
                     max_tokens=max_tokens,
-                    temperature=0.1
+                    temperature=0.1,
                 )
                 answer = response.choices[0].message.content.strip()
-                provider = "GLM-4.5 (Z.AI)"
+                provider = "GLM-4.5 (Z.AI-direct)"
+
+            else:
+                logger.warning("Generation: No LLM provider configured, using static fallback")
+                answer = "Mình chưa đủ dữ liệu để trả lời chính xác câu này trong cấu hình hiện tại."
+                provider = "Fallback(NoProvider)"
 
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
-            # Fallback: return simple message
             answer = "Tôi không tìm thấy thông tin này trong tài liệu hiện có."
-            provider = "Fallback"
+            provider = "Fallback(Error)"
 
         # Extract sources
         sources = list(set([
@@ -221,7 +242,13 @@ QUY TẮC ANTI-REDUNDANCY (QUAN TRỌNG):
             "provider": provider,
             "chunks_used": chunks_used
         }
+# Lazy singleton instance (avoid import-time hard failures)
+_llm_generator: Optional[LLMGenerator] = None
 
 
-# Global instance
-llm_generator = LLMGenerator()
+def get_llm_generator() -> LLMGenerator:
+    """Get or create singleton LLMGenerator lazily."""
+    global _llm_generator
+    if _llm_generator is None:
+        _llm_generator = LLMGenerator()
+    return _llm_generator

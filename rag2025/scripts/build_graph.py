@@ -3,7 +3,7 @@ Graph Builder Script – Offline Knowledge Graph Construction
 
 Pipeline:
 1. Load JSONL chunks from data/chunked/
-2. Extract entities & triples via NER (gemini-2.5-flash via ramclouds.me/v1)
+2. Extract entities & triples via NER (RAMCLOUDS_MODEL via ramclouds.me/v1)
 3. Build NetworkX MultiDiGraph (schema-versioned, edge-key deduplication)
 4. Save to data/graph/knowledge_graph.graphml + entity_index.json
 
@@ -49,6 +49,7 @@ def load_all_chunks(limit: int = 0) -> list[Chunk]:
     """Load all chunks from JSONL files in data/chunked/."""
     chunks: list[Chunk] = []
     jsonl_files = sorted(CHUNKED_DIR.glob("chunked_*.jsonl"))
+    jsonl_files = [f for f in jsonl_files if "enhanced" not in f.name]
 
     for filepath in jsonl_files:
         with filepath.open(encoding="utf-8") as f:
@@ -154,14 +155,33 @@ async def main(dry_run: bool, limit: int, incremental: bool) -> None:
         logger.info(f"[DRY RUN] Would process {len(chunks)} chunks. Exiting.")
         return
 
-    logger.info(f"Step 1: NER extraction ({len(chunks)} chunks via gemini-2.5-flash)...")
     llm = get_llm_client()
+    providers = getattr(llm, "_providers", [])
+    if not providers:
+        logger.error(
+            "No LLM provider configured for graph build. "
+            "Set RAMCLOUDS_API_KEY (or OPENAI_API_KEY), RAMCLOUDS_BASE_URL, and RAMCLOUDS_MODEL in .env"
+        )
+        raise RuntimeError("Graph build aborted: no LLM provider configured")
+
+    primary = providers[0]
+    logger.info(
+        f"NER provider: {primary.name} | model: {primary.model} | base_url: {primary.base_url}"
+    )
+
     ner = NERService(llm=llm)
+    logger.info(f"Step 1: NER extraction ({len(chunks)} chunks via {primary.model})...")
     results = await ner.extract_batch(chunks)
 
     success = sum(1 for r in results if r.is_success)
     failed = len(results) - success
     logger.info(f"NER: {success} success, {failed} failed")
+
+    if success == 0:
+        raise RuntimeError(
+            "NER extraction failed for all chunks. "
+            "Check provider credentials/model access and rerun graph build."
+        )
 
     logger.info("Step 2: Building knowledge graph...")
     if incremental and GRAPH_PATH.exists():

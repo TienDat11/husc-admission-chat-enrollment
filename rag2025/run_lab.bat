@@ -19,6 +19,18 @@ set "RED=[91m"
 set "BLUE=[94m"
 set "RESET=[0m"
 
+REM Runtime mode
+set "RUN_MODE=%~1"
+if "%RUN_MODE%"=="" set "RUN_MODE=FULL"
+
+if /I not "%RUN_MODE%"=="FULL" if /I not "%RUN_MODE%"=="LIGHT" (
+    echo %RED%[ERROR]%RESET% Invalid mode: %RUN_MODE%
+    echo %RED%[ERROR]%RESET% Usage: run_lab.bat [FULL^|LIGHT]
+    echo.
+    pause
+    exit /b 1
+)
+
 echo.
 echo %BLUE%========================================================================%RESET%
 echo %BLUE%   2025 RAG Lab - Startup Sequence%RESET%
@@ -42,6 +54,7 @@ if not exist "src\main.py" (
 )
 
 echo %GREEN%[OK]%RESET% Found src\main.py - correct directory
+echo %BLUE%[INFO]%RESET% Run mode: %RUN_MODE%
 echo.
 
 REM ========================================================================
@@ -109,15 +122,19 @@ echo %GREEN%[OK]%RESET% Virtual environment activated
 echo.
 
 REM Install/Update dependencies
-echo %BLUE%[INFO]%RESET% Checking dependencies...
-python -m pip install --quiet --upgrade pip
-python -m pip install --quiet -r requirements.txt
-if !errorlevel! neq 0 (
-    echo %RED%[ERROR]%RESET% Failed to install dependencies
-    pause
-    exit /b 1
+if /I "%RUN_MODE%"=="LIGHT" (
+    echo %YELLOW%[WARNING]%RESET% LIGHT mode: skipping dependency reinstall to reduce disk usage
+) else (
+    echo %BLUE%[INFO]%RESET% Checking dependencies...
+    python -m pip install --quiet --upgrade pip
+    python -m pip install --quiet -r requirements.txt
+    if !errorlevel! neq 0 (
+        echo %RED%[ERROR]%RESET% Failed to install dependencies
+        pause
+        exit /b 1
+    )
+    echo %GREEN%[OK]%RESET% Dependencies ready
 )
-echo %GREEN%[OK]%RESET% Dependencies ready
 echo.
 
 REM ========================================================================
@@ -161,7 +178,11 @@ REM Auto-open browser after 5 seconds (in background)
 start /B cmd /c "timeout /t 5 /nobreak >nul && start http://localhost:8000/docs"
 
 REM Start server (logs output naturally to console)
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+if /I "%RUN_MODE%"=="LIGHT" (
+    python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+) else (
+    python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+)
 
 REM If server exits normally
 echo.

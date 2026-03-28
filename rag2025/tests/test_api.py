@@ -1,7 +1,7 @@
 """
 API tests aligned with current FastAPI contract.
 """
-import os
+import importlib
 import sys
 from pathlib import Path
 
@@ -10,15 +10,20 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     """Fixture for FastAPI test client."""
-    os.environ.setdefault("ADMIN_API_TOKEN", "test-admin-token")
-    os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "1000")
+    monkeypatch.setenv("ADMIN_API_TOKEN", "test-admin-token")
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "1000")
+    monkeypatch.setenv("RAMCLOUDS_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    monkeypatch.setenv("ZAI_API_KEY", "")
 
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    from main import app
+    import main
+    importlib.reload(main)
 
-    return TestClient(app)
+    return TestClient(main.app)
 
 
 def test_root_endpoint(client):
@@ -92,3 +97,13 @@ def test_openapi_schema(client):
     assert "paths" in schema
     assert "/query" in schema["paths"]
     assert "/v2/query" in schema["paths"]
+
+
+def test_startup_degraded_mode_still_serves_docs(client):
+    response = client.get("/docs")
+    assert response.status_code == 200
+
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    schema = response.json()
+    assert "/query" in schema["paths"]

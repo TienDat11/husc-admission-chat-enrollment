@@ -2,7 +2,7 @@
 Unified LLM Client – OpenAI-compatible wrapper for ramclouds.me/v1
 
 Single client that wraps ANY OpenAI-compatible endpoint.
-Primary model: gemini-2.5-flash via https://ramclouds.me/v1
+Primary model: configurable via RAMCLOUDS_MODEL (default: gemini-2.5-flash) via https://ramclouds.me/v1
 Fallback chain: GROQ_API_KEY → OPENAI_API_KEY (any provider)
 
 Design principles:
@@ -71,13 +71,13 @@ def _build_providers() -> List[ProviderConfig]:
     """Build ordered provider list from environment variables.
 
     Provider priority (lower = higher priority):
-    0 → RAMCLOUDS (gemini model via ramclouds.me, primary - best quality for NER/GraphRAG)
+    0 → RAMCLOUDS (model from RAMCLOUDS_MODEL, primary - best quality for NER/GraphRAG)
     1 → GROQ (llama-3.1-8b-instant, fallback - free)
     2 → OPENAI_COMPAT (any provider, last resort)
     """
     providers: List[ProviderConfig] = []
 
-    # Primary: ramclouds.me (gemini model — highest quality for NER/GraphRAG)
+    # Primary: ramclouds.me (configurable model — highest quality for NER/GraphRAG)
     ramclouds_key = os.getenv("RAMCLOUDS_API_KEY") or os.getenv("OPENAI_API_KEY")
     ramclouds_url = os.getenv("RAMCLOUDS_BASE_URL", "https://ramclouds.me/v1")
     ramclouds_model = os.getenv("RAMCLOUDS_MODEL", "gemini-2.5-flash")
@@ -121,7 +121,7 @@ def _build_providers() -> List[ProviderConfig]:
 class UnifiedLLMClient:
     """OpenAI-compatible LLM client with automatic provider fallback.
 
-    Primary: gemini-2.5-flash via https://ramclouds.me/v1
+    Primary: model from RAMCLOUDS_MODEL (default gemini-2.5-flash) via https://ramclouds.me/v1
     Fallback: Groq → any OpenAI-compatible endpoint
 
     Usage:

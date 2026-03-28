@@ -18,6 +18,35 @@ set "RED=[91m"
 set "BLUE=[94m"
 set "RESET=[0m"
 
+REM Runtime mode + input path
+set "RUN_MODE="
+set "INPUT_PATH="
+
+if "%~1"=="" (
+    set "RUN_MODE=INCREMENTAL"
+) else if /I "%~1"=="FULL" (
+    set "RUN_MODE=FULL"
+    set "INPUT_PATH=%~2"
+) else if /I "%~1"=="INCREMENTAL" (
+    set "RUN_MODE=INCREMENTAL"
+    set "INPUT_PATH=%~2"
+) else if /I "%~1"=="LIGHT" (
+    set "RUN_MODE=LIGHT"
+    set "INPUT_PATH=%~2"
+) else (
+    REM Backward compatibility: first arg is input path
+    set "RUN_MODE=INCREMENTAL"
+    set "INPUT_PATH=%~1"
+)
+
+if /I not "%RUN_MODE%"=="FULL" if /I not "%RUN_MODE%"=="INCREMENTAL" if /I not "%RUN_MODE%"=="LIGHT" (
+    echo %RED%[ERROR]%RESET% Invalid mode: %RUN_MODE%
+    echo %RED%[ERROR]%RESET% Usage: setup_data.bat [FULL^|INCREMENTAL^|LIGHT] [input_path]
+    echo.
+    pause
+    exit /b 1
+)
+
 echo.
 echo %BLUE%========================================================================%RESET%
 echo %BLUE%   2025 RAG Lab - Data Ingestion Pipeline%RESET%
@@ -29,6 +58,7 @@ REM Step 0: Environment Setup
 REM ========================================================================
 
 echo %BLUE%[STEP 0]%RESET% Setting up environment...
+echo %BLUE%[INFO]%RESET% Mode: %RUN_MODE%
 echo.
 
 REM Check if we're in the correct directory
@@ -82,15 +112,19 @@ call venv\Scripts\activate.bat
 echo %GREEN%[OK]%RESET% Virtual environment activated
 
 REM Ensure dependencies are installed (including lancedb)
-echo %BLUE%[INFO]%RESET% Installing/updating dependencies...
-python -m pip install --quiet --upgrade pip
-python -m pip install --quiet -r requirements.txt
-if !errorlevel! neq 0 (
-    echo %RED%[ERROR]%RESET% Failed to install dependencies
-    pause
-    exit /b 1
+if /I "%RUN_MODE%"=="LIGHT" (
+    echo %YELLOW%[WARNING]%RESET% LIGHT mode: skipping dependency reinstall to reduce disk usage
+) else (
+    echo %BLUE%[INFO]%RESET% Installing/updating dependencies...
+    python -m pip install --quiet --upgrade pip
+    python -m pip install --quiet -r requirements.txt
+    if !errorlevel! neq 0 (
+        echo %RED%[ERROR]%RESET% Failed to install dependencies
+        pause
+        exit /b 1
+    )
+    echo %GREEN%[OK]%RESET% Dependencies ready
 )
-echo %GREEN%[OK]%RESET% Dependencies ready
 
 REM Load .env values if present
 if exist ".env" (
@@ -115,8 +149,8 @@ echo %GREEN%[OK]%RESET% Directories ready
 echo.
 
 REM Check for input path (supports file or directory)
-set "INPUT_PATH=%~1"
 if "%INPUT_PATH%"=="" set "INPUT_PATH=data\raw"
+if /I "%RUN_MODE%"=="LIGHT" if "%INPUT_PATH%"=="data\raw" if not exist "%INPUT_PATH%" set "INPUT_PATH=."
 
 if not exist "%INPUT_PATH%" (
     echo %YELLOW%[WARNING]%RESET% Input path not found: %INPUT_PATH%
@@ -133,8 +167,8 @@ if not exist "%INPUT_PATH%" (
         echo %GREEN%[OK]%RESET% Found: 2.jsonl
     ) else (
         echo %RED%[ERROR]%RESET% Cannot find input path
-        echo %RED%[ERROR]%RESET% Provide a file/folder path as first argument
-        echo               Example: setup_data.bat data\raw
+        echo %RED%[ERROR]%RESET% Provide a file/folder path as second argument
+        echo               Example: setup_data.bat INCREMENTAL data\raw
         echo.
         pause
         exit /b 1
@@ -143,6 +177,8 @@ if not exist "%INPUT_PATH%" (
 
 echo %GREEN%[OK]%RESET% Input path found: %INPUT_PATH%
 echo.
+
+if /I "%RUN_MODE%"=="LIGHT" goto :LightModeOnly
 
 REM ========================================================================
 REM Step 1: Normalize Raw Data
@@ -270,9 +306,14 @@ echo %BLUE%=====================================================================
 echo.
 
 echo Running: python scripts\ingest_lancedb.py
+if /I "%RUN_MODE%"=="INCREMENTAL" echo %BLUE%[INFO]%RESET% Incremental ingest enabled (--incremental)
 echo.
 
-python scripts\ingest_lancedb.py
+if /I "%RUN_MODE%"=="INCREMENTAL" (
+    python scripts\ingest_lancedb.py --incremental
+) else (
+    python scripts\ingest_lancedb.py
+)
 
 if !errorlevel! neq 0 (
     echo.
@@ -296,9 +337,14 @@ echo %BLUE%=====================================================================
 echo.
 
 echo Running: python scripts\build_graph.py
+if /I "%RUN_MODE%"=="INCREMENTAL" echo %BLUE%[INFO]%RESET% Incremental graph build enabled (--incremental)
 echo.
 
-python scripts\build_graph.py
+if /I "%RUN_MODE%"=="INCREMENTAL" (
+    python scripts\build_graph.py --incremental
+) else (
+    python scripts\build_graph.py
+)
 
 if !errorlevel! neq 0 (
     echo.
@@ -361,9 +407,26 @@ echo    5. Graph:      data\graph\knowledge_graph.graphml
 echo    6. Entities:   data\graph\entity_index.json
 echo.
 echo %BLUE%Next Steps:%RESET%
-echo    1. Run %GREEN%python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload%RESET%
+if /I "%RUN_MODE%"=="INCREMENTAL" (
+    echo    1. Run %GREEN%python -m uvicorn src.main:app --host 0.0.0.0 --port 8000%RESET%
+) else (
+    echo    1. Run %GREEN%python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload%RESET%
+)
 echo    2. Open http://localhost:8000/docs to test the API
 echo    3. Try querying your data!
+echo.
+pause
+exit /b 0
+
+:LightModeOnly
+echo %YELLOW%========================================================================%RESET%
+echo %YELLOW%   LIGHT MODE COMPLETE (SKIPPED HEAVY INGEST/GRAPH STEPS)%RESET%
+echo %YELLOW%========================================================================%RESET%
+echo.
+echo %BLUE%[INFO]%RESET% LIGHT mode only ran steps 0-3 for low-disk environments.
+echo %BLUE%[INFO]%RESET% On the high-capacity machine, run:
+echo        %GREEN%setup_data.bat INCREMENTAL data\raw%RESET%
+echo        or %GREEN%setup_data.bat FULL data\raw%RESET%
 echo.
 pause
 exit /b 0
