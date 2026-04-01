@@ -1,10 +1,10 @@
 """
-Embedding Service (Qwen3 Embedding)
+Embedding Service
 
-Manages embedding generation with:
-- Batch encoding for efficiency
-- Dimension validation
-- Qwen3 instruction-aware query/document prompting
+Supports multiple embedding families:
+- Qwen3
+- Harrier
+- BGE
 """
 from pathlib import Path
 from typing import List
@@ -17,7 +17,7 @@ from config.settings import RAGSettings
 
 
 class EmbeddingService:
-    """Embedding service for Qwen3-Embedding models."""
+    """Embedding service for Qwen3/Harrier/BGE models."""
 
     def __init__(self, settings: RAGSettings):
         self.settings = settings
@@ -25,10 +25,13 @@ class EmbeddingService:
         self.expected_dim = settings.EMBEDDING_DIM
         self.batch_size = settings.EMBEDDING_BATCH_SIZE
         self.normalize = settings.EMBEDDING_NORMALIZE
+        self.provider = settings.EMBEDDING_PROVIDER
 
-        logger.info(f"Loading embedding model: {self.model_name}")
+        logger.info(
+            f"Loading embedding model: {self.model_name} "
+            f"(provider={self.provider}, dim={self.expected_dim})"
+        )
 
-        # Load model with CPU optimization for Qwen3
         self.model = SentenceTransformer(
             self.model_name,
             device="cpu",
@@ -70,29 +73,50 @@ class EmbeddingService:
     def encode_single(self, text: str) -> np.ndarray:
         return self.encode_batch([text], show_progress=False)[0]
 
+    def _query_prompt_name(self) -> str | None:
+        provider = (self.provider or "").lower()
+        model = (self.model_name or "").lower()
+
+        if provider == "qwen" or "qwen" in model:
+            return "query"
+
+        if provider == "harrier" or "harrier" in model:
+            return "web_search_query"
+
+        return None
+
     def encode_query(self, query: str) -> np.ndarray:
         """
-        Encode query with Qwen3 instruction prompt.
+        Encode query with provider-specific prompt strategy.
 
-        Uses built-in "query" prompt which applies:
-        "Instruct: {task}\nQuery: {query}"
-
-        This is CRITICAL for Qwen3 retrieval quality.
+        - Qwen: prompt_name="query"
+        - Harrier: prompt_name="web_search_query"
+        - BGE/others: no prompt_name
         """
+        prompt_name = self._query_prompt_name()
+
+        encode_kwargs = {
+            "normalize_embeddings": self.normalize,
+            "convert_to_numpy": True,
+        }
+        if prompt_name:
+            encode_kwargs["prompt_name"] = prompt_name
+
         embedding = self.model.encode(
             query,
-            prompt_name="query",  # CRITICAL for Qwen3
-            normalize_embeddings=self.normalize,
-            convert_to_numpy=True,
+            **encode_kwargs,
         ).astype(np.float32)
+
+        if embedding.shape[0] != self.expected_dim:
+            raise ValueError(
+                f"Query embedding dimension mismatch: expected {self.expected_dim}, got {embedding.shape[0]}"
+            )
 
         return embedding
 
     def encode_documents(self, documents: List[str]) -> np.ndarray:
         """
-        Encode documents WITHOUT instruction (Qwen3 recommendation).
-
-        No prompt_name = default encoding (no instruction prefix).
+        Encode documents without instruction prompts.
         """
         if not documents:
             return np.empty((0, self.expected_dim), dtype=np.float32)

@@ -33,21 +33,38 @@ class RAGSettings(BaseSettings):
     DATA_DIR: Path = Field(default=Path("./data"), description="Raw data directory")
     CACHE_DIR: Path = Field(default=Path("./cache"), description="Cache directory")
 
-    # ========== Embedding Model ==========
+    # ========== Embedding Runtime Selection ==========
+    EMBEDDING_PROVIDER: Literal["qwen", "harrier", "bge"] = Field(
+        default="qwen",
+        description="Embedding provider to control query prompting behavior",
+    )
+
     EMBEDDING_MODEL: str = Field(
         default="Qwen/Qwen3-Embedding-4B",
-        description="HuggingFace model name for embeddings",
+        description="Active HuggingFace model name used at runtime",
     )
-    EMBEDDING_DIM: int = Field(default=2560, description="Embedding dimension")
+    EMBEDDING_DIM: int = Field(default=2560, description="Active embedding dimension used at runtime")
     EMBEDDING_BATCH_SIZE: int = Field(default=8, description="Batch size for encoding")
     EMBEDDING_NORMALIZE: bool = Field(default=True, description="L2-normalize embeddings")
 
-    # ========== Qwen Embedding Configuration ==========
+    # ========== Embedding Presets (for easy switching in .env) ==========
     QWEN_EMBEDDING_MODEL: str = Field(
         default="Qwen/Qwen3-Embedding-4B",
-        description="Qwen3 embedding model for multilingual retrieval",
+        description="Qwen3 embedding model preset",
     )
-    QWEN_EMBEDDING_DIM: int = Field(default=2560, description="Qwen3 embedding dimension")
+    QWEN_EMBEDDING_DIM: int = Field(default=2560, description="Qwen3 embedding dimension preset")
+
+    HARRIER_EMBEDDING_MODEL: str = Field(
+        default="microsoft/harrier-oss-v1-0.6b",
+        description="Harrier embedding model preset",
+    )
+    HARRIER_EMBEDDING_DIM: int = Field(default=1024, description="Harrier embedding dimension preset")
+
+    BGE_EMBEDDING_MODEL: str = Field(
+        default="BAAI/bge-m3",
+        description="BGE embedding model preset",
+    )
+    BGE_EMBEDDING_DIM: int = Field(default=1024, description="BGE embedding dimension preset")
 
     # ========== Reranker Configuration ==========
     RERANKER_MODEL: str = Field(
@@ -180,9 +197,9 @@ class RAGSettings(BaseSettings):
             v = int(v)
         except (ValueError, TypeError):
             pass
-        if v not in [1024, 2560, 4096]:
+        if v not in [640, 1024, 2560, 4096, 5376]:
             raise ValueError(
-                "EMBEDDING_DIM must be one of 1024, 2560, 4096 (Qwen3-Embedding variants)"
+                "EMBEDDING_DIM must be one of 640, 1024, 2560, 4096, 5376 (Qwen/Harrier/BGE variants)"
             )
         return v
 

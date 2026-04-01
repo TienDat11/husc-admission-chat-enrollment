@@ -70,17 +70,30 @@ def check_configuration() -> bool:
         # Load settings
         config = RAGSettings()
         print_success(f"Settings loaded successfully")
+        print(f"  • Embedding Provider: {config.EMBEDDING_PROVIDER}")
         print(f"  • Embedding Model: {config.EMBEDDING_MODEL}")
         print(f"  • Embedding Dimension: {config.EMBEDDING_DIM}")
         print(f"  • Index Directory: {config.INDEX_DIR}")
-        
-        # Validate dimension for known models
-        if "Qwen3-Embedding-8B" in config.EMBEDDING_MODEL and config.EMBEDDING_DIM != 4096:
+
+        # Validate known model-dimension pairs (soft warning)
+        model_dim_expectations = {
+            "qwen/qwen3-embedding-0.6b": 1024,
+            "qwen/qwen3-embedding-4b": 2560,
+            "qwen/qwen3-embedding-8b": 4096,
+            "microsoft/harrier-oss-v1-270m": 640,
+            "microsoft/harrier-oss-v1-0.6b": 1024,
+            "microsoft/harrier-oss-v1-27b": 5376,
+            "baai/bge-m3": 1024,
+        }
+
+        model_lower = config.EMBEDDING_MODEL.lower()
+        expected_dim = model_dim_expectations.get(model_lower)
+        if expected_dim is not None and config.EMBEDDING_DIM != expected_dim:
             print_warning(
-                f"Dimension mismatch: Qwen3-Embedding-8B outputs 4096 dims, "
+                f"Dimension mismatch: {config.EMBEDDING_MODEL} expects {expected_dim} dims, "
                 f"but config has {config.EMBEDDING_DIM}"
             )
-            print_warning("Please update EMBEDDING_DIM=4096 in .env")
+            print_warning("Please update EMBEDDING_DIM in .env to match selected model")
         
         # Check if index directory exists
         if not config.INDEX_DIR.exists():

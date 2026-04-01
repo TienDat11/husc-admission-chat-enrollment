@@ -40,8 +40,8 @@ from services.guardrail import GuardrailService
 from config.settings import RAGSettings
 from chunker import ChunkConfig, Chunker
 
-# Embedding encoder for query embedding
-from sentence_transformers import SentenceTransformer
+# Embedding service for provider-aware query/document encoding
+from services.embedding import EmbeddingService
 
 # Initialize settings
 settings = RAGSettings()
@@ -102,8 +102,8 @@ logger.add(
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="RAG API 2025 - HYDE + Qwen3 + LanceDB",
-    description="Advanced RAG with query enhancement and embedded vector retrieval",
+    title="RAG API 2025 - HYDE + Multi-Embedding + LanceDB",
+    description="Advanced RAG with provider-aware query enhancement and embedded vector retrieval",
     version="2.0.0"
 )
 
@@ -211,7 +211,7 @@ class ChunkPreviewResponse(BaseModel):
 query_enhancer_service = None
 lancedb_retriever_service = None
 llm_generator_service = None
-embedding_encoder: SentenceTransformer | None = None
+embedding_service: EmbeddingService | None = None
 reranker_service: RerankerService | None = None
 query_cache: QueryCache | None = None
 guardrail_service: GuardrailService | None = None
@@ -233,7 +233,7 @@ chunker: Chunker | None = None
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    global query_enhancer_service, lancedb_retriever_service, llm_generator_service, embedding_encoder, unified_pipeline, reranker_service, query_cache, guardrail_service, hybrid_search_service
+    global query_enhancer_service, lancedb_retriever_service, llm_generator_service, embedding_service, unified_pipeline, reranker_service, query_cache, guardrail_service, hybrid_search_service
 
     logger.info("=" * 60)
     logger.info("Starting RAG API 2025 v3.0 - Unified PaddedRAG + GraphRAG")
@@ -244,8 +244,8 @@ async def startup_event():
         logger.info("Initializing HYDE Query Enhancer...")
         query_enhancer_service = query_enhancer
 
-        logger.info("Initializing Embedding Encoder...")
-        embedding_encoder = SentenceTransformer(settings.QWEN_EMBEDDING_MODEL)
+        logger.info("Initializing Embedding Service...")
+        embedding_service = EmbeddingService(settings)
 
         logger.info("Initializing LanceDB Retriever...")
         import concurrent.futures
@@ -344,7 +344,7 @@ async def root():
         "version": "2.0.0",
         "features": [
             "HYDE query enhancement",
-            "Qwen3 multilingual retrieval",
+            "Provider-aware multilingual retrieval (Qwen/Harrier/BGE)",
             "Score boosting for near-matches",
             "LanceDB embedded vector store",
             "Multi-LLM fallback (ramclouds/gemini → Groq → compat)"
@@ -395,7 +395,7 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
     4. Merge & Deduplicate: combine results from all variants
     5. LLM: generate answer from merged chunks
     """
-    if query_enhancer_service is None or lancedb_retriever_service is None or llm_generator_service is None or embedding_encoder is None:
+    if query_enhancer_service is None or lancedb_retriever_service is None or llm_generator_service is None or embedding_service is None:
         raise HTTPException(
             status_code=503,
             detail="Services not initialized. Please check server logs."
@@ -513,19 +513,8 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
         retrieval_top_k = top_k * 3 if is_program_query else top_k
 
         for i, variant in enumerate(variants):
-            if "Qwen" in settings.EMBEDDING_MODEL:
-                enriched_variant = (
-                    "Instruct: Given a web search query, retrieve relevant passages that answer the query\n"
-                    f"Query: {variant}"
-                )
-            else:
-                enriched_variant = variant
-
             query_vector = await run_in_threadpool(
-                lambda: embedding_encoder.encode(
-                    enriched_variant,
-                    normalize_embeddings=True,
-                ).tolist()
+                lambda: embedding_service.encode_query(variant).tolist()
             )
 
             logger.debug(f"Encoded variant {i+1}/{len(variants)}: {variant[:50]}...")
@@ -824,17 +813,10 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
 
     # 1. Get PaddedRAG baseline documents first (from LanceDB)
     baseline_docs = []
-    if lancedb_retriever_service and embedding_encoder:
+    if lancedb_retriever_service and embedding_service:
         try:
-            baseline_query = (
-                "Instruct: Given a web search query, retrieve relevant passages that answer the query\n"
-                f"Query: {request.query}"
-            )
             query_vec = await run_in_threadpool(
-                lambda: embedding_encoder.encode(
-                    baseline_query,
-                    normalize_embeddings=True,
-                ).tolist()
+                lambda: embedding_service.encode_query(request.query).tolist()
             )
             result = lancedb_retriever_service.retrieve(
                 query_vector=query_vec,

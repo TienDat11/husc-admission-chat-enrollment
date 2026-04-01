@@ -73,3 +73,9 @@ nest-asyncio>=1.5.0  # Allow nested event loops in Jupyter/scripts
 
 # Machine learning utilities
 scikit-learn>=1.0.0  # For evaluation metrics and clustering
+
+# Qdrant vector store (used by BGE retriever & legacy ingest scripts)
+qdrant-client>=1.7.0
+
+# Process monitoring (optional, used by benchmark scripts)
+psutil>=5.9.0
