@@ -230,3 +230,48 @@ def retrieval_recall_proxy(source_ids: Sequence[str], gt_chunks: Sequence[str]) 
 def hallucination_flag(groundedness_score: float, threshold: float = 0.18) -> int:
     """Return 1 if groundedness_score < threshold, else 0."""
     return 1 if groundedness_score < threshold else 0
+
+
+# =============================================================================
+# Diagnostic report
+# =============================================================================
+
+def build_diagnostic_report(result: dict[str, Any]) -> str:
+    """Build a markdown diagnostic report from eval results.
+
+    Args:
+        result: Dict with keys:
+            - summary: dict with "accuracy" float
+            - errors: list of dicts with failed eval items
+
+    Returns:
+        Markdown string with report.
+    """
+    lines = ["# Diagnostic Report\n"]
+
+    summary = result.get("summary", {})
+    accuracy = summary.get("accuracy", 0.0)
+    lines.append(f"**Overall Accuracy:** {accuracy:.2%}\n")
+
+    errors = result.get("errors", [])
+    if errors:
+        lines.append("## Errors\n")
+        for err in errors[:5]:
+            q = err.get("question", "")[:80]
+            a = err.get("answer", "")[:80]
+            lines.append(f"- **Q:** {q}...")
+            lines.append(f"  **A:** {a}")
+            if "error" in err:
+                lines.append(f"  **Error:** {err['error']}")
+            lines.append("")
+    else:
+        lines.append("## Errors\n_No errors detected._\n")
+
+    return "\n".join(lines)
+
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+GROUNDING_THRESHOLD = 0.18  # hallucination flag threshold
