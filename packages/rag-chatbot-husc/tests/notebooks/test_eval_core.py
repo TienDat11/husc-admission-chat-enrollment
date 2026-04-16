@@ -1,0 +1,183 @@
+"""Tests for eval_core module."""
+import json
+import pytest
+from pathlib import Path
+
+# Import from the module under test
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+
+from notebooks.eval_core import load_test_questions, normalize_pipeline_output
+
+
+# =============================================================================
+# Tests for load_test_questions
+# =============================================================================
+
+def test_load_test_questions_uses_fallback_when_primary_missing(tmp_path):
+    """When primary path does not exist, should fall back to fallback_path."""
+    primary = tmp_path / "missing.json"
+    fallback = tmp_path / "fallback.json"
+    fallback.write_text(
+        '[{"question":"q","ground_truth_answer":"a","category":"simple"}]',
+        encoding="utf-8"
+    )
+    rows, used_path = load_test_questions(str(primary), str(fallback))
+    assert len(rows) == 1
+    assert rows[0]["question"] == "q"
+    assert used_path == str(fallback)
+
+
+def test_load_test_questions_uses_fallback_when_primary_invalid_json(tmp_path):
+    """When primary path exists but has invalid JSON, should fall back to fallback_path."""
+    primary = tmp_path / "invalid.json"
+    fallback = tmp_path / "fallback.json"
+    primary.write_text("not valid json {", encoding="utf-8")
+    fallback.write_text(
+        '[{"question":"fallback_q","ground_truth_answer":"fallback_a","category":"simple"}]',
+        encoding="utf-8"
+    )
+    rows, used_path = load_test_questions(str(primary), str(fallback))
+    assert len(rows) == 1
+    assert rows[0]["question"] == "fallback_q"
+    assert used_path == str(fallback)
+
+
+def test_load_test_questions_uses_primary_when_valid(tmp_path):
+    """When primary path exists and has valid JSON, should use primary."""
+    primary = tmp_path / "primary.json"
+    fallback = tmp_path / "fallback.json"
+    primary.write_text(
+        '[{"question":"primary_q","ground_truth_answer":"primary_a","category":"primary_cat"}]',
+        encoding="utf-8"
+    )
+    fallback.write_text(
+        '[{"question":"fallback_q","ground_truth_answer":"fallback_a","category":"fallback_cat"}]',
+        encoding="utf-8"
+    )
+    rows, used_path = load_test_questions(str(primary), str(fallback))
+    assert len(rows) == 1
+    assert rows[0]["question"] == "primary_q"
+    assert rows[0]["category"] == "primary_cat"
+    assert used_path == str(primary)
+
+
+def test_load_test_questions_raises_when_both_fail(tmp_path):
+    """When both primary and fallback fail, should raise FileNotFoundError."""
+    primary = tmp_path / "missing.json"
+    fallback = tmp_path / "also_missing.json"
+    # Both paths don't exist
+    with pytest.raises(FileNotFoundError) as exc_info:
+        load_test_questions(str(primary), str(fallback))
+    assert "neither" in str(exc_info.value).lower() or "both" in str(exc_info.value).lower()
+
+
+# =============================================================================
+# Tests for normalize_pipeline_output
+# =============================================================================
+
+def test_normalize_pipeline_output_has_required_keys():
+    """Output must contain all required keys."""
+    raw = {"answer": "ok", "sources": ["s1"], "confidence": 0.9}
+    out = normalize_pipeline_output(raw, mode="v2")
+    required_keys = {
+        "answer", "context_chunks", "source_ids",
+        "confidence", "groundedness_score", "route", "raw"
+    }
+    assert required_keys.issubset(out.keys())
+
+
+def test_normalize_pipeline_output_v2_sources_mapping():
+    """For mode='v2', sources should map to source_ids."""
+    raw = {
+        "answer": "the answer is 42",
+        "sources": ["src1", "src2", "src3"],
+        "confidence": 0.95,
+        "chunks": [
+            {"text": "chunk one"},
+            {"text": "chunk two"}
+        ]
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert out["source_ids"] == ["src1", "src2", "src3"]
+    assert out["context_chunks"] == [{"text": "chunk one"}, {"text": "chunk two"}]
+    assert out["confidence"] == 0.95
+    assert out["answer"] == "the answer is 42"
+
+
+def test_normalize_pipeline_output_v1_chunks_mapping():
+    """For mode='v1', chunks should map to context_chunks."""
+    raw = {
+        "answer": "v1 answer",
+        "chunks": [
+            {"text": "first chunk"},
+            {"text": "second chunk"},
+            {"text": "third chunk"}
+        ],
+        "confidence": 0.85
+    }
+    out = normalize_pipeline_output(raw, mode="v1")
+    assert out["context_chunks"] == [{"text": "first chunk"}, {"text": "second chunk"}, {"text": "third chunk"}]
+    # v1 mode should NOT have source_ids mapping from sources
+    assert out["source_ids"] == []
+
+
+def test_normalize_pipeline_output_v2_missing_sources():
+    """When sources key is missing in v2 mode, source_ids should be empty list."""
+    raw = {
+        "answer": "no sources here",
+        "confidence": 0.5
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert out["source_ids"] == []
+    assert out["context_chunks"] == []
+
+
+def test_normalize_pipeline_output_preserves_raw():
+    """The 'raw' key should contain the original input data."""
+    raw = {
+        "answer": "test answer",
+        "some_field": "original value",
+        "confidence": 0.7
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert out["raw"] == raw
+    assert out["raw"]["some_field"] == "original value"
+
+
+def test_normalize_pipeline_output_has_groundedness_score():
+    """groundedness_score should be present (extracted from raw or defaulted)."""
+    raw = {
+        "answer": "scored answer",
+        "groundedness_score": 0.88,
+        "sources": ["s1"]
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert "groundedness_score" in out
+    assert out["groundedness_score"] == 0.88
+
+
+def test_normalize_pipeline_output_has_route():
+    """route should be present in output."""
+    raw = {
+        "answer": "routed answer",
+        "route": "enrollment",
+        "sources": ["s1"]
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert "route" in out
+    assert out["route"] == "enrollment"
+
+
+def test_normalize_pipeline_output_defaults_groundedness_and_route():
+    """When raw has no groundedness_score or route, should use defaults."""
+    raw = {
+        "answer": "minimal input",
+        "sources": ["s1"]
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert "groundedness_score" in out
+    assert "route" in out
+    # Defaults should be None or empty string - not crash
+    assert out["groundedness_score"] is not None or out["groundedness_score"] == 0.0
+    assert out["route"] == "" or out["route"] is None
