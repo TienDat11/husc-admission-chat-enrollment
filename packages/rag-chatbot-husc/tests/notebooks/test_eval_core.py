@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from notebooks.eval_core import load_test_questions, normalize_pipeline_output, should_abort_after_smoke, call_pipeline, PipelineError
+from notebooks.eval_core import load_test_questions, normalize_pipeline_output, should_abort_after_smoke, call_pipeline, PipelineError, normalize_text, exact_correctness, retrieval_recall_proxy, hallucination_flag
 
 
 # =============================================================================
@@ -365,3 +365,52 @@ class TestCallPipeline:
             call_pipeline('http://localhost:8000', 'test query', mode='v2')
         assert 'non-JSON' in str(exc_info.value)
         assert exc_info.value.__cause__ is not None
+
+
+# =============================================================================
+# Tests for normalize_text
+# =============================================================================
+
+def test_normalize_text_lowercase_strip_punct():
+    """normalize_text should lowercase, strip, collapse whitespace, remove punctuation."""
+    assert normalize_text("  Hello, World!  ") == "hello world"
+
+
+def test_normalize_text_removes_all_punctuation():
+    """All specified punctuation should be removed (including underscore per task spec)."""
+    s = 'a[b]{c}(d)"e\'f.g;h:i!j?k-l_m'
+    result = normalize_text(s)
+    assert result == "abcdefghijklm"  # underscore removed per spec
+
+
+# =============================================================================
+# Tests for exact_correctness
+# =============================================================================
+
+def test_exact_correctness_returns_one_on_match():
+    assert exact_correctness("  Hello, World!  ", "hello world") == 1
+
+
+def test_exact_correctness_returns_zero_on_mismatch():
+    assert exact_correctness("foo", "bar") == 0
+
+
+# =============================================================================
+# Tests for retrieval_recall_proxy
+# =============================================================================
+
+def test_retrieval_recall_proxy_hits_ground_truth():
+    assert retrieval_recall_proxy(["a", "b"], ["x", "b"]) == 1
+    assert retrieval_recall_proxy(["a"], ["x", "y"]) == 0
+    assert retrieval_recall_proxy([], ["x", "y"]) == 0
+    assert retrieval_recall_proxy(["a"], []) == 0
+
+
+# =============================================================================
+# Tests for hallucination_flag
+# =============================================================================
+
+def test_hallucination_flag_from_threshold():
+    assert hallucination_flag(0.10, threshold=0.18) == 1
+    assert hallucination_flag(0.25, threshold=0.18) == 0
+    assert hallucination_flag(0.18, threshold=0.18) == 0

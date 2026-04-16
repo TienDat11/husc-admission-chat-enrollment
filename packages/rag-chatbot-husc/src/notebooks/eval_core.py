@@ -174,3 +174,59 @@ def call_pipeline(base_url: str, query: str, mode: str = "v2", top_k: int = 5) -
         raise PipelineError(
             f"Pipeline at {url} returned non-JSON response: {e}"
         ) from e
+# New functions to append to eval_core.py
+
+
+# =============================================================================
+# Text normalization
+# =============================================================================
+
+import re
+import unicodedata
+
+
+def normalize_text(s: str) -> str:
+    """Lowercase, strip, collapse whitespace; remove punctuation [.,;:!?-()[]{}"']; keep underscore."""
+    s = s.lower()
+    s = unicodedata.normalize("NFKD", s)
+    s = s.strip()
+    s = re.sub(r"\s+", " ", s)
+    # Remove punctuation: period, comma, semicolon, colon, exclamation, question,
+    # hyphen/dash, parentheses, brackets, braces, double and single quotes
+    # Keep underscore
+    for ch in ['.', ',', ';', ':', '!', '?', '-', '(', ')', '[', ']', '{', '}', '"', "'", '_']:
+        s = s.replace(ch, "")
+    return s
+
+
+def exact_correctness(pred: str, gt: str) -> int:
+    """Return 1 if normalized pred equals normalized gt, else 0."""
+    return 1 if normalize_text(pred) == normalize_text(gt) else 0
+
+
+# =============================================================================
+# Retrieval recall proxy
+# =============================================================================
+
+from typing import Sequence
+
+
+def retrieval_recall_proxy(source_ids: Sequence[str], gt_chunks: Sequence[str]) -> int:
+    """Return 1 if source_ids and gt_chunks share at least one element and gt_chunks is non-empty.
+
+    Returns 0 if gt_chunks is empty or if there is no overlap.
+    """
+    if not gt_chunks:
+        return 0
+    if not source_ids:
+        return 0
+    return 1 if set(source_ids).intersection(set(gt_chunks)) else 0
+
+
+# =============================================================================
+# Hallucination flag
+# =============================================================================
+
+def hallucination_flag(groundedness_score: float, threshold: float = 0.18) -> int:
+    """Return 1 if groundedness_score < threshold, else 0."""
+    return 1 if groundedness_score < threshold else 0
