@@ -40,15 +40,15 @@ Go to **Runtime > Change runtime type > GPU** (or TPU if preferred). Then run ce
 
 | Cell | Purpose |
 |------|---------|
-| 1 | Runtime guard: verify GPU is available |
-| 2 | Repo bootstrap + dependency install |
-| 3 | Import codebase smoke test |
-| 4 | Config & secrets (user fills in) |
-| 5 | Data load & validation |
-| 6 | Smoke eval (5 questions, fail-fast) |
-| 7 | Full eval (all questions) |
-| 8 | Scoring & export to `results/colab_eval/` |
-| 9 | Diagnostic report generation |
+| 0 | Runtime guard: verify GPU is available |
+| 1 | Repo bootstrap + dependency install |
+| 2 | Import codebase smoke test |
+| 3 | Config & secrets (user fills in) |
+| 4 | Data load & validation |
+| 5 | Smoke eval (5 questions, fail-fast) |
+| 6 | Full eval (all questions) |
+| 7 | Scoring & export to `results/colab_eval/` |
+| 8 | Diagnostic report generation |
 
 ## Output Files
 

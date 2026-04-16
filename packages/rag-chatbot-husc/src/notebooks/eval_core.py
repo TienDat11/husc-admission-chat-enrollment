@@ -241,8 +241,9 @@ def build_diagnostic_report(result: dict[str, Any]) -> str:
 
     Args:
         result: Dict with keys:
-            - summary: dict with "accuracy" float
-            - errors: list of dicts with failed eval items
+            - summary: dict with "accuracy", "avg_recall", "hallucination_rate" floats
+            - per_category: dict with "simple" and "multihop" sub-dicts
+            - errors: list of dicts with failed eval items (each may have error_type, score_exact, recall, hallucination, groundedness_score)
 
     Returns:
         Markdown string with report.
@@ -251,19 +252,67 @@ def build_diagnostic_report(result: dict[str, Any]) -> str:
 
     summary = result.get("summary", {})
     accuracy = summary.get("accuracy", 0.0)
-    lines.append(f"**Overall Accuracy:** {accuracy:.2%}\n")
+    hallucination_rate = summary.get("hallucination_rate", 0.0)
+    avg_recall = summary.get("avg_recall", 0.0)
 
+    lines.append(f"**Overall Accuracy:** {accuracy:.2%}  ")
+    lines.append(f"**Avg Recall:** {avg_recall:.2%}  ")
+    lines.append(f"**Hallucination Rate:** {hallucination_rate:.2%}\n")
+
+    # Per-category breakdown
+    per_cat = result.get("per_category", {})
+    if per_cat:
+        lines.append("## Per-Category Breakdown\n")
+        lines.append("| Category | Count | Accuracy | Recall | Hallucination Rate |")
+        lines.append("|----------|-------|----------|--------|--------------------|")
+        for cat in ["simple", "multihop"]:
+            if cat in per_cat:
+                c = per_cat[cat]
+                count = c.get("count", 0)
+                acc = c.get("accuracy", 0.0)
+                rec = c.get("recall", 0.0)
+                hall = c.get("hallucination_rate", 0.0)
+                lines.append(f"| {cat} | {count} | {acc:.2%} | {rec:.2%} | {hall:.2%} |")
+        lines.append("")
+
+    # Top errors by type
     errors = result.get("errors", [])
     if errors:
-        lines.append("## Errors\n")
+        lines.append("## Top Errors by Type\n")
+        error_groups = {}
+        for err in errors:
+            etype = err.get("error_type", "unknown")
+            if etype not in error_groups:
+                error_groups[etype] = []
+            error_groups[etype].append(err)
+
+        for etype, errs in error_groups.items():
+            lines.append(f"### {etype.capitalize()} ({len(errs)})\n")
+            for err in errs[:3]:
+                q = err.get("question", "")[:80]
+                a = str(err.get("answer", ""))[:80]
+                lines.append(f"- **Q:** {q}...")
+                lines.append(f"  **A:** {a}")
+                if etype == "retrieval":
+                    lines.append(f"  recall={err.get('recall', '?')}, gt_chunks={err.get('gt_chunks', [])}")
+                elif etype == "hallucination":
+                    lines.append(f"  groundedness={err.get('groundedness_score', '?')}")
+                elif etype == "reasoning":
+                    lines.append(f"  exact={err.get('score_exact', '?')}")
+                elif etype == "format":
+                    lines.append(f"  answer={err.get('answer', '')[:40]}")
+                lines.append("")
+
+        # Example bad questions
+        lines.append("## Example Bad Questions\n")
         for err in errors[:5]:
             q = err.get("question", "")[:80]
-            a = err.get("answer", "")[:80]
-            lines.append(f"- **Q:** {q}...")
-            lines.append(f"  **A:** {a}")
-            if "error" in err:
-                lines.append(f"  **Error:** {err['error']}")
-            lines.append("")
+            a = str(err.get("answer", ""))[:80]
+            score_exact = err.get("score_exact", 0)
+            recall = err.get("recall", 0)
+            hall = err.get("hallucination", 0)
+            lines.append(f"- **[acc={score_exact} recall={recall} hall={hall}]** Q: {q}...")
+            lines.append(f"  A: {a}\n")
     else:
         lines.append("## Errors\n_No errors detected._\n")
 
