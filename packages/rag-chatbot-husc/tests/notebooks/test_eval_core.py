@@ -178,6 +178,60 @@ def test_normalize_pipeline_output_defaults_groundedness_and_route():
     out = normalize_pipeline_output(raw, mode="v2")
     assert "groundedness_score" in out
     assert "route" in out
-    # Defaults should be None or empty string - not crash
-    assert out["groundedness_score"] is not None or out["groundedness_score"] == 0.0
-    assert out["route"] == "" or out["route"] is None
+    # Defaults should be 0.0 and ""
+    assert out["groundedness_score"] == 0.0
+    assert out["route"] == ""
+
+
+def test_normalize_pipeline_output_invalid_mode_treated_as_v1():
+    """When mode is unknown, should fall back to v1 behavior (no source_ids mapping)."""
+    raw = {
+        "answer": "unknown mode",
+        "sources": ["s1", "s2"],
+        "chunks": [{"text": "chunk"}],
+    }
+    out = normalize_pipeline_output(raw, mode="unknown")
+    # v1 fallback: source_ids should not map from sources
+    assert out["source_ids"] == []
+    # chunks should still map to context_chunks
+    assert out["context_chunks"] == [{"text": "chunk"}]
+
+
+def test_normalize_pipeline_output_sources_string_not_list():
+    """When sources is a string (not a list), source_ids should be empty."""
+    raw = {
+        "answer": "string sources",
+        "sources": "src1",  # string instead of list
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert out["source_ids"] == []
+
+
+def test_normalize_pipeline_output_sources_dict_not_list():
+    """When sources is a dict (not a list), source_ids should be empty."""
+    raw = {
+        "answer": "dict sources",
+        "sources": {"id": "src1"},  # dict instead of list
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert out["source_ids"] == []
+
+
+def test_normalize_pipeline_output_chunks_string_not_list():
+    """When chunks is a string (not a list), context_chunks should be empty."""
+    raw = {
+        "answer": "string chunks",
+        "chunks": "chunk1",  # string instead of list
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert out["context_chunks"] == []
+
+
+def test_normalize_pipeline_output_chunks_dict_not_list():
+    """When chunks is a dict (not a list), context_chunks should be empty."""
+    raw = {
+        "answer": "dict chunks",
+        "chunks": {"text": "single chunk"},  # dict instead of list
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert out["context_chunks"] == []
