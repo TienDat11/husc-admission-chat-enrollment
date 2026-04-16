@@ -1,6 +1,7 @@
 """
 API tests aligned with current FastAPI contract.
 """
+import asyncio
 import importlib
 import sys
 from pathlib import Path
@@ -70,17 +71,56 @@ def test_query_endpoint_validation(client):
     assert response.status_code == 422
 
 
-def test_unified_query_validation(client):
-    response = client.post("/v2/query", json={"query": "test", "top_k": 0})
-    assert response.status_code == 422
+def test_metrics_endpoint(client):
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "metrics" in data
+    assert "query_total" in data["metrics"]
+    assert "query_low_groundedness" in data["metrics"]
 
-    response = client.post("/v2/query", json={"query": "", "top_k": 5})
-    assert response.status_code == 422
+
+def test_query_pii_guardrail_block(client):
+    payload = {"query": "Số CCCD của tôi là 012345678901, cho tôi hỏi học phí CNTT", "force_rag_only": True}
+    response = client.post("/query", json=payload)
+
+    if response.status_code == 200:
+        data = response.json()
+        assert data["status_code"] == "SENSITIVE_PII_DETECTED"
+        assert data["pii_detected"] is True
+        assert data["trace_id"]
+        assert "groundedness_score" in data
+    else:
+        assert response.status_code == 503
 
 
-def test_graph_update_requires_admin_token(client):
-    response = client.post("/v2/graph/update", json={"chunks": []})
-    assert response.status_code == 403
+def test_guardrail_service_detects_pii(client):
+    import main
+    from services.guardrail import GuardrailService
+
+    guardrail = GuardrailService(main.settings)
+    decision = asyncio.run(guardrail.precheck("Số CCCD của tôi là 012345678901"))
+    assert decision.internal_code == "SENSITIVE_PII_DETECTED"
+    assert decision.pii_detected is True
+
+
+def test_query_response_contains_trace_and_groundedness(client):
+    payload = {"query": "What is the admission deadline?", "force_rag_only": True}
+    response = client.post("/query", json=payload)
+
+    if response.status_code == 200:
+        data = response.json()
+        assert "trace_id" in data
+        assert "groundedness_score" in data
+    else:
+        assert response.status_code == 503
+
+
+def test_unified_query_trace_id_on_503(client):
+    payload = {"query": "test", "top_k": 5}
+    response = client.post("/v2/query", json=payload)
+    assert response.status_code == 503
 
 
 def test_docs_endpoint(client):

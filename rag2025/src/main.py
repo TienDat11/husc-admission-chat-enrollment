@@ -21,6 +21,8 @@ from typing import Any, Dict, List, Literal, Optional
 from collections import defaultdict, deque
 from asyncio import Lock
 import time
+import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
@@ -52,14 +54,98 @@ MAX_GRAPH_UPDATE_CHUNKS = int(os.getenv("MAX_GRAPH_UPDATE_CHUNKS", "100"))
 MAX_GRAPH_CHUNK_TEXT_LENGTH = int(os.getenv("MAX_GRAPH_CHUNK_TEXT_LENGTH", "5000"))
 ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN", "")
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+GROUNDING_THRESHOLD = float(os.getenv("GROUNDING_THRESHOLD", "0.18"))
 
 # Simple in-memory rate limiter
 _rate_limit_lock = Lock()
 _rate_limit_buckets: dict[str, deque[float]] = defaultdict(deque)
 
-# Graph update lock to prevent concurrent mutation races
-_graph_update_lock = Lock()
+# Lightweight in-memory metrics (no external dependencies)
+_metrics_lock = Lock()
+_metrics = {
+    "query_total": 0,
+    "query_errors": 0,
+    "query_cache_hits": 0,
+    "query_guardrail_blocks": 0,
+    "query_pii_blocks": 0,
+    "query_low_groundedness": 0,
+    "query_total_latency_ms": 0.0,
+    "query_count_latency": 0,
+    "unified_query_total": 0,
+    "unified_query_errors": 0,
+    "unified_query_cache_hits": 0,
+    "unified_query_low_groundedness": 0,
+    "unified_query_total_latency_ms": 0.0,
+    "unified_query_count_latency": 0,
+}
 
+
+async def _metric_inc(key: str, amount: int = 1) -> None:
+    async with _metrics_lock:
+        _metrics[key] = int(_metrics.get(key, 0)) + amount
+
+
+async def _metric_add_float(key: str, value: float) -> None:
+    async with _metrics_lock:
+        _metrics[key] = float(_metrics.get(key, 0.0)) + value
+
+
+def _safe_groundedness_score(answer: str, chunks: List[Dict[str, Any]]) -> float:
+    source_texts = [
+        chunk.get("text") or chunk.get("text_plain") or chunk.get("summary") or ""
+        for chunk in chunks
+        if isinstance(chunk, dict)
+    ]
+    source_texts = [text for text in source_texts if text]
+    if not answer or not source_texts:
+        return 0.0
+    try:
+        from results.metrics import faithfulness_score
+        return float(faithfulness_score(answer, source_texts))
+    except Exception as exc:
+        logger.warning(f"Groundedness scoring fallback: {exc}")
+        answer_tokens = set(answer.lower().split())
+        source_tokens = set(" ".join(source_texts).lower().split())
+        if not answer_tokens:
+            return 0.0
+        overlap = len(answer_tokens & source_tokens)
+        return overlap / len(answer_tokens)
+
+
+@asynccontextmanager
+async def _track_latency(total_key: str, count_key: str):
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        latency_ms = (time.perf_counter() - t0) * 1000
+        await _metric_add_float(total_key, latency_ms)
+        await _metric_inc(count_key)
+
+
+def _metrics_snapshot() -> Dict[str, Any]:
+    query_count = int(_metrics.get("query_count_latency", 0))
+    unified_count = int(_metrics.get("unified_query_count_latency", 0))
+    return {
+        "query_total": int(_metrics.get("query_total", 0)),
+        "query_errors": int(_metrics.get("query_errors", 0)),
+        "query_cache_hits": int(_metrics.get("query_cache_hits", 0)),
+        "query_guardrail_blocks": int(_metrics.get("query_guardrail_blocks", 0)),
+        "query_pii_blocks": int(_metrics.get("query_pii_blocks", 0)),
+        "query_low_groundedness": int(_metrics.get("query_low_groundedness", 0)),
+        "query_avg_latency_ms": (
+            float(_metrics.get("query_total_latency_ms", 0.0)) / query_count
+            if query_count else 0.0
+        ),
+        "unified_query_total": int(_metrics.get("unified_query_total", 0)),
+        "unified_query_errors": int(_metrics.get("unified_query_errors", 0)),
+        "unified_query_cache_hits": int(_metrics.get("unified_query_cache_hits", 0)),
+        "unified_query_low_groundedness": int(_metrics.get("unified_query_low_groundedness", 0)),
+        "unified_query_avg_latency_ms": (
+            float(_metrics.get("unified_query_total_latency_ms", 0.0)) / unified_count
+            if unified_count else 0.0
+        ),
+    }
 
 def _client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
@@ -146,15 +232,18 @@ class QueryResponse(BaseModel):
     answer: str
     sources: List[str]
     confidence: float
+    groundedness_score: float = 0.0
 
     top_k_used: int
     chunks_used: int
     provider: str
+    trace_id: str
 
     status_code: str = "SUCCESS"
     status_reason: str = ""
     data_gap_hints: List[str] = Field(default_factory=list)
     internal_status_code: Optional[str] = None
+    pii_detected: bool = False
 
     chunks: Optional[List[Dict[str, Any]]] = None
 
@@ -168,6 +257,7 @@ class HealthResponse(BaseModel):
     collection: str = ""
     embedding_model: str = ""
     reranker_model: str = ""
+    metrics: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ChunkPreviewRequest(BaseModel):
@@ -379,8 +469,18 @@ async def health_check():
 
     response.embedding_model = settings.EMBEDDING_MODEL
     response.reranker_model = settings.RERANKER_MODEL
+    response.metrics = _metrics_snapshot()
 
     return response
+
+
+@app.get("/metrics", response_model=Dict[str, Any])
+async def metrics_endpoint():
+    """Lightweight internal metrics endpoint."""
+    return {
+        "status": "ok",
+        "metrics": _metrics_snapshot(),
+    }
 
 
 @app.post("/query", response_model=QueryResponse)
@@ -402,45 +502,58 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
         )
 
     logger.info(f"Received query: {request.query[:100]}...")
+    trace_id = str(uuid.uuid4())
+
+    await _metric_inc("query_total")
 
     await _enforce_rate_limit(raw_request)
 
     try:
-        cache_key = f"query:{request.query.strip().lower()}|force:{request.force_rag_only}"
-        if query_cache:
-            cached_response = query_cache.get(cache_key)
-            if cached_response is not None:
-                logger.info("Query cache hit")
-                return QueryResponse(**cached_response)
-
-        precheck = await guardrail_service.precheck(request.query) if guardrail_service else None
-        if precheck and not precheck.is_in_scope:
-            public_code = guardrail_service.public_status(precheck.internal_code)
-            internal_code = precheck.internal_code if guardrail_service.expose_internal() else None
-            logger.info(
-                f"guardrail_block query='{request.query[:80]}' internal_code={precheck.internal_code} reason={precheck.reason}"
-            )
-            response_payload = {
-                "original_query": request.query,
-                "enhanced_query": request.query,
-                "query_type": "out_of_scope",
-                "answer": precheck.short_answer,
-                "sources": [],
-                "confidence": 0.0,
-                "top_k_used": 0,
-                "chunks_used": 0,
-                "provider": "Guardrail",
-                "status_code": public_code,
-                "status_reason": precheck.reason,
-                "data_gap_hints": precheck.data_gap_hints,
-                "internal_status_code": internal_code,
-                "chunks": [],
-            }
+        async with _track_latency("query_total_latency_ms", "query_count_latency"):
+            cache_key = f"query:{request.query.strip().lower()}|force:{request.force_rag_only}"
             if query_cache:
-                query_cache.set(cache_key, response_payload)
-            return QueryResponse(**response_payload)
+                cached_response = query_cache.get(cache_key)
+                if cached_response is not None:
+                    await _metric_inc("query_cache_hits")
+                    logger.info(f"Query cache hit trace_id={trace_id}")
+                    payload = dict(cached_response)
+                    payload["trace_id"] = trace_id
+                    payload.setdefault("pii_detected", False)
+                    return QueryResponse(**payload)
 
-        # Step 1: HYDE Enhancement - get query variants
+            precheck = await guardrail_service.precheck(request.query) if guardrail_service else None
+            if precheck and not precheck.is_in_scope:
+                await _metric_inc("query_guardrail_blocks")
+                if precheck.pii_detected:
+                    await _metric_inc("query_pii_blocks")
+                public_code = guardrail_service.public_status(precheck.internal_code)
+                internal_code = precheck.internal_code if guardrail_service.expose_internal() else None
+                logger.info(
+                    f"guardrail_block trace_id={trace_id} query='{request.query[:80]}' internal_code={precheck.internal_code} reason={precheck.reason}"
+                )
+                response_payload = {
+                    "original_query": request.query,
+                    "enhanced_query": request.query,
+                    "query_type": "out_of_scope",
+                    "answer": precheck.short_answer,
+                    "sources": [],
+                    "confidence": 0.0,
+                    "top_k_used": 0,
+                    "chunks_used": 0,
+                    "provider": "Guardrail",
+                    "trace_id": trace_id,
+                    "status_code": public_code,
+                    "status_reason": precheck.reason,
+                    "data_gap_hints": precheck.data_gap_hints,
+                    "internal_status_code": internal_code,
+                    "pii_detected": precheck.pii_detected,
+                    "chunks": [],
+                }
+                if query_cache:
+                    query_cache.set(cache_key, response_payload)
+                return QueryResponse(**response_payload)
+
+            # Step 1: HYDE Enhancement - get query variants
         enhanced_request = await query_enhancer_service.enhance_query(
             user_query=request.query,
             force_rag_only=request.force_rag_only
@@ -630,7 +743,21 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
 
         logger.info(f"Generated answer using {result['provider']}")
 
-        # Step 6: Build response
+        # Step 7: Groundedness scoring
+        groundedness = _safe_groundedness_score(result["answer"], chunks)
+        if groundedness < GROUNDING_THRESHOLD and chunks:
+            await _metric_inc("query_low_groundedness")
+            logger.warning(
+                f"LOW_GROUNDEDNESS trace_id={trace_id} score={groundedness:.3f} "
+                f"threshold={GROUNDING_THRESHOLD}"
+            )
+            result["answer"] = (
+                "⚠️ " + result["answer"] + "\n\n"
+                "(Lưu ý: Câu trả lời này có mức bám sát tài liệu nguồn thấp. "
+                "Vui lòng kiểm tra lại với tài liệu chính thức.)"
+            )
+
+        # Step 8: Build response
         response_payload = {
             "original_query": original_query,
             "enhanced_query": f"({len(variants)} variants) " + "; ".join([v[:30] for v in variants[:2]]),
@@ -638,13 +765,16 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
             "answer": result["answer"],
             "sources": result["sources"],
             "confidence": confidence,
+            "groundedness_score": groundedness,
             "top_k_used": top_k,
             "chunks_used": result["chunks_used"],
             "provider": result["provider"],
+            "trace_id": trace_id,
             "status_code": status_code,
             "status_reason": status_reason,
             "data_gap_hints": data_gap_hints,
             "internal_status_code": internal_status_code,
+            "pii_detected": False,
             "chunks": chunks,
         }
 
@@ -654,9 +784,11 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
         return QueryResponse(**response_payload)
 
     except HTTPException:
+        await _metric_inc("query_errors")
         raise
     except Exception as e:
-        logger.exception(f"Query failed: {e}")
+        await _metric_inc("query_errors")
+        logger.exception(f"Query failed trace_id={trace_id}: {e}")
         raise HTTPException(status_code=500, detail="Query processing failed")
 
 
@@ -777,9 +909,11 @@ class UnifiedQueryResponse(BaseModel):
     answer: str
     sources: List[str]
     confidence: float
+    groundedness_score: float = 0.0
     router_info: Dict[str, Any]
     graph_stats: Optional[Dict[str, Any]] = None
     latency_ms: float
+    trace_id: str
 
 
 @app.post("/v2/query", response_model=UnifiedQueryResponse)
@@ -798,6 +932,8 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
         )
 
     await _enforce_rate_limit(raw_request)
+    trace_id = str(uuid.uuid4())
+    await _metric_inc("unified_query_total")
 
     cache_key = f"v2:{request.query.strip().lower()}|top_k:{request.top_k}|route:{request.force_route or 'auto'}"
     if request.force_route == "padded_rag":
@@ -808,8 +944,11 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
     if query_cache:
         cached_response = query_cache.get(cache_key)
         if cached_response is not None:
-            logger.info("Unified query cache hit")
-            return UnifiedQueryResponse(**cached_response)
+            await _metric_inc("unified_query_cache_hits")
+            logger.info(f"Unified query cache hit trace_id={trace_id}")
+            payload = dict(cached_response)
+            payload["trace_id"] = trace_id
+            return UnifiedQueryResponse(**payload)
 
     # 1. Get PaddedRAG baseline documents first (from LanceDB)
     baseline_docs = []
@@ -829,87 +968,107 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
 
     # 2. Run unified pipeline (router + optional graph fusion)
     try:
-        rag_result = await unified_pipeline.query(
-            user_query=request.query,
-            baseline_docs=baseline_docs,
-            top_k=request.top_k,
-        )
-
-        if request.force_route == "padded_rag":
-            rag_result.route = "padded_rag"
-            rag_result.documents = baseline_docs[:request.top_k]
-            rag_result.ppr_scores = {}
-            rag_result.confidence = rag_result.documents[0].score if rag_result.documents else 0.0
-            logger.info("Route override applied: padded_rag")
-        elif request.force_route == "graph_rag" and baseline_docs:
-            docs, ppr_scores = await unified_pipeline._graphrag.retrieve(
-                query=request.query,
-                router_result=rag_result.router_result,
+        async with _track_latency("unified_query_total_latency_ms", "unified_query_count_latency"):
+            rag_result = await unified_pipeline.query(
+                user_query=request.query,
                 baseline_docs=baseline_docs,
                 top_k=request.top_k,
             )
-            rag_result.route = "graph_rag"
-            rag_result.documents = docs
-            rag_result.ppr_scores = ppr_scores
-            rag_result.confidence = docs[0].score if docs else 0.0
-            logger.info("Route override applied: graph_rag")
 
-        # 3. Generate answer from top documents
-        context_texts = [d.text for d in rag_result.documents[:5]]
-        context = "\n\n".join(context_texts)
-
-        answer = "Không có thông tin phù hợp."
-        if rag_result.confidence < settings.RAG_CONF_THRESHOLD:
-            answer = "Tôi không tìm thấy đủ thông tin đáng tin cậy trong tài liệu hiện có."
-        elif context:
-            try:
-                from services.llm_client import get_llm_client
-                llm = get_llm_client()
-                resp = await llm.chat(
-                    user_message=f"Câu hỏi: {request.query}\n\nNgữ cảnh:\n{context}",
-                    system_message=(
-                        "Bạn là trợ lý tư vấn tuyển sinh Đại học Khoa học Huế (HUSC). "
-                        "Trả lời câu hỏi dựa HOÀN TOÀN vào ngữ cảnh được cung cấp. "
-                        "Nếu ngữ cảnh không đủ thông tin, nói rõ điều đó. "
-                        "Trả lời bằng tiếng Việt, súc tích (50-150 từ)."
-                    ),
-                    temperature=0.1,
-                    max_tokens=512,
+            if request.force_route == "padded_rag":
+                rag_result.route = "padded_rag"
+                rag_result.documents = baseline_docs[:request.top_k]
+                rag_result.ppr_scores = {}
+                rag_result.confidence = rag_result.documents[0].score if rag_result.documents else 0.0
+                logger.info("Route override applied: padded_rag")
+            elif request.force_route == "graph_rag" and baseline_docs:
+                docs, ppr_scores = await unified_pipeline._graphrag.retrieve(
+                    query=request.query,
+                    router_result=rag_result.router_result,
+                    baseline_docs=baseline_docs,
+                    top_k=request.top_k,
                 )
-                answer = resp.content
-            except Exception as exc:
-                logger.warning(f"Answer generation failed: {exc}")
-                answer = context[:500] if context else "Không có thông tin."
+                rag_result.route = "graph_rag"
+                rag_result.documents = docs
+                rag_result.ppr_scores = ppr_scores
+                rag_result.confidence = docs[0].score if docs else 0.0
+                logger.info("Route override applied: graph_rag")
 
-        sources = list({
-            d.metadata.get("source", d.chunk_id or "unknown")
-            for d in rag_result.documents
-        })
+            # 3. Generate answer from top documents
+            context_texts = [d.text for d in rag_result.documents[:5]]
+            context = "\n\n".join(context_texts)
 
-        response_payload = {
-            "query": request.query,
-            "route": rag_result.route,
-            "answer": answer,
-            "sources": sources,
-            "confidence": rag_result.confidence,
-            "router_info": {
-                "step_back": rag_result.router_result.step_back_query,
-                "intent": rag_result.router_result.intent,
-                "complexity": rag_result.router_result.complexity,
-                "reasoning": rag_result.router_result.reasoning,
-                "hyde_variants": rag_result.router_result.hyde_variants,
-            },
-            "graph_stats": unified_pipeline._graphrag.graph_stats,
-            "latency_ms": rag_result.latency_ms,
-        }
+            answer = "Không có thông tin phù hợp."
+            if rag_result.confidence < settings.RAG_CONF_THRESHOLD:
+                answer = "Tôi không tìm thấy đủ thông tin đáng tin cậy trong tài liệu hiện có."
+            elif context:
+                try:
+                    from services.llm_client import get_llm_client
+                    llm = get_llm_client()
+                    resp = await llm.chat(
+                        user_message=f"Câu hỏi: {request.query}\n\nNgữ cảnh:\n{context}",
+                        system_message=(
+                            "Bạn là trợ lý tư vấn tuyển sinh Đại học Khoa học Huế (HUSC). "
+                            "Trả lời câu hỏi dựa HOÀN TOÀN vào ngữ cảnh được cung cấp. "
+                            "Nếu ngữ cảnh không đủ thông tin, nói rõ điều đó. "
+                            "Trả lời bằng tiếng Việt, súc tích (50-150 từ)."
+                        ),
+                        temperature=0.1,
+                        max_tokens=512,
+                    )
+                    answer = resp.content
+                except Exception as exc:
+                    logger.warning(f"Answer generation failed: {exc}")
+                    answer = context[:500] if context else "Không có thông tin."
 
-        if query_cache:
-            query_cache.set(cache_key, response_payload)
+            sources = list({
+                d.metadata.get("source", d.chunk_id or "unknown")
+                for d in rag_result.documents
+            })
 
-        return UnifiedQueryResponse(**response_payload)
+            groundedness = _safe_groundedness_score(answer, [
+                {"text": d.text, "summary": d.text, "text_plain": d.text}
+                for d in rag_result.documents
+            ])
+            if groundedness < GROUNDING_THRESHOLD and rag_result.documents:
+                await _metric_inc("unified_query_low_groundedness")
+                logger.warning(
+                    f"LOW_GROUNDEDNESS_UNIFIED trace_id={trace_id} score={groundedness:.3f} "
+                    f"threshold={GROUNDING_THRESHOLD}"
+                )
+                answer = (
+                    "⚠️ " + answer + "\n\n"
+                    "(Lưu ý: Câu trả lời này có mức bám sát tài liệu nguồn thấp. "
+                    "Vui lòng kiểm tra lại với tài liệu chính thức.)"
+                )
+
+            response_payload = {
+                "query": request.query,
+                "route": rag_result.route,
+                "answer": answer,
+                "sources": sources,
+                "confidence": rag_result.confidence,
+                "groundedness_score": 0.0,
+                "router_info": {
+                    "step_back": rag_result.router_result.step_back_query,
+                    "intent": rag_result.router_result.intent,
+                    "complexity": rag_result.router_result.complexity,
+                    "reasoning": rag_result.router_result.reasoning,
+                    "hyde_variants": rag_result.router_result.hyde_variants,
+                },
+                "graph_stats": unified_pipeline._graphrag.graph_stats,
+                "latency_ms": rag_result.latency_ms,
+                "trace_id": trace_id,
+            }
+
+            if query_cache:
+                query_cache.set(cache_key, response_payload)
+
+            return UnifiedQueryResponse(**response_payload)
 
     except Exception as exc:
-        logger.exception(f"Unified query failed: {exc}")
+        await _metric_inc("unified_query_errors")
+        logger.exception(f"Unified query failed trace_id={trace_id}: {exc}")
         raise HTTPException(status_code=500, detail="Unified query processing failed")
 
 

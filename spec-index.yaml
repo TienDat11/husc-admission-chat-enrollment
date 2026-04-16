@@ -1,0 +1,115 @@
+# spec-index.yaml — phase and section map for mega-template enforcement
+#
+# Schema:
+#   active_phase: which phase is currently in progress (string)
+#   spec: path to the authoritative spec document (string)
+#   phases: map of phase-name to config
+#     status: in-progress | planned | verified | deprecated
+#     sections: [list of spec section IDs implemented by this phase]
+#     paths: [list of glob patterns — files this phase is allowed to touch]
+#     gate: condition that must pass before this phase becomes in-progress
+#
+# Used by:
+#   - check-phase-gate hook (blocks writes outside active phase paths)
+#   - orphan-sweep hook (reports sections without @spec annotation)
+#   - /spec-status command (shows coverage)
+#   - /phase-promote command (advances active_phase)
+
+active_phase: phase-1
+spec: docs/spec/rag-chatbot-husc-spec.md
+layout: monorepo   # flat | monorepo (default: monorepo)
+
+phases:
+  phase-1:
+    status: in-progress
+    sections: [2,3.1,3.2,4,5,6]
+    paths:
+      - packages/rag-chatbot-husc/src/**
+      - packages/rag-chatbot-husc/tests/**
+
+  # Example future phase (edit to match your spec):
+  # phase-2:
+  #   status: planned
+  #   gate: "phase-1.status == verified"
+  #   sections: [8, 9]
+  #   paths:
+  #     - src/phase2/**        # flat layout example
+  #     # OR packages/rag-chatbot-husc/src/phase2/**  (monorepo)
+
+# === Quality Gates (v0.3.0) ===
+
+tdd:
+  enabled: true
+  src_patterns: ["packages/rag-chatbot-husc/src/**"]
+  test_conventions:
+    - pattern: "^packages/rag-chatbot-husc/src/(.*)\\.ts$"
+      test: "packages/rag-chatbot-husc/tests/$1.test.ts"
+    - pattern: "^packages/rag-chatbot-husc/src/(.*)\\.ts$"
+      test: "packages/rag-chatbot-husc/test/$1.test.ts"
+  exclude:
+    - "**/*.d.ts"
+    - "**/index.ts"
+    - "**/types.ts"
+    - "**/__generated__/**"
+
+e2e:
+  enabled: true
+  test_patterns:
+    - "**/*.e2e.test.*"
+    - "**/e2e/**/*.test.*"
+    - "**/e2e/**/*.spec.*"
+  extra_blocked_patterns: []
+
+verification:
+  enabled: true
+  strictness: session    # strict | session | relaxed
+  evidence_patterns:
+    - "test-results/**/*.json"
+    - "test-results/**/*.xml"
+    - "coverage/**"
+    - "e2e/results/**"
+    - ".verification/**"
+  exclude_prefixes:
+    - "docs:"
+    - "chore:"
+    - "infra:"
+    - "ci:"
+    - "build:"
+
+# === Independent Review Gate (v0.4.0) ===
+# Rules V5-R055, V5-R056. Blocks `phase-promote:` commits and
+# `phase-*-verified` tags unless each required reviewer has produced
+# an artifact with an accepted verdict.
+review:
+  enabled: true
+  required: [reviewer, verifier, critic]
+  artifact_dir: .omc/reviews
+  accept_verdicts: [approved, approved-with-notes]
+
+# === Decision Mode (v0.5.0) ===
+# Rules V5-R057, V5-R058. Agent auto-applies rule-based decisions and
+# skips ceremonial questions. Disable by `enabled: false` for fully
+# interactive mode.
+decisions:
+  enabled: true
+  auto_apply:
+    - V5-R011   # fix root cause over band-aid
+    - V5-R030   # TDD-first ordering
+    - V5-R053   # commit-prefix exclusions for docs/chore/etc
+    - V5-R054   # session-mode verification
+    - V5-R061   # slice auto-continue (opt-out via pauseAfter per slice)
+  constraint_defaults:
+    - hot_path_purity
+    - session_ended_trigger
+    - model_reuse
+    - bounded_backoff
+  user_choice:
+    - scope_prioritization
+    - oversight_level
+    - external_api_design
+  auto_continue:
+    enabled: true            # master switch — false = fully interactive mode
+    phase_review: true       # auto-run /phase-review after last slice of phase
+    phase_promote: true      # auto-run /phase-promote after all reviews approved
+    # Per-slice override: set `"pauseAfter": true` on a slice in
+    # .omc/state/workflow.json to force a pause after that specific slice.

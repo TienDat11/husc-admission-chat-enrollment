@@ -229,3 +229,10 @@ Thumbs.db
 
 # Autodev workflow state (runtime, not committed)
 .workflow/
+
+# mega-template additions
+.claude/settings.local.json
+docs/specs/
+docs/plans/
+.omc/
+.superpowers/

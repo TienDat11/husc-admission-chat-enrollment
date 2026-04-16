@@ -1,0 +1,107 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Skill(*)",
+      "Agent(*)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/load-context.mjs",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/inject-decision-rules.mjs",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/check-spec.mjs",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/check-phase-gate.mjs",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/check-spec-coverage.mjs",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/enforce-tdd.mjs",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/check-review-evidence.mjs",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/enforce-slice-order.mjs",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/require-tests.mjs",
+            "timeout": 60000
+          },
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/check-e2e-real.mjs",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/enforce-verification.mjs",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node D:/chunking/husc-admission-chat-enrollment/node_modules/@agentic-gateway/mega-template/hooks/orphan-sweep.mjs",
+            "timeout": 10000
+          }
+        ]
+      }
+    ]
+  }
+}

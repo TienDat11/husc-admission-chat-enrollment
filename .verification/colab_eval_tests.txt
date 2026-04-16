@@ -1,0 +1,44 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.2, pytest-9.0.1, pluggy-1.5.0 -- C:\Users\ADMIN\miniconda3\python.exe
+cachedir: .pytest_cache
+rootdir: D:\chunking\husc-admission-chat-enrollment
+plugins: anyio-4.9.0, langsmith-0.4.46, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 34 items
+
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_load_test_questions_uses_fallback_when_primary_missing PASSED [  2%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_load_test_questions_uses_fallback_when_primary_invalid_json PASSED [  5%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_load_test_questions_uses_primary_when_valid PASSED [  8%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_load_test_questions_raises_when_both_fail PASSED [ 11%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_has_required_keys PASSED [ 14%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_v2_sources_mapping PASSED [ 17%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_v1_chunks_mapping PASSED [ 20%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_v2_missing_sources PASSED [ 23%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_preserves_raw PASSED [ 26%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_has_groundedness_score PASSED [ 29%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_has_route PASSED [ 32%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_defaults_groundedness_and_route PASSED [ 35%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_invalid_mode_treated_as_v1 PASSED [ 38%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_sources_string_not_list PASSED [ 41%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_sources_dict_not_list PASSED [ 44%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_chunks_string_not_list PASSED [ 47%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_pipeline_output_chunks_dict_not_list PASSED [ 50%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_should_abort_after_smoke_when_failures_exceed_half PASSED [ 52%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_should_abort_after_smoke_edge_cases PASSED [ 55%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_should_abort_after_smoke_at_exactly_half PASSED [ 58%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_should_abort_after_smoke_all_failures PASSED [ 61%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_should_abort_after_smoke_no_failures PASSED [ 64%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::TestCallPipeline::test_call_pipeline_v1_mode PASSED [ 67%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::TestCallPipeline::test_call_pipeline_v2_mode PASSED [ 70%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::TestCallPipeline::test_call_pipeline_v2_default_top_k PASSED [ 73%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::TestCallPipeline::test_call_pipeline_raises_on_error PASSED [ 76%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::TestCallPipeline::test_call_pipeline_raises_pipeline_error_on_connection_error PASSED [ 79%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::TestCallPipeline::test_call_pipeline_raises_pipeline_error_on_non_json_response PASSED [ 82%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_text_lowercase_strip_punct PASSED [ 85%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_normalize_text_removes_all_punctuation PASSED [ 88%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_exact_correctness_returns_one_on_match PASSED [ 91%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_exact_correctness_returns_zero_on_mismatch PASSED [ 94%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_retrieval_recall_proxy_hits_ground_truth PASSED [ 97%]
+packages/rag-chatbot-husc/tests/notebooks/test_eval_core.py::test_hallucination_flag_from_threshold PASSED [100%]
+
+============================= 34 passed in 0.09s ==============================

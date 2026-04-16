@@ -1,0 +1,4677 @@
+{
+  "version": "2.9",
+  "children": [
+    {
+      "type": "frame",
+      "id": "2bOrF",
+      "x": 0,
+      "y": 0,
+      "name": "Variation 1 - Classic HUSC",
+      "clip": true,
+      "width": 380,
+      "height": 600,
+      "fill": "#F5F7FAFF",
+      "cornerRadius": 16,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#0000002E",
+        "offset": {
+          "x": 0,
+          "y": 8
+        },
+        "blur": 32
+      },
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "OFici",
+          "name": "Header",
+          "width": "fill_container",
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "enabled": true,
+            "rotation": 90,
+            "size": {
+              "height": 1
+            },
+            "colors": [
+              {
+                "color": "#003087FF",
+                "position": 0
+              },
+              {
+                "color": "#004BB5FF",
+                "position": 1
+              }
+            ]
+          },
+          "gap": 10,
+          "padding": [
+            12,
+            16
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "ieKR0",
+              "name": "Avatar",
+              "width": 36,
+              "height": 36,
+              "fill": "#FFFFFFFF",
+              "cornerRadius": 18,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "1Rn83",
+                  "x": 8,
+                  "y": 8,
+                  "name": "avatarIcon",
+                  "width": 20,
+                  "height": 20,
+                  "iconFontName": "graduation-cap",
+                  "iconFontFamily": "lucide",
+                  "fill": "#003087FF"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "2Eh3e",
+              "name": "Info",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "iq9b8",
+                  "name": "Title",
+                  "fill": "#FFFFFFFF",
+                  "content": "Trợ lý Tuyển sinh HUSC",
+                  "fontFamily": "Be Vietnam Pro",
+                  "fontSize": 14,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "EOF0V",
+                  "name": "StatusRow",
+                  "gap": 6,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "6A3Tn",
+                      "name": "StatusDot",
+                      "fill": "#4CAF50FF",
+                      "width": 7,
+                      "height": 7
+                    },
+                    {
+                      "type": "text",
+                      "id": "ZXMl4",
+                      "name": "StatusText",
+                      "fill": "#FFFFFF99",
+                      "content": "Đang hoạt động",
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "yARWW",
+              "name": "CloseBtn",
+              "width": 28,
+              "height": 28,
+              "fill": "#FFFFFF1A",
+              "cornerRadius": 14,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "69o0T",
+                  "x": 7,
+                  "y": 7,
+                  "name": "closeIcon",
+                  "width": 14,
+                  "height": 14,
+                  "iconFontName": "x",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "OAvPy",
+          "name": "MessageArea",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": "#F5F7FAFF",
+          "layout": "vertical",
+          "gap": 14,
+          "padding": 16,
+          "children": [
+            {
+              "type": "frame",
+              "id": "QEG8S",
+              "name": "BotRow",
+              "width": "fill_container",
+              "gap": 8,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "aY81Y",
+                  "name": "BotAvatar",
+                  "width": 28,
+                  "height": 28,
+                  "fill": "#003087FF",
+                  "cornerRadius": 14,
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "9KDXk",
+                      "x": 6,
+                      "y": 6,
+                      "name": "botAvatarIcon",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "graduation-cap",
+                      "iconFontFamily": "lucide",
+                      "fill": "#FFFFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "LqhNn",
+                  "name": "BotBubble",
+                  "width": 260,
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": [
+                    4,
+                    16,
+                    16,
+                    16
+                  ],
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#E8ECF0FF"
+                  },
+                  "layout": "vertical",
+                  "gap": 6,
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "rkuPG",
+                      "name": "WelcomeText",
+                      "fill": "#1A1A1AFF",
+                      "textGrowth": "fixed-width",
+                      "width": 232,
+                      "content": "👋 Xin chào! Tôi là Trợ lý Tuyển sinh HUSC.",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "h4akY",
+                      "name": "SubText",
+                      "fill": "#1A1A1AFF",
+                      "textGrowth": "fixed-width",
+                      "width": 232,
+                      "content": "Tôi có thể giúp bạn tìm hiểu về:\n• Các ngành đào tạo\n• Phương thức xét tuyển\n• Điểm chuẩn & chỉ tiêu\n• Học bổng & ưu tiên",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "OAAlt",
+                  "name": "Time",
+                  "fill": "#6B7280FF",
+                  "content": "10:32 AM",
+                  "fontFamily": "Be Vietnam Pro",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "uP9E4",
+              "name": "QuickChips",
+              "width": "fill_container",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "kXQQw",
+                  "name": "Chip1",
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": 20,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#003087FF"
+                  },
+                  "gap": 4,
+                  "padding": [
+                    6,
+                    12
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "QBLpz",
+                      "name": "chip1Icon",
+                      "width": 12,
+                      "height": 12,
+                      "iconFontName": "book-open",
+                      "iconFontFamily": "lucide",
+                      "fill": "#003087FF"
+                    },
+                    {
+                      "type": "text",
+                      "id": "AS9X1",
+                      "name": "chip1Text",
+                      "fill": "#003087FF",
+                      "content": "Ngành đào tạo",
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ABYU6",
+                  "name": "Chip2",
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": 20,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#003087FF"
+                  },
+                  "gap": 4,
+                  "padding": [
+                    6,
+                    12
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "nm4hK",
+                      "name": "chip2Icon",
+                      "width": 12,
+                      "height": 12,
+                      "iconFontName": "clipboard-list",
+                      "iconFontFamily": "lucide",
+                      "fill": "#003087FF"
+                    },
+                    {
+                      "type": "text",
+                      "id": "8FQ4m",
+                      "name": "chip2Text",
+                      "fill": "#003087FF",
+                      "content": "Phương thức XT",
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "tFlFd",
+                  "name": "Chip3",
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": 20,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#003087FF"
+                  },
+                  "gap": 4,
+                  "padding": [
+                    6,
+                    12
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "udi0V",
+                      "name": "chip3Icon",
+                      "width": 12,
+                      "height": 12,
+                      "iconFontName": "target",
+                      "iconFontFamily": "lucide",
+                      "fill": "#003087FF"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ACjTI",
+                      "name": "chip3Text",
+                      "fill": "#003087FF",
+                      "content": "Điểm chuẩn",
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "KupnR",
+                  "name": "Chip4",
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": 20,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#003087FF"
+                  },
+                  "gap": 4,
+                  "padding": [
+                    6,
+                    12
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "KFz5e",
+                      "name": "chip4Icon",
+                      "width": 12,
+                      "height": 12,
+                      "iconFontName": "award",
+                      "iconFontFamily": "lucide",
+                      "fill": "#003087FF"
+                    },
+                    {
+                      "type": "text",
+                      "id": "5yOoe",
+                      "name": "chip4Text",
+                      "fill": "#003087FF",
+                      "content": "Học bổng",
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "tb4eZ",
+              "name": "UserRow",
+              "width": "fill_container",
+              "gap": 8,
+              "justifyContent": "end",
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "2tMa4",
+                  "name": "userTime",
+                  "fill": "#6B7280FF",
+                  "content": "10:33 AM",
+                  "fontFamily": "Be Vietnam Pro",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "kf9Vz",
+                  "name": "UserBubble",
+                  "width": 220,
+                  "fill": "#003087FF",
+                  "cornerRadius": [
+                    16,
+                    4,
+                    16,
+                    16
+                  ],
+                  "layout": "vertical",
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "TeKOS",
+                      "name": "userText",
+                      "fill": "#FFFFFFFF",
+                      "textGrowth": "fixed-width",
+                      "width": 192,
+                      "content": "Cho tôi hỏi điểm chuẩn ngành Khoa học máy tính năm 2025 là bao nhiêu?",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "3hFsC",
+              "name": "BotRow2",
+              "width": "fill_container",
+              "gap": 8,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "3Mm6P",
+                  "name": "BotAvatar2",
+                  "width": 28,
+                  "height": 28,
+                  "fill": "#003087FF",
+                  "cornerRadius": 14,
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "TErH6",
+                      "x": 6,
+                      "y": 6,
+                      "name": "botAvatarIcon2",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "graduation-cap",
+                      "iconFontFamily": "lucide",
+                      "fill": "#FFFFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "8RlD9",
+                  "name": "BotBubble2",
+                  "width": 270,
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": [
+                    4,
+                    16,
+                    16,
+                    16
+                  ],
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#E8ECF0FF"
+                  },
+                  "layout": "vertical",
+                  "gap": 6,
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "WhNjP",
+                      "name": "botText3",
+                      "fill": "#1A1A1AFF",
+                      "textGrowth": "fixed-width",
+                      "width": 242,
+                      "content": "📊 Điểm chuẩn ngành Khoa học máy tính (Mã ngành: 7480201) năm 2025:",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ds8f0",
+                      "name": "botText4",
+                      "fill": "#1A1A1AFF",
+                      "textGrowth": "fixed-width",
+                      "width": 242,
+                      "content": "• Phương thức 1 (THPT): 22.5 điểm\n• Phương thức 2 (Học bạ): GPA ≥ 7.0\n• Chỉ tiêu: 150 sinh viên",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "MFvmj",
+                      "name": "botSrc",
+                      "fill": "#003087FF",
+                      "textGrowth": "fixed-width",
+                      "width": 242,
+                      "content": "📎 Nguồn: thongtintuyensinh.husc.edu.vn",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "k7K8Q",
+                  "name": "botTime2",
+                  "fill": "#6B7280FF",
+                  "content": "10:33 AM",
+                  "fontFamily": "Be Vietnam Pro",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "DkVAq",
+          "name": "InputArea",
+          "width": "fill_container",
+          "fill": "#FFFFFFFF",
+          "gap": 8,
+          "padding": [
+            10,
+            12
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "Rtwvg",
+              "name": "InputField",
+              "width": "fill_container",
+              "fill": "#F5F7FAFF",
+              "cornerRadius": 20,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#D1D9E0FF"
+              },
+              "padding": [
+                8,
+                14
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "M3ruS",
+                  "name": "inputText",
+                  "fill": "#9CA3AFFF",
+                  "content": "Nhập câu hỏi của bạn...",
+                  "fontFamily": "Be Vietnam Pro",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "LrAGk",
+              "name": "SendBtn",
+              "width": 36,
+              "height": 36,
+              "fill": "#003087FF",
+              "cornerRadius": 18,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "zKOF6",
+                  "x": 10,
+                  "y": 10,
+                  "name": "sendIcon",
+                  "width": 16,
+                  "height": 16,
+                  "iconFontName": "send",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "eaSBW",
+          "name": "Footer",
+          "width": "fill_container",
+          "fill": "#FFFFFFFF",
+          "padding": [
+            0,
+            0,
+            6,
+            0
+          ],
+          "justifyContent": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "AjHrY",
+              "name": "footerText",
+              "fill": "#9CA3AFFF",
+              "content": "Powered by HUSC RAG AI",
+              "fontFamily": "Be Vietnam Pro",
+              "fontSize": 9,
+              "fontWeight": "normal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "JVffy",
+      "x": 480,
+      "y": 0,
+      "name": "Variation 2 - Modern Glass",
+      "clip": true,
+      "width": 380,
+      "height": 600,
+      "fill": "#F5F7FAFF",
+      "cornerRadius": 16,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#0000002E",
+        "offset": {
+          "x": 0,
+          "y": 8
+        },
+        "blur": 32
+      },
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "sjuTy",
+          "name": "Header2",
+          "width": "fill_container",
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "enabled": true,
+            "rotation": 135,
+            "size": {
+              "height": 1
+            },
+            "colors": [
+              {
+                "color": "#667EEAFF",
+                "position": 0
+              },
+              {
+                "color": "#003087FF",
+                "position": 1
+              }
+            ]
+          },
+          "gap": 10,
+          "padding": [
+            14,
+            16
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "49WGo",
+              "name": "Avatar",
+              "width": 38,
+              "height": 38,
+              "fill": "#FFFFFF26",
+              "cornerRadius": 12,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#FFFFFF4D"
+              },
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "Gtg8Z",
+                  "x": 10,
+                  "y": 10,
+                  "name": "av2i",
+                  "width": 18,
+                  "height": 18,
+                  "iconFontName": "sparkles",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "MfLG4",
+              "name": "Info",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "0WQPd",
+                  "name": "ttl2",
+                  "fill": "#FFFFFFFF",
+                  "content": "HUSC AI Trợ lý",
+                  "fontFamily": "Space Grotesk",
+                  "fontSize": 15,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "dpdvZ",
+                  "name": "Status",
+                  "gap": 5,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "ucTT8",
+                      "name": "sd2",
+                      "fill": "#4CAF50FF",
+                      "width": 6,
+                      "height": 6,
+                      "effect": {
+                        "type": "shadow",
+                        "shadowType": "outer",
+                        "color": "#4CAF5066",
+                        "blur": 4,
+                        "spread": 1
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "id": "xgSL6",
+                      "name": "st2",
+                      "fill": "#FFFFFFBB",
+                      "content": "Sẵn sàng hỗ trợ",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "nrIjO",
+              "name": "Close",
+              "width": 30,
+              "height": 30,
+              "fill": "#FFFFFF1A",
+              "cornerRadius": 10,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "ztKiN",
+                  "x": 8,
+                  "y": 8,
+                  "name": "ci2",
+                  "width": 14,
+                  "height": 14,
+                  "iconFontName": "x",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "cr3u4",
+          "name": "MsgArea2",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": "#0A0E27FF",
+          "layout": "vertical",
+          "gap": 12,
+          "padding": 16,
+          "children": [
+            {
+              "type": "frame",
+              "id": "er6LD",
+              "name": "BotRow",
+              "width": "fill_container",
+              "gap": 8,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "18wGc",
+                  "name": "BAv",
+                  "width": 30,
+                  "height": 30,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 135,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#667EEAFF",
+                        "position": 0
+                      },
+                      {
+                        "color": "#764BA2FF",
+                        "position": 1
+                      }
+                    ]
+                  },
+                  "cornerRadius": 10,
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "GqVjC",
+                      "x": 7,
+                      "y": 7,
+                      "name": "b1ai",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "sparkles",
+                      "iconFontFamily": "lucide",
+                      "fill": "#FFFFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "WUXac",
+                  "name": "BBubble",
+                  "width": 270,
+                  "fill": "#FFFFFF0D",
+                  "cornerRadius": [
+                    4,
+                    16,
+                    16,
+                    16
+                  ],
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#FFFFFF1A"
+                  },
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "G1o9S",
+                      "name": "b1t1",
+                      "fill": "#667EEAFF",
+                      "content": "Hey there! 👋",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "SV24u",
+                      "name": "b1t2",
+                      "fill": "#FFFFFFCC",
+                      "textGrowth": "fixed-width",
+                      "width": 242,
+                      "content": "Tớ là Trợ lý AI của HUSC! Tớ có thể giúp cậu tìm hiểu về:\n\n🎓 Các ngành đào tạo siêu cool\n📝 Phương thức xét tuyển\n🎯 Điểm chuẩn năm nay\n🏅 Học bổng hot nhất",
+                      "lineHeight": 1.6,
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "U5x5T",
+                  "name": "b1tm",
+                  "fill": "#FFFFFF44",
+                  "content": "vừa xong",
+                  "fontFamily": "Space Grotesk",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "6hvvR",
+              "name": "Chips2",
+              "width": "fill_container",
+              "gap": 6,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "prl9L",
+                  "name": "C1",
+                  "fill": "#667EEA1A",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#667EEA66"
+                  },
+                  "gap": 4,
+                  "padding": [
+                    6,
+                    10
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "V4qGn",
+                      "name": "c21t",
+                      "fill": "#667EEAFF",
+                      "content": "🎓 Ngành hot",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "exuHm",
+                  "name": "C2",
+                  "fill": "#764BA21A",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#764BA266"
+                  },
+                  "gap": 4,
+                  "padding": [
+                    6,
+                    10
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "PzuEa",
+                      "name": "c22t",
+                      "fill": "#B06AB3FF",
+                      "content": "📋 Xét tuyển",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Gn8YP",
+                  "name": "C3",
+                  "fill": "#4CAF501A",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#4CAF5066"
+                  },
+                  "gap": 4,
+                  "padding": [
+                    6,
+                    10
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "aveKL",
+                      "name": "c23t",
+                      "fill": "#4CAF50FF",
+                      "content": "🎯 Điểm chuẩn",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Cihhl",
+                  "name": "C4",
+                  "fill": "#E5A8231A",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#E5A82366"
+                  },
+                  "gap": 4,
+                  "padding": [
+                    6,
+                    10
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "OiIhN",
+                      "name": "c24t",
+                      "fill": "#E5A823FF",
+                      "content": "🏅 Học bổng",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "1QdcI",
+              "name": "UserRow2",
+              "width": "fill_container",
+              "gap": 8,
+              "justifyContent": "end",
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "TnhP5",
+                  "name": "ut2",
+                  "fill": "#FFFFFF44",
+                  "content": "10:33",
+                  "fontFamily": "Space Grotesk",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "LNWCm",
+                  "name": "UB2",
+                  "width": 210,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 135,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#667EEAFF",
+                        "position": 0
+                      },
+                      {
+                        "color": "#764BA2FF",
+                        "position": 1
+                      }
+                    ]
+                  },
+                  "cornerRadius": [
+                    16,
+                    4,
+                    16,
+                    16
+                  ],
+                  "layout": "vertical",
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "LnsXE",
+                      "name": "ubt2",
+                      "fill": "#FFFFFFFF",
+                      "textGrowth": "fixed-width",
+                      "width": 182,
+                      "content": "Điểm chuẩn ngành IT năm 2025 bao nhiêu vậy ạ? 🤔",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "pExw0",
+              "name": "BotRow2",
+              "width": "fill_container",
+              "gap": 8,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "JvkH2",
+                  "name": "BAv2",
+                  "width": 30,
+                  "height": 30,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 135,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#667EEAFF",
+                        "position": 0
+                      },
+                      {
+                        "color": "#764BA2FF",
+                        "position": 1
+                      }
+                    ]
+                  },
+                  "cornerRadius": 10,
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "2ihyX",
+                      "x": 7,
+                      "y": 7,
+                      "name": "ba2i",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "sparkles",
+                      "iconFontFamily": "lucide",
+                      "fill": "#FFFFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "TzxNM",
+                  "name": "BBubble2",
+                  "width": 270,
+                  "fill": "#FFFFFF0D",
+                  "cornerRadius": [
+                    4,
+                    16,
+                    16,
+                    16
+                  ],
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#FFFFFF1A"
+                  },
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "7CU9r",
+                      "name": "bb2t1",
+                      "fill": "#667EEAFF",
+                      "textGrowth": "fixed-width",
+                      "width": 242,
+                      "content": "📊 Khoa học Máy tính (7480201) - 2025",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 13,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "CYrKC",
+                      "name": "bb2t2",
+                      "fill": "#FFFFFFCC",
+                      "textGrowth": "fixed-width",
+                      "width": 242,
+                      "content": "• THPT: 22.5 điểm ⭐\n• Học bạ: GPA ≥ 7.0\n• Chỉ tiêu: 150 sinh viên\n\n💡 Mẹo: Điểm có thể thay đổi, theo dõi website nhé!",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "9xEJV",
+                      "name": "bb2s",
+                      "fill": "#667EEAFF",
+                      "textGrowth": "fixed-width",
+                      "width": 242,
+                      "content": "📎 thongtintuyensinh.husc.edu.vn",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "accTb",
+                  "name": "bt2",
+                  "fill": "#FFFFFF44",
+                  "content": "10:33",
+                  "fontFamily": "Space Grotesk",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "Rv51m",
+          "name": "Input2",
+          "width": "fill_container",
+          "fill": "#0D1130FF",
+          "gap": 8,
+          "padding": [
+            10,
+            12
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "57oiq",
+              "name": "IF2",
+              "width": "fill_container",
+              "fill": "#FFFFFF0D",
+              "cornerRadius": 24,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#FFFFFF1A"
+              },
+              "padding": [
+                9,
+                14
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "9qNmx",
+                  "name": "ift2",
+                  "fill": "#FFFFFF55",
+                  "content": "Nhập câu hỏi...",
+                  "fontFamily": "Space Grotesk",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "lji6Y",
+              "name": "Send2",
+              "width": 36,
+              "height": 36,
+              "fill": {
+                "type": "gradient",
+                "gradientType": "linear",
+                "enabled": true,
+                "rotation": 135,
+                "size": {
+                  "height": 1
+                },
+                "colors": [
+                  {
+                    "color": "#667EEAFF",
+                    "position": 0
+                  },
+                  {
+                    "color": "#764BA2FF",
+                    "position": 1
+                  }
+                ]
+              },
+              "cornerRadius": 18,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "xWdRL",
+                  "x": 10,
+                  "y": 10,
+                  "name": "sb2i",
+                  "width": 16,
+                  "height": 16,
+                  "iconFontName": "send",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "e983w",
+      "x": 960,
+      "y": 0,
+      "name": "Variation 3 - Warm Gold",
+      "clip": true,
+      "width": 380,
+      "height": 600,
+      "fill": "#F5F7FAFF",
+      "cornerRadius": 16,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#0000002E",
+        "offset": {
+          "x": 0,
+          "y": 8
+        },
+        "blur": 32
+      },
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "wz07T",
+          "name": "Header3",
+          "width": "fill_container",
+          "fill": "#003087FF",
+          "gap": 10,
+          "padding": [
+            14,
+            16
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "XQJCB",
+              "name": "GoldBar",
+              "width": "fill_container",
+              "height": 3,
+              "fill": "#E5A823FF",
+              "layout": "none"
+            },
+            {
+              "type": "frame",
+              "id": "1VCNX",
+              "name": "Avatar3",
+              "width": 40,
+              "height": 40,
+              "fill": "#E5A823FF",
+              "cornerRadius": 20,
+              "effect": {
+                "type": "shadow",
+                "shadowType": "outer",
+                "color": "#E5A82366",
+                "offset": {
+                  "x": 0,
+                  "y": 2
+                },
+                "blur": 8
+              },
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "IunhE",
+                  "x": 10,
+                  "y": 10,
+                  "name": "av3i",
+                  "width": 20,
+                  "height": 20,
+                  "iconFontName": "graduation-cap",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Hh1kW",
+              "name": "Info3",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "N5fbC",
+                  "name": "ttl3",
+                  "fill": "#FFFFFFFF",
+                  "content": "HUSC Tuyển Sinh",
+                  "fontFamily": "Be Vietnam Pro",
+                  "fontSize": 15,
+                  "fontWeight": "800"
+                },
+                {
+                  "type": "frame",
+                  "id": "MMe6A",
+                  "name": "Sub3",
+                  "gap": 5,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "GqMJS",
+                      "name": "sd3",
+                      "fill": "#4CAF50FF",
+                      "width": 7,
+                      "height": 7
+                    },
+                    {
+                      "type": "text",
+                      "id": "v1JOk",
+                      "name": "st3",
+                      "fill": "#E5A823FF",
+                      "content": "Đang hoạt động",
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "7g8Wz",
+              "name": "Close3",
+              "width": 30,
+              "height": 30,
+              "fill": "#FFFFFF1A",
+              "cornerRadius": 8,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "vW5rv",
+                  "x": 8,
+                  "y": 8,
+                  "name": "ci3",
+                  "width": 14,
+                  "height": 14,
+                  "iconFontName": "x",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "euMqm",
+          "name": "MsgArea3",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": "#FAFAF5FF",
+          "layout": "vertical",
+          "gap": 14,
+          "padding": 16,
+          "children": [
+            {
+              "type": "frame",
+              "id": "np4kS",
+              "name": "BotRow3",
+              "width": "fill_container",
+              "gap": 8,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "78fTY",
+                  "name": "BAv3",
+                  "width": 32,
+                  "height": 32,
+                  "fill": "#E5A823FF",
+                  "cornerRadius": 16,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#E5A82344",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    },
+                    "blur": 6
+                  },
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "P8RZc",
+                      "x": 7,
+                      "y": 7,
+                      "name": "b3ai",
+                      "width": 18,
+                      "height": 18,
+                      "iconFontName": "graduation-cap",
+                      "iconFontFamily": "lucide",
+                      "fill": "#FFFFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "7Pc8x",
+                  "name": "BBubble3",
+                  "width": 265,
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": [
+                    4,
+                    20,
+                    20,
+                    20
+                  ],
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#0000000D",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    },
+                    "blur": 8
+                  },
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "DoxGI",
+                      "name": "b3t1",
+                      "fill": "#003087FF",
+                      "textGrowth": "fixed-width",
+                      "width": 237,
+                      "content": "Chào bạn! Mình là HUSC Bot 🎓",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 14,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ak1UW",
+                      "name": "b3t2",
+                      "fill": "#374151FF",
+                      "textGrowth": "fixed-width",
+                      "width": 237,
+                      "content": "Mình sẽ giúp bạn khám phá:\n🔸 Ngành học & cơ hội nghề nghiệp\n🔸 Cách xét tuyển dễ nhất\n🔸 Học bổng giá trị\n🔸 Ký túc xá & đời sống SV",
+                      "lineHeight": 1.6,
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "FLR4X",
+                  "name": "b3tm",
+                  "fill": "#9CA3AFFF",
+                  "content": "10:32",
+                  "fontFamily": "Be Vietnam Pro",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "6jIbg",
+              "name": "Chips3",
+              "width": "fill_container",
+              "gap": 6,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "UAcOo",
+                  "name": "C31",
+                  "fill": "#E5A8230D",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#E5A82344"
+                  },
+                  "gap": 5,
+                  "padding": [
+                    7,
+                    12
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "DaoJ7",
+                      "name": "c31i",
+                      "width": 12,
+                      "height": 12,
+                      "iconFontName": "book-open",
+                      "iconFontFamily": "lucide",
+                      "fill": "#E5A823FF"
+                    },
+                    {
+                      "type": "text",
+                      "id": "tpFOb",
+                      "name": "c31t",
+                      "fill": "#B8860BFF",
+                      "content": "Ngành đào tạo",
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "DlbCL",
+                  "name": "C32",
+                  "fill": "#0030870D",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#00308744"
+                  },
+                  "gap": 5,
+                  "padding": [
+                    7,
+                    12
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "cZvbm",
+                      "name": "c32i",
+                      "width": 12,
+                      "height": 12,
+                      "iconFontName": "clipboard-check",
+                      "iconFontFamily": "lucide",
+                      "fill": "#003087FF"
+                    },
+                    {
+                      "type": "text",
+                      "id": "WkGSF",
+                      "name": "c32t",
+                      "fill": "#003087FF",
+                      "content": "Xét tuyển",
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "rBW9O",
+                  "name": "C33",
+                  "fill": "#4CAF500D",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#4CAF5044"
+                  },
+                  "gap": 5,
+                  "padding": [
+                    7,
+                    12
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "QTX8x",
+                      "name": "c33i",
+                      "width": 12,
+                      "height": 12,
+                      "iconFontName": "trophy",
+                      "iconFontFamily": "lucide",
+                      "fill": "#4CAF50FF"
+                    },
+                    {
+                      "type": "text",
+                      "id": "HCW4J",
+                      "name": "c33t",
+                      "fill": "#4CAF50FF",
+                      "content": "Học bổng",
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "wOfm0",
+              "name": "UserRow3",
+              "width": "fill_container",
+              "gap": 8,
+              "justifyContent": "end",
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "BCZ9h",
+                  "name": "u3t",
+                  "fill": "#9CA3AFFF",
+                  "content": "10:33",
+                  "fontFamily": "Be Vietnam Pro",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "1opN5",
+                  "name": "UB3",
+                  "width": 215,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 135,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#003087FF",
+                        "position": 0
+                      },
+                      {
+                        "color": "#004BB5FF",
+                        "position": 1
+                      }
+                    ]
+                  },
+                  "cornerRadius": [
+                    20,
+                    4,
+                    20,
+                    20
+                  ],
+                  "layout": "vertical",
+                  "gap": 4,
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "B5QzQ",
+                      "name": "u3bt",
+                      "fill": "#FFFFFFFF",
+                      "textGrowth": "fixed-width",
+                      "width": 187,
+                      "content": "Ngành IT điểm chuẩn bao nhiêu ạ? Em muốn biết thêm về học bổng nữa 💫",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ihGq4",
+              "name": "BotRow3b",
+              "width": "fill_container",
+              "gap": 8,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "y8xiH",
+                  "name": "BAv3b",
+                  "width": 32,
+                  "height": 32,
+                  "fill": "#E5A823FF",
+                  "cornerRadius": 16,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#E5A82344",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    },
+                    "blur": 6
+                  },
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "y9oIU",
+                      "x": 7,
+                      "y": 7,
+                      "name": "b3a2i",
+                      "width": 18,
+                      "height": 18,
+                      "iconFontName": "graduation-cap",
+                      "iconFontFamily": "lucide",
+                      "fill": "#FFFFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "yjbox",
+                  "name": "BBubble3b",
+                  "width": 265,
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": [
+                    4,
+                    20,
+                    20,
+                    20
+                  ],
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#0000000D",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    },
+                    "blur": 8
+                  },
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "trF60",
+                      "name": "b3b2t1",
+                      "fill": "#003087FF",
+                      "textGrowth": "fixed-width",
+                      "width": 237,
+                      "content": "🎯 Khoa học Máy tính - 2025",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 13,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "oGEnw",
+                      "name": "b3b2t2",
+                      "fill": "#374151FF",
+                      "textGrowth": "fixed-width",
+                      "width": 237,
+                      "content": "• THPT: 22.5 điểm\n• Học bạ: GPA ≥ 7.0\n• Chỉ tiêu: 150 SV\n\n🏅 Học bổng:\n• Khuyến khích tài năng: 100% học phí\n• Vượt khó: 50% học phí",
+                      "lineHeight": 1.6,
+                      "fontFamily": "Be Vietnam Pro",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "vApsz",
+                      "name": "SourceTag",
+                      "fill": "#E5A8230D",
+                      "cornerRadius": 6,
+                      "gap": 4,
+                      "padding": [
+                        4,
+                        8
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon_font",
+                          "id": "h0CQ2",
+                          "name": "b3b2si",
+                          "width": 10,
+                          "height": 10,
+                          "iconFontName": "external-link",
+                          "iconFontFamily": "lucide",
+                          "fill": "#E5A823FF"
+                        },
+                        {
+                          "type": "text",
+                          "id": "F953c",
+                          "name": "b3b2st",
+                          "fill": "#B8860BFF",
+                          "content": "Xem chi tiết tại đây",
+                          "fontFamily": "Be Vietnam Pro",
+                          "fontSize": 10,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "I1GJ3",
+                  "name": "b3tm2",
+                  "fill": "#9CA3AFFF",
+                  "content": "10:33",
+                  "fontFamily": "Be Vietnam Pro",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "IzzX8",
+          "name": "Input3",
+          "width": "fill_container",
+          "fill": "#FFFFFFFF",
+          "stroke": {
+            "align": "inside",
+            "thickness": 1,
+            "fill": "#E5E7EBFF"
+          },
+          "gap": 10,
+          "padding": [
+            10,
+            14
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "gCW4c",
+              "name": "IF3",
+              "width": "fill_container",
+              "fill": "#FAFAF5FF",
+              "cornerRadius": 24,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#E5A82333"
+              },
+              "padding": [
+                9,
+                14
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "5tC65",
+                  "name": "if3t",
+                  "fill": "#9CA3AFFF",
+                  "content": "Nhập câu hỏi cho HUSC Bot...",
+                  "fontFamily": "Be Vietnam Pro",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "icon_font",
+                  "id": "70QX7",
+                  "name": "if3a",
+                  "width": 16,
+                  "height": 16,
+                  "iconFontName": "paperclip",
+                  "iconFontFamily": "lucide",
+                  "fill": "#B8860BFF"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "xC2cw",
+              "name": "Send3",
+              "width": 38,
+              "height": 38,
+              "fill": "#E5A823FF",
+              "cornerRadius": 19,
+              "effect": {
+                "type": "shadow",
+                "shadowType": "outer",
+                "color": "#E5A82344",
+                "offset": {
+                  "x": 0,
+                  "y": 2
+                },
+                "blur": 8
+              },
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "L1MG3",
+                  "x": 11,
+                  "y": 11,
+                  "name": "sb3i",
+                  "width": 16,
+                  "height": 16,
+                  "iconFontName": "send",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "fmleC",
+          "name": "Footer3",
+          "width": "fill_container",
+          "fill": "#FFFFFFFF",
+          "padding": [
+            0,
+            0,
+            8,
+            0
+          ],
+          "justifyContent": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "GJE3h",
+              "name": "ft3t",
+              "fill": "#B8860B99",
+              "content": "Powered by HUSC RAG AI ✨",
+              "fontFamily": "Be Vietnam Pro",
+              "fontSize": 9,
+              "fontWeight": "normal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "4Vi1I",
+      "x": 1390,
+      "y": 0,
+      "name": "Variation 4 - Gen Z Neon",
+      "clip": true,
+      "width": 380,
+      "height": 600,
+      "fill": "#0F0F1AFF",
+      "cornerRadius": 16,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#0000002E",
+        "offset": {
+          "x": 0,
+          "y": 8
+        },
+        "blur": 32
+      },
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "n4m94",
+          "name": "Header4",
+          "width": "fill_container",
+          "fill": "#0F0F1AFF",
+          "gap": 10,
+          "padding": [
+            14,
+            16
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "r7mXq",
+              "name": "Av4",
+              "width": 40,
+              "height": 40,
+              "fill": {
+                "type": "gradient",
+                "gradientType": "linear",
+                "enabled": true,
+                "rotation": 135,
+                "size": {
+                  "height": 1
+                },
+                "colors": [
+                  {
+                    "color": "#00F5D4FF",
+                    "position": 0
+                  },
+                  {
+                    "color": "#00BBF9FF",
+                    "position": 1
+                  }
+                ]
+              },
+              "cornerRadius": 14,
+              "effect": {
+                "type": "shadow",
+                "shadowType": "outer",
+                "color": "#00F5D444",
+                "blur": 12
+              },
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "v56gv",
+                  "x": 10,
+                  "y": 10,
+                  "name": "a4i",
+                  "width": 20,
+                  "height": 20,
+                  "iconFontName": "message-circle",
+                  "iconFontFamily": "lucide",
+                  "fill": "#0F0F1AFF"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "4fV8l",
+              "name": "Info4",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "vshQh",
+                  "name": "t4",
+                  "fill": "#00F5D4FF",
+                  "content": "HUSC Bot",
+                  "fontFamily": "Space Grotesk",
+                  "fontSize": 16,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "frame",
+                  "id": "qPJk9",
+                  "name": "SR4",
+                  "gap": 5,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "I9knR",
+                      "name": "sd4",
+                      "fill": "#00F5D4FF",
+                      "width": 6,
+                      "height": 6,
+                      "effect": {
+                        "type": "shadow",
+                        "shadowType": "outer",
+                        "color": "#00F5D466",
+                        "blur": 6,
+                        "spread": 1
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "id": "fvOAB",
+                      "name": "st4",
+                      "fill": "#FFFFFF66",
+                      "content": "Online",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "xvjcu",
+              "name": "CB4",
+              "width": 30,
+              "height": 30,
+              "fill": "#FFFFFF0D",
+              "cornerRadius": 10,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "QIcQV",
+                  "x": 8,
+                  "y": 8,
+                  "name": "ci4",
+                  "width": 14,
+                  "height": 14,
+                  "iconFontName": "x",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFF66"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "ppttI",
+          "name": "MsgArea4",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": "#0F0F1AFF",
+          "layout": "vertical",
+          "gap": 12,
+          "padding": 16,
+          "children": [
+            {
+              "type": "frame",
+              "id": "fefuj",
+              "name": "BotRow4",
+              "width": "fill_container",
+              "gap": 8,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "TPVtr",
+                  "name": "BAv4",
+                  "width": 32,
+                  "height": 32,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 135,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#00F5D4FF",
+                        "position": 0
+                      },
+                      {
+                        "color": "#00BBF9FF",
+                        "position": 1
+                      }
+                    ]
+                  },
+                  "cornerRadius": 12,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#00F5D444",
+                    "blur": 10
+                  },
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "UKRaW",
+                      "x": 8,
+                      "y": 8,
+                      "name": "b4ai",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "sparkles",
+                      "iconFontFamily": "lucide",
+                      "fill": "#0F0F1AFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Mxl5D",
+                  "name": "BB4",
+                  "width": 265,
+                  "fill": "#1A1A2EFF",
+                  "cornerRadius": [
+                    4,
+                    18,
+                    18,
+                    18
+                  ],
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#00F5D422"
+                  },
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "XolvP",
+                      "name": "b4t1",
+                      "fill": "#00F5D4FF",
+                      "content": "Yo! Wassup! 🎉",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 15,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "A6wIu",
+                      "name": "b4t2",
+                      "fill": "#FFFFFFBB",
+                      "textGrowth": "fixed-width",
+                      "width": 237,
+                      "content": "Tớ là HUSC Bot đây! Giúp cậu khám phá:\n\n🔥 Ngành hot nhất 2025\n📝 Cách đăng ký dễ nhất\n🎯 Điểm chuẩn mới nhất\n💰 Học bổng siêu to",
+                      "lineHeight": 1.6,
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "XhVov",
+                  "name": "b4tm",
+                  "fill": "#FFFFFF33",
+                  "content": "vừa xong",
+                  "fontFamily": "Space Grotesk",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "tLy2J",
+              "name": "Chips4",
+              "width": "fill_container",
+              "gap": 6,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "hddqH",
+                  "name": "C41",
+                  "fill": "#00F5D415",
+                  "cornerRadius": 14,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#00F5D444"
+                  },
+                  "padding": [
+                    6,
+                    10
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "k69eY",
+                      "name": "c41t",
+                      "fill": "#00F5D4FF",
+                      "content": "🔥 Ngành hot",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "bYgmJ",
+                  "name": "C42",
+                  "fill": "#F7258515",
+                  "cornerRadius": 14,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#F7258544"
+                  },
+                  "padding": [
+                    6,
+                    10
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "efUrx",
+                      "name": "c42t",
+                      "fill": "#F72585FF",
+                      "content": "📝 ĐK dễ",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "qfTEC",
+                  "name": "C43",
+                  "fill": "#FFB70815",
+                  "cornerRadius": 14,
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#FFB70844"
+                  },
+                  "padding": [
+                    6,
+                    10
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "thbqF",
+                      "name": "c43t",
+                      "fill": "#FFB708FF",
+                      "content": "💰 Học bổng",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "fuGNY",
+              "name": "UserRow4",
+              "width": "fill_container",
+              "gap": 8,
+              "justifyContent": "end",
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "vL3DG",
+                  "name": "u4t",
+                  "fill": "#FFFFFF33",
+                  "content": "10:33",
+                  "fontFamily": "Space Grotesk",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "PY95D",
+                  "name": "UB4",
+                  "width": 200,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 135,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#F72585FF",
+                        "position": 0
+                      },
+                      {
+                        "color": "#7209B7FF",
+                        "position": 1
+                      }
+                    ]
+                  },
+                  "cornerRadius": [
+                    18,
+                    4,
+                    18,
+                    18
+                  ],
+                  "layout": "vertical",
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "2Opjo",
+                      "name": "u4bt",
+                      "fill": "#FFFFFFFF",
+                      "textGrowth": "fixed-width",
+                      "width": 172,
+                      "content": "Điểm chuẩn IT 2025 bn? 🤔",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "8EQv6",
+              "name": "BotRow4b",
+              "width": "fill_container",
+              "gap": 8,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "CosB6",
+                  "name": "BAv4b",
+                  "width": 32,
+                  "height": 32,
+                  "fill": {
+                    "type": "gradient",
+                    "gradientType": "linear",
+                    "enabled": true,
+                    "rotation": 135,
+                    "size": {
+                      "height": 1
+                    },
+                    "colors": [
+                      {
+                        "color": "#00F5D4FF",
+                        "position": 0
+                      },
+                      {
+                        "color": "#00BBF9FF",
+                        "position": 1
+                      }
+                    ]
+                  },
+                  "cornerRadius": 12,
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "rNVZ8",
+                      "x": 8,
+                      "y": 8,
+                      "name": "b4a2i",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "sparkles",
+                      "iconFontFamily": "lucide",
+                      "fill": "#0F0F1AFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Bcqtd",
+                  "name": "BB4b",
+                  "width": 265,
+                  "fill": "#1A1A2EFF",
+                  "cornerRadius": [
+                    4,
+                    18,
+                    18,
+                    18
+                  ],
+                  "stroke": {
+                    "align": "inside",
+                    "thickness": 1,
+                    "fill": "#00F5D422"
+                  },
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "WTNdR",
+                      "name": "b4b2t1",
+                      "fill": "#00F5D4FF",
+                      "textGrowth": "fixed-width",
+                      "width": 237,
+                      "content": "📊 IT (Khoa học Máy tính) 2025",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 13,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "kOsCn",
+                      "name": "b4b2t2",
+                      "fill": "#FFFFFFBB",
+                      "textGrowth": "fixed-width",
+                      "width": 237,
+                      "content": "• THPT: 22.5đ ⭐\n• Học bạ: GPA ≥ 7.0\n• Chỉ tiêu: 150 bạn\n\n💡 Tip: Điểm có thể đổi, follow web nhé!",
+                      "lineHeight": 1.6,
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "vqcC6",
+                      "name": "b4b2s",
+                      "fill": "#00BBF9FF",
+                      "textGrowth": "fixed-width",
+                      "width": 237,
+                      "content": "📎 tusinh.husc.edu.vn",
+                      "fontFamily": "Space Grotesk",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "aMnzf",
+          "name": "Input4",
+          "width": "fill_container",
+          "fill": "#0F0F1AFF",
+          "stroke": {
+            "align": "inside",
+            "thickness": 1,
+            "fill": "#FFFFFF0D"
+          },
+          "gap": 8,
+          "padding": [
+            10,
+            14
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "hmbLV",
+              "name": "IF4",
+              "width": "fill_container",
+              "fill": "#1A1A2EFF",
+              "cornerRadius": 24,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#00F5D422"
+              },
+              "padding": [
+                9,
+                14
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "PNVNx",
+                  "name": "if4t",
+                  "fill": "#FFFFFF44",
+                  "content": "Ask me anything...",
+                  "fontFamily": "Space Grotesk",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "SDnrh",
+              "name": "Send4",
+              "width": 36,
+              "height": 36,
+              "fill": {
+                "type": "gradient",
+                "gradientType": "linear",
+                "enabled": true,
+                "rotation": 135,
+                "size": {
+                  "height": 1
+                },
+                "colors": [
+                  {
+                    "color": "#00F5D4FF",
+                    "position": 0
+                  },
+                  {
+                    "color": "#00BBF9FF",
+                    "position": 1
+                  }
+                ]
+              },
+              "cornerRadius": 18,
+              "effect": {
+                "type": "shadow",
+                "shadowType": "outer",
+                "color": "#00F5D466",
+                "blur": 8
+              },
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "WdfH4",
+                  "x": 10,
+                  "y": 10,
+                  "name": "sb4i",
+                  "width": 16,
+                  "height": 16,
+                  "iconFontName": "arrow-up",
+                  "iconFontFamily": "lucide",
+                  "fill": "#0F0F1AFF"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "ihuVA",
+      "x": 1870,
+      "y": 0,
+      "name": "Variation 5 - Premium Apple",
+      "clip": true,
+      "width": 380,
+      "height": 600,
+      "fill": "#F8F8FCFF",
+      "cornerRadius": 16,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#0000002E",
+        "offset": {
+          "x": 0,
+          "y": 8
+        },
+        "blur": 32
+      },
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "YJAeI",
+          "name": "Header5",
+          "width": "fill_container",
+          "fill": "#F8F8FCFF",
+          "gap": 12,
+          "padding": [
+            14,
+            18
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "wAwzF",
+              "name": "Av5",
+              "width": 36,
+              "height": 36,
+              "fill": "#003087FF",
+              "cornerRadius": 18,
+              "effect": {
+                "type": "shadow",
+                "shadowType": "outer",
+                "color": "#00308722",
+                "offset": {
+                  "x": 0,
+                  "y": 2
+                },
+                "blur": 8
+              },
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "MIT05",
+                  "x": 9,
+                  "y": 9,
+                  "name": "a5i",
+                  "width": 18,
+                  "height": 18,
+                  "iconFontName": "graduation-cap",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "CUHoI",
+              "name": "Info5",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 1,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "WHEql",
+                  "name": "t5",
+                  "fill": "#1D1D1FFF",
+                  "content": "HUSC Tuyển sinh",
+                  "fontFamily": "Inter",
+                  "fontSize": 15,
+                  "fontWeight": "600",
+                  "letterSpacing": -0.2
+                },
+                {
+                  "type": "text",
+                  "id": "3AJ3g",
+                  "name": "s5",
+                  "fill": "#86868BFF",
+                  "content": "Đại học Khoa học — Đại học Huế",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "OIr8v",
+              "name": "RBtn5",
+              "width": 28,
+              "height": 28,
+              "fill": "#F0F0F5FF",
+              "cornerRadius": 14,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "VRlYA",
+                  "x": 7,
+                  "y": 7,
+                  "name": "ri5",
+                  "width": 14,
+                  "height": 14,
+                  "iconFontName": "rotate-ccw",
+                  "iconFontFamily": "lucide",
+                  "fill": "#86868BFF"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "YgXNP",
+              "name": "XBtn5",
+              "width": 28,
+              "height": 28,
+              "fill": "#F0F0F5FF",
+              "cornerRadius": 14,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "fmClp",
+                  "x": 7,
+                  "y": 7,
+                  "name": "xi5",
+                  "width": 14,
+                  "height": 14,
+                  "iconFontName": "x",
+                  "iconFontFamily": "lucide",
+                  "fill": "#86868BFF"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "TJRb9",
+          "name": "MsgArea5",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": "#F8F8FCFF",
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [
+            16,
+            18
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "kYvse",
+              "name": "Welcome5",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 10,
+              "padding": [
+                8,
+                0
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "rNDnF",
+                  "name": "WIcon",
+                  "width": 48,
+                  "height": 48,
+                  "fill": "#0030870D",
+                  "cornerRadius": 24,
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "NbUcA",
+                      "x": 12,
+                      "y": 12,
+                      "name": "w5ii",
+                      "width": 24,
+                      "height": 24,
+                      "iconFontName": "graduation-cap",
+                      "iconFontFamily": "lucide",
+                      "fill": "#003087FF"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "EUKih",
+                  "name": "w5t",
+                  "fill": "#1D1D1FFF",
+                  "textGrowth": "fixed-width",
+                  "width": 344,
+                  "content": "Xin chào!",
+                  "textAlign": "center",
+                  "fontFamily": "Inter",
+                  "fontSize": 18,
+                  "fontWeight": "600",
+                  "letterSpacing": -0.3
+                },
+                {
+                  "type": "text",
+                  "id": "zwNIg",
+                  "name": "w5s",
+                  "fill": "#86868BFF",
+                  "textGrowth": "fixed-width",
+                  "width": 344,
+                  "content": "Tôi có thể giúp bạn tìm hiểu về các ngành đào tạo, phương thức xét tuyển, học bổng và thông tin tuyển sinh HUSC.",
+                  "lineHeight": 1.5,
+                  "textAlign": "center",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "GpwQN",
+              "name": "Suggestions5",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 6,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "IIULe",
+                  "name": "SG1",
+                  "width": "fill_container",
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": 12,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#00000008",
+                    "offset": {
+                      "x": 0,
+                      "y": 1
+                    },
+                    "blur": 3
+                  },
+                  "gap": 10,
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "RB9O9",
+                      "name": "sg51i",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "book-open",
+                      "iconFontFamily": "lucide",
+                      "fill": "#003087FF"
+                    },
+                    {
+                      "type": "text",
+                      "id": "znZVh",
+                      "name": "sg51t",
+                      "fill": "#1D1D1FFF",
+                      "textGrowth": "fixed-width",
+                      "width": 280,
+                      "content": "Các ngành đào tạo năm 2025",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "icon_font",
+                      "id": "htA9S",
+                      "name": "sg51a",
+                      "width": 14,
+                      "height": 14,
+                      "iconFontName": "chevron-right",
+                      "iconFontFamily": "lucide",
+                      "fill": "#C7C7CCFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "37LQi",
+                  "name": "SG2",
+                  "width": "fill_container",
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": 12,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#00000008",
+                    "offset": {
+                      "x": 0,
+                      "y": 1
+                    },
+                    "blur": 3
+                  },
+                  "gap": 10,
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "XcsYr",
+                      "name": "sg52i",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "file-text",
+                      "iconFontFamily": "lucide",
+                      "fill": "#003087FF"
+                    },
+                    {
+                      "type": "text",
+                      "id": "1Jpkx",
+                      "name": "sg52t",
+                      "fill": "#1D1D1FFF",
+                      "textGrowth": "fixed-width",
+                      "width": 280,
+                      "content": "Phương thức xét tuyển",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "icon_font",
+                      "id": "Iw96t",
+                      "name": "sg52a",
+                      "width": 14,
+                      "height": 14,
+                      "iconFontName": "chevron-right",
+                      "iconFontFamily": "lucide",
+                      "fill": "#C7C7CCFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "JCDLN",
+                  "name": "SG3",
+                  "width": "fill_container",
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": 12,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#00000008",
+                    "offset": {
+                      "x": 0,
+                      "y": 1
+                    },
+                    "blur": 3
+                  },
+                  "gap": 10,
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "QxZc3",
+                      "name": "sg53i",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "trophy",
+                      "iconFontFamily": "lucide",
+                      "fill": "#003087FF"
+                    },
+                    {
+                      "type": "text",
+                      "id": "6IJc8",
+                      "name": "sg53t",
+                      "fill": "#1D1D1FFF",
+                      "textGrowth": "fixed-width",
+                      "width": 280,
+                      "content": "Học bổng & ưu đãi",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "icon_font",
+                      "id": "1nEF3",
+                      "name": "sg53a",
+                      "width": 14,
+                      "height": 14,
+                      "iconFontName": "chevron-right",
+                      "iconFontFamily": "lucide",
+                      "fill": "#C7C7CCFF"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "E2q9n",
+          "name": "Input5",
+          "width": "fill_container",
+          "fill": "#F8F8FCFF",
+          "gap": 10,
+          "padding": [
+            10,
+            14
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "yGFFu",
+              "name": "IF5",
+              "width": "fill_container",
+              "fill": "#FFFFFFFF",
+              "cornerRadius": 22,
+              "stroke": {
+                "align": "inside",
+                "thickness": 1,
+                "fill": "#E5E5EAFF"
+              },
+              "effect": {
+                "type": "shadow",
+                "shadowType": "outer",
+                "color": "#00000006",
+                "offset": {
+                  "x": 0,
+                  "y": 1
+                },
+                "blur": 2
+              },
+              "padding": [
+                10,
+                16
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "faS3D",
+                  "name": "if5t",
+                  "fill": "#C7C7CCFF",
+                  "content": "Hỏi về tuyển sinh HUSC...",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "9Sowf",
+              "name": "Send5",
+              "width": 38,
+              "height": 38,
+              "fill": "#003087FF",
+              "cornerRadius": 19,
+              "effect": {
+                "type": "shadow",
+                "shadowType": "outer",
+                "color": "#00308733",
+                "offset": {
+                  "x": 0,
+                  "y": 2
+                },
+                "blur": 6
+              },
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "iTy1O",
+                  "x": 10,
+                  "y": 10,
+                  "name": "sb5i",
+                  "width": 18,
+                  "height": 18,
+                  "iconFontName": "arrow-up",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "lyCOS",
+          "name": "Footer5",
+          "width": "fill_container",
+          "fill": "#F8F8FCFF",
+          "padding": [
+            0,
+            0,
+            8,
+            0
+          ],
+          "justifyContent": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "2lVUN",
+              "name": "ft5t",
+              "fill": "#C7C7CCFF",
+              "content": "HUSC Admissions AI",
+              "fontFamily": "Inter",
+              "fontSize": 10,
+              "fontWeight": "normal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "JtTk7",
+      "x": 2350,
+      "y": 0,
+      "name": "Variation 6 - Organic Soft",
+      "clip": true,
+      "width": 380,
+      "height": 600,
+      "fill": "#FFF8F0FF",
+      "cornerRadius": 16,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#0000002E",
+        "offset": {
+          "x": 0,
+          "y": 8
+        },
+        "blur": 32
+      },
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "ZCPLE",
+          "name": "Header6",
+          "width": "fill_container",
+          "fill": {
+            "type": "gradient",
+            "gradientType": "linear",
+            "enabled": true,
+            "rotation": 180,
+            "size": {
+              "height": 1
+            },
+            "colors": [
+              {
+                "color": "#FFF0E0FF",
+                "position": 0
+              },
+              {
+                "color": "#FFDBC5FF",
+                "position": 1
+              }
+            ]
+          },
+          "gap": 10,
+          "padding": [
+            14,
+            16
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "awQSb",
+              "name": "Av6",
+              "width": 42,
+              "height": 42,
+              "fill": "#FF8C42FF",
+              "cornerRadius": 21,
+              "effect": {
+                "type": "shadow",
+                "shadowType": "outer",
+                "color": "#FF8C4233",
+                "offset": {
+                  "x": 0,
+                  "y": 3
+                },
+                "blur": 8
+              },
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "0CLUU",
+                  "x": 10,
+                  "y": 10,
+                  "name": "a6i",
+                  "width": 22,
+                  "height": 22,
+                  "iconFontName": "sun",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "XwXg9",
+              "name": "Info6",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "1jxeO",
+                  "name": "t6",
+                  "fill": "#3D2C1FFF",
+                  "content": "HUSC Guidance",
+                  "fontFamily": "Nunito",
+                  "fontSize": 15,
+                  "fontWeight": "800"
+                },
+                {
+                  "type": "frame",
+                  "id": "XOaBq",
+                  "name": "Sub6",
+                  "gap": 5,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "x6hVk",
+                      "name": "s6d",
+                      "fill": "#4CAF50FF",
+                      "width": 7,
+                      "height": 7
+                    },
+                    {
+                      "type": "text",
+                      "id": "NxaRX",
+                      "name": "s6t",
+                      "fill": "#8B7355FF",
+                      "content": "Luôn sẵn sàng giúp bạn",
+                      "fontFamily": "Nunito",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "vcP3B",
+              "name": "XBtn6",
+              "width": 28,
+              "height": 28,
+              "fill": "#FFFFFF66",
+              "cornerRadius": 14,
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "hOPlF",
+                  "x": 7,
+                  "y": 7,
+                  "name": "xb6i",
+                  "width": 14,
+                  "height": 14,
+                  "iconFontName": "x",
+                  "iconFontFamily": "lucide",
+                  "fill": "#3D2C1FAA"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "rJCvW",
+          "name": "MsgArea6",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": "#FFF8F0FF",
+          "layout": "vertical",
+          "gap": 14,
+          "padding": 16,
+          "children": [
+            {
+              "type": "frame",
+              "id": "KMM1a",
+              "name": "Welcome6",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 10,
+              "padding": [
+                12,
+                0
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "D7G1f",
+                  "name": "w6t",
+                  "fill": "#3D2C1FFF",
+                  "textGrowth": "fixed-width",
+                  "width": 344,
+                  "content": "Chào bạn thân mến! 🌻",
+                  "textAlign": "center",
+                  "fontFamily": "Nunito",
+                  "fontSize": 17,
+                  "fontWeight": "800"
+                },
+                {
+                  "type": "text",
+                  "id": "hP8Bh",
+                  "name": "w6s",
+                  "fill": "#8B7355FF",
+                  "textGrowth": "fixed-width",
+                  "width": 344,
+                  "content": "Mình là trợ lý tuyển sinh HUSC. Hãy chọn chủ đề bạn quan tâm nhé:",
+                  "lineHeight": 1.5,
+                  "textAlign": "center",
+                  "fontFamily": "Nunito",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "5BQTF",
+              "name": "Cards6",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "742Us",
+                  "name": "Card1",
+                  "width": "fill_container",
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": 16,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#FF8C4211",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    },
+                    "blur": 8
+                  },
+                  "gap": 12,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "tjlfC",
+                      "name": "CI1",
+                      "width": 36,
+                      "height": 36,
+                      "fill": "#FF8C421A",
+                      "cornerRadius": 12,
+                      "layout": "none",
+                      "children": [
+                        {
+                          "type": "icon_font",
+                          "id": "z3sgT",
+                          "x": 9,
+                          "y": 9,
+                          "name": "cd61ii",
+                          "width": 18,
+                          "height": 18,
+                          "iconFontName": "book-open",
+                          "iconFontFamily": "lucide",
+                          "fill": "#FF8C42FF"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "dUL5U",
+                      "name": "CT1",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "7yyRg",
+                          "name": "cd61tt",
+                          "fill": "#3D2C1FFF",
+                          "content": "Khám phá ngành học",
+                          "fontFamily": "Nunito",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Ghpfh",
+                          "name": "cd61ts",
+                          "fill": "#8B735599",
+                          "content": "60+ ngành đào tạo đa dạng",
+                          "fontFamily": "Nunito",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "RPryA",
+                  "name": "Card2",
+                  "width": "fill_container",
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": 16,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#4CAF5011",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    },
+                    "blur": 8
+                  },
+                  "gap": 12,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "pr9R9",
+                      "name": "CI2",
+                      "width": 36,
+                      "height": 36,
+                      "fill": "#4CAF501A",
+                      "cornerRadius": 12,
+                      "layout": "none",
+                      "children": [
+                        {
+                          "type": "icon_font",
+                          "id": "CwGho",
+                          "x": 9,
+                          "y": 9,
+                          "name": "cd62ii",
+                          "width": 18,
+                          "height": 18,
+                          "iconFontName": "file-check",
+                          "iconFontFamily": "lucide",
+                          "fill": "#4CAF50FF"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "mvd67",
+                      "name": "CT2",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "0C3vj",
+                          "name": "cd62tt",
+                          "fill": "#3D2C1FFF",
+                          "content": "Cách thức đăng ký",
+                          "fontFamily": "Nunito",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "USLJ2",
+                          "name": "cd62ts",
+                          "fill": "#8B735599",
+                          "content": "4 phương thức xét tuyển",
+                          "fontFamily": "Nunito",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "F5IyT",
+                  "name": "Card3",
+                  "width": "fill_container",
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": 16,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#E5A82311",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    },
+                    "blur": 8
+                  },
+                  "gap": 12,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "m3yqk",
+                      "name": "CI3",
+                      "width": 36,
+                      "height": 36,
+                      "fill": "#E5A8231A",
+                      "cornerRadius": 12,
+                      "layout": "none",
+                      "children": [
+                        {
+                          "type": "icon_font",
+                          "id": "pcy7F",
+                          "x": 9,
+                          "y": 9,
+                          "name": "cd63ii",
+                          "width": 18,
+                          "height": 18,
+                          "iconFontName": "award",
+                          "iconFontFamily": "lucide",
+                          "fill": "#E5A823FF"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "QI0v3",
+                      "name": "CT3",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "jHTlN",
+                          "name": "cd63tt",
+                          "fill": "#3D2C1FFF",
+                          "content": "Học bổng & Ký túc xá",
+                          "fontFamily": "Nunito",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "UHzXS",
+                          "name": "cd63ts",
+                          "fill": "#8B735599",
+                          "content": "Hơn 20 loại học bổng giá trị",
+                          "fontFamily": "Nunito",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "0uhm7",
+              "name": "UserRow6",
+              "width": "fill_container",
+              "gap": 8,
+              "justifyContent": "end",
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "KXdLm",
+                  "name": "u6t",
+                  "fill": "#8B735566",
+                  "content": "10:33",
+                  "fontFamily": "Nunito",
+                  "fontSize": 10,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "Ad8M8",
+                  "name": "UB6",
+                  "width": 200,
+                  "fill": "#FF8C42FF",
+                  "cornerRadius": [
+                    20,
+                    6,
+                    20,
+                    20
+                  ],
+                  "layout": "vertical",
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "zzBuY",
+                      "name": "u6bt",
+                      "fill": "#3D2C1FFF",
+                      "textGrowth": "fixed-width",
+                      "width": 172,
+                      "content": "Em muốn biết về ngành CNTT ạ 🙋",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Nunito",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "kYePo",
+              "name": "BotRow6",
+              "width": "fill_container",
+              "gap": 8,
+              "alignItems": "end",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "pULqB",
+                  "name": "BAv6",
+                  "width": 32,
+                  "height": 32,
+                  "fill": "#FF8C42FF",
+                  "cornerRadius": 16,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#FF8C4233",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    },
+                    "blur": 6
+                  },
+                  "layout": "none",
+                  "children": [
+                    {
+                      "type": "icon_font",
+                      "id": "OdXZ4",
+                      "x": 8,
+                      "y": 8,
+                      "name": "b6ai",
+                      "width": 16,
+                      "height": 16,
+                      "iconFontName": "sun",
+                      "iconFontFamily": "lucide",
+                      "fill": "#FFFFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "1f23E",
+                  "name": "BB6",
+                  "width": 260,
+                  "fill": "#FFFFFFFF",
+                  "cornerRadius": [
+                    6,
+                    20,
+                    20,
+                    20
+                  ],
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#0000000A",
+                    "offset": {
+                      "x": 0,
+                      "y": 2
+                    },
+                    "blur": 8
+                  },
+                  "layout": "vertical",
+                  "gap": 6,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "wcYUJ",
+                      "name": "b6t1",
+                      "fill": "#3D2C1FFF",
+                      "textGrowth": "fixed-width",
+                      "width": 232,
+                      "content": "🌿 CNTT tại HUSC thật tuyệt!",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Nunito",
+                      "fontSize": 14,
+                      "fontWeight": "800"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ATR9Z",
+                      "name": "b6t2",
+                      "fill": "#5A4A3AFF",
+                      "textGrowth": "fixed-width",
+                      "width": 232,
+                      "content": "• Mã ngành: 7480201\n• Điểm 2025: 22.5đ (THPT)\n• Chỉ tiêu: 150 SV\n• Học bổng tài năng: 100% HP 🎁",
+                      "lineHeight": 1.6,
+                      "fontFamily": "Nunito",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "LDljw",
+                      "name": "b6s",
+                      "fill": "#FF8C42FF",
+                      "textGrowth": "fixed-width",
+                      "width": 232,
+                      "content": "🔗 Chi tiết: tusinh.husc.edu.vn",
+                      "fontFamily": "Nunito",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "Qz3Zs",
+          "name": "Input6",
+          "width": "fill_container",
+          "fill": "#FFDBC544",
+          "gap": 10,
+          "padding": [
+            10,
+            14
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "lx4PH",
+              "name": "IF6",
+              "width": "fill_container",
+              "fill": "#FFFFFFFF",
+              "cornerRadius": 24,
+              "effect": {
+                "type": "shadow",
+                "shadowType": "outer",
+                "color": "#FF8C4211",
+                "offset": {
+                  "x": 0,
+                  "y": 1
+                },
+                "blur": 3
+              },
+              "padding": [
+                10,
+                16
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "e7rUO",
+                  "name": "if6t",
+                  "fill": "#8B735577",
+                  "content": "Hỏi gì cũng được nha... 🌻",
+                  "fontFamily": "Nunito",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "prBWa",
+              "name": "Send6",
+              "width": 38,
+              "height": 38,
+              "fill": "#FF8C42FF",
+              "cornerRadius": 19,
+              "effect": {
+                "type": "shadow",
+                "shadowType": "outer",
+                "color": "#FF8C4244",
+                "offset": {
+                  "x": 0,
+                  "y": 3
+                },
+                "blur": 10
+              },
+              "layout": "none",
+              "children": [
+                {
+                  "type": "icon_font",
+                  "id": "OosEo",
+                  "x": 11,
+                  "y": 11,
+                  "name": "sb6i",
+                  "width": 16,
+                  "height": 16,
+                  "iconFontName": "send",
+                  "iconFontFamily": "lucide",
+                  "fill": "#FFFFFFFF"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "themes": {
+    "Mode": [
+      "Light",
+      "Dark"
+    ]
+  },
+  "variables": {
+    "--sidebar": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#E7E8E5"
+        },
+        {
+          "value": "#18181b",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--sidebar-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#666666"
+        },
+        {
+          "value": "#fafafa",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--sidebar-primary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#18181b"
+        },
+        {
+          "value": "#18181b",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--sidebar-primary-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#fafafa"
+        },
+        {
+          "value": "#fafafa",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--sidebar-border": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#CBCCC9"
+        },
+        {
+          "value": "#ffffff1a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--sidebar-accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#CBCCC9"
+        },
+        {
+          "value": "#2a2a30",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--sidebar-accent-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#18181b"
+        },
+        {
+          "value": "#fafafa",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--sidebar-ring": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#71717a"
+        },
+        {
+          "value": "#71717a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--background": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#F2F3F0"
+        },
+        {
+          "value": "#111111",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#111111"
+        },
+        {
+          "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--card": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#FFFFFF"
+        },
+        {
+          "value": "#1A1A1A",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--card-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#111111"
+        },
+        {
+          "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--popover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#FFFFFF"
+        },
+        {
+          "value": "#1A1A1A",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--popover-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#111111"
+        },
+        {
+          "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--primary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#FF8400"
+        },
+        {
+          "value": "#FF8400",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--primary-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#111111"
+        },
+        {
+          "value": "#111111",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--secondary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#E7E8E5"
+        },
+        {
+          "value": "#2E2E2E",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--secondary-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#111111"
+        },
+        {
+          "value": "#FFFFFF",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--muted": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#F2F3F0"
+        },
+        {
+          "value": "#2E2E2E",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--muted-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#666666"
+        },
+        {
+          "value": "#B8B9B6",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#F2F3F0"
+        },
+        {
+          "value": "#111111",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--accent-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#111111"
+        },
+        {
+          "value": "#F2F3F0",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--destructive": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#D93C15"
+        },
+        {
+          "value": "#FF5C33",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--border": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#CBCCC9"
+        },
+        {
+          "value": "#2E2E2E",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--input": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#CBCCC9"
+        },
+        {
+          "value": "#2E2E2E",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--ring": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#666666"
+        },
+        {
+          "value": "#666666",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--white": {
+      "type": "color",
+      "value": "#FFFFFF"
+    },
+    "--black": {
+      "type": "color",
+      "value": "#000000"
+    },
+    "--font-primary": {
+      "type": "string",
+      "value": "JetBrains Mono"
+    },
+    "--font-secondary": {
+      "type": "string",
+      "value": "Geist"
+    },
+    "--radius-none": {
+      "type": "number",
+      "value": 0
+    },
+    "--radius-pill": {
+      "type": "number",
+      "value": 999
+    },
+    "--color-success": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#DFE6E1"
+        },
+        {
+          "value": "#222924",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--color-success-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#004D1A"
+        },
+        {
+          "value": "#B6FFCE",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--color-warning": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#E9E3D8"
+        },
+        {
+          "value": "#291C0F",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--color-warning-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#804200"
+        },
+        {
+          "value": "#FF8400",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--color-error": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#E5DCDA"
+        },
+        {
+          "value": "#24100B",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--color-error-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#8C1C00"
+        },
+        {
+          "value": "#FF5C33",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--color-info": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#DFDFE6"
+        },
+        {
+          "value": "#222229",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--color-info-foreground": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#000066"
+        },
+        {
+          "value": "#B2B2FF",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--radius-m": {
+      "type": "number",
+      "value": 16
+    },
+    "bg-chat": {
+      "type": "color",
+      "value": "#F5F7FAFF"
+    },
+    "bg-input": {
+      "type": "color",
+      "value": "#FFFFFFFF"
+    },
+    "bot-bubble-bg": {
+      "type": "color",
+      "value": "#FFFFFFFF"
+    },
+    "danger": {
+      "type": "color",
+      "value": "#E53935FF"
+    },
+    "gold": {
+      "type": "color",
+      "value": "#E5A823FF"
+    },
+    "gold-light": {
+      "type": "color",
+      "value": "#E5A82333"
+    },
+    "header-gradient-end": {
+      "type": "color",
+      "value": "#004BB5FF"
+    },
+    "navy": {
+      "type": "color",
+      "value": "#003087FF"
+    },
+    "navy-dark": {
+      "type": "color",
+      "value": "#001D54FF"
+    },
+    "navy-light": {
+      "type": "color",
+      "value": "#0030871A"
+    },
+    "online-green": {
+      "type": "color",
+      "value": "#4CAF50FF"
+    },
+    "radius-lg": {
+      "type": "number",
+      "value": 16
+    },
+    "radius-md": {
+      "type": "number",
+      "value": 12
+    },
+    "radius-sm": {
+      "type": "number",
+      "value": 8
+    },
+    "radius-xl": {
+      "type": "number",
+      "value": 24
+    },
+    "success": {
+      "type": "color",
+      "value": "#4CAF50FF"
+    },
+    "text-dark": {
+      "type": "color",
+      "value": "#1A1A1AFF"
+    },
+    "text-muted": {
+      "type": "color",
+      "value": "#6B7280FF"
+    },
+    "text-white": {
+      "type": "color",
+      "value": "#FFFFFFFF"
+    },
+    "user-bubble-bg": {
+      "type": "color",
+      "value": "#003087FF"
+    },
+    "white": {
+      "type": "color",
+      "value": "#FFFFFFFF"
+    }
+  }
+}

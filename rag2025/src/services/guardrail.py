@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -18,6 +19,7 @@ class GuardrailDecision:
     reason: str
     short_answer: str
     data_gap_hints: List[str] = field(default_factory=list)
+    pii_detected: bool = False
 
 
 class GuardrailService:
@@ -25,6 +27,16 @@ class GuardrailService:
         "tuyển sinh", "điểm chuẩn", "học phí", "ngành", "tổ hợp", "xét tuyển",
         "husc", "đại học khoa học huế", "chỉ tiêu", "học bổng", "hồ sơ",
     ]
+
+    PII_KEYWORDS = [
+        "cccd", "cmnd", "số căn cước", "số tài khoản", "mật khẩu", "otp", "cvv",
+    ]
+
+    PII_PATTERNS = {
+        "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
+        "phone": re.compile(r"\b(?:\+?84|0)(?:[\s.-]?\d){8,10}\b"),
+        "citizen_id": re.compile(r"\b\d{12}\b"),
+    }
 
     def __init__(self, settings: RAGSettings):
         self._settings = settings
@@ -43,9 +55,31 @@ class GuardrailService:
             "Bạn có thể hỏi về ngành học, điểm chuẩn, học phí, tổ hợp xét tuyển hoặc hồ sơ tuyển sinh."
         )
 
+    def _pii_warning_answer(self) -> str:
+        return (
+            "Để bảo vệ thông tin cá nhân, bạn không nên gửi dữ liệu nhạy cảm như CCCD, "
+            "email, số điện thoại hoặc số tài khoản đầy đủ. Vui lòng che bớt thông tin trước khi hỏi."
+        )
+
+    def _contains_sensitive_pii(self, query: str) -> bool:
+        q = query.lower()
+        if any(k in q for k in self.PII_KEYWORDS):
+            return True
+        return any(pattern.search(query) is not None for pattern in self.PII_PATTERNS.values())
+
     async def precheck(self, query: str) -> GuardrailDecision:
         if not self._enabled:
             return GuardrailDecision(True, "SUCCESS", "guardrail_disabled", "")
+
+        if self._contains_sensitive_pii(query):
+            return GuardrailDecision(
+                False,
+                "SENSITIVE_PII_DETECTED",
+                "sensitive_pii_detected",
+                self._pii_warning_answer(),
+                ["Ẩn bớt thông tin định danh trước khi gửi câu hỏi", "Chỉ giữ lại phần nội dung liên quan tuyển sinh"],
+                pii_detected=True,
+            )
 
         if self._looks_admission_related(query):
             return GuardrailDecision(True, "SUCCESS", "in_scope_keyword", "")
@@ -133,6 +167,8 @@ class GuardrailService:
         if internal_code == "SUCCESS":
             return "SUCCESS"
         if mode == "prod":
+            if internal_code == "SENSITIVE_PII_DETECTED":
+                return "SENSITIVE_PII_DETECTED"
             return "NOT_IN_HUSC_SCOPE"
         return internal_code
 

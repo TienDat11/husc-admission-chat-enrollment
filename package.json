@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@agentic-gateway/mega-template": "^0.9.13"
+  }
+}
