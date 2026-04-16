@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from notebooks.eval_core import load_test_questions, normalize_pipeline_output
+from notebooks.eval_core import load_test_questions, normalize_pipeline_output, should_abort_after_smoke, call_pipeline
 
 
 # =============================================================================
@@ -235,3 +235,104 @@ def test_normalize_pipeline_output_chunks_dict_not_list():
     }
     out = normalize_pipeline_output(raw, mode="v2")
     assert out["context_chunks"] == []
+
+
+# =============================================================================
+# Tests for should_abort_after_smoke
+# =============================================================================
+
+def test_should_abort_after_smoke_when_failures_exceed_half():
+    assert should_abort_after_smoke(total=10, failures=6) is True
+    assert should_abort_after_smoke(total=10, failures=5) is False
+    assert should_abort_after_smoke(total=0, failures=0) is True
+    assert should_abort_after_smoke(total=5, failures=3) is True
+
+
+def test_should_abort_after_smoke_edge_cases():
+    """Edge cases: total <= 0 always aborts."""
+    assert should_abort_after_smoke(total=0, failures=0) is True
+    assert should_abort_after_smoke(total=-1, failures=0) is True
+
+
+def test_should_abort_after_smoke_at_exactly_half():
+    """At exactly 50% failure rate, should NOT abort."""
+    assert should_abort_after_smoke(total=4, failures=2) is False
+
+
+def test_should_abort_after_smoke_all_failures():
+    """100% failure rate should abort."""
+    assert should_abort_after_smoke(total=3, failures=3) is True
+
+
+def test_should_abort_after_smoke_no_failures():
+    """0% failure rate should not abort."""
+    assert should_abort_after_smoke(total=10, failures=0) is False
+
+
+# =============================================================================
+# Tests for call_pipeline
+# =============================================================================
+
+class MockResponse:
+    def __init__(self, json_data, status_code=200):
+        self._json = json_data
+        self.status_code = status_code
+    def json(self):
+        return self._json
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            import requests
+            raise requests.HTTPError(f"{self.status_code}")
+
+
+class TestCallPipeline:
+
+    def test_call_pipeline_v1_mode(self, monkeypatch):
+        """mode='v1' should POST to /query with force_rag_only=False."""
+        recorded = {}
+        def mock_post(url, json, timeout):
+            recorded["url"] = url
+            recorded["json"] = json
+            recorded["timeout"] = timeout
+            return MockResponse({"answer": "v1 result"})
+        import requests
+        monkeypatch.setattr(requests, "post", mock_post)
+        result = call_pipeline("http://localhost:8000", "test query", mode="v1")
+        assert result == {"answer": "v1 result"}
+        assert recorded["url"] == "http://localhost:8000/query"
+        assert recorded["json"] == {"query": "test query", "force_rag_only": False}
+        assert recorded["timeout"] == 120
+
+    def test_call_pipeline_v2_mode(self, monkeypatch):
+        """mode='v2' should POST to /v2/query with top_k."""
+        recorded = {}
+        def mock_post(url, json, timeout):
+            recorded["url"] = url
+            recorded["json"] = json
+            return MockResponse({"answer": "v2 result"})
+        import requests
+        monkeypatch.setattr(requests, "post", mock_post)
+        result = call_pipeline("http://localhost:8000", "test query", mode="v2", top_k=10)
+        assert result == {"answer": "v2 result"}
+        assert recorded["url"] == "http://localhost:8000/v2/query"
+        assert recorded["json"] == {"query": "test query", "top_k": 10}
+
+    def test_call_pipeline_v2_default_top_k(self, monkeypatch):
+        """v2 mode should default top_k to 5."""
+        recorded = {}
+        def mock_post(url, json, timeout):
+            recorded["json"] = json
+            return MockResponse({})
+        import requests
+        monkeypatch.setattr(requests, "post", mock_post)
+        call_pipeline("http://localhost:8000", "test query", mode="v2")
+        assert recorded["json"]["top_k"] == 5
+
+    def test_call_pipeline_raises_on_error(self, monkeypatch):
+        """Should raise for HTTP error responses."""
+        def mock_post(url, json, timeout):
+            return MockResponse({}, status_code=500)
+        import requests
+        monkeypatch.setattr(requests, "post", mock_post)
+        with pytest.raises(requests.HTTPError):
+            call_pipeline("http://localhost:8000", "test query", mode="v2")

@@ -3,10 +3,13 @@
 Provides:
 - load_test_questions: Load test questions with primary/fallback path support
 - normalize_pipeline_output: Normalize API responses to standardized schema
+- should_abort_after_smoke: Fail-fast rule for smoke test failure rate
+- call_pipeline: Call the RAG pipeline API endpoint
 """
 from __future__ import annotations
 
 import json
+import requests
 from pathlib import Path
 from typing import Any
 
@@ -114,3 +117,49 @@ def normalize_pipeline_output(raw: dict[str, Any], mode: str = "v2") -> dict[str
         "route": route,
         "raw": raw,
     }
+
+def should_abort_after_smoke(total: int, failures: int) -> bool:
+    """Return True if smoke test suite should abort.
+
+    Abort conditions:
+    - failures/total > 0.5  (more than 50% failure rate)
+    - total <= 0           (no tests run)
+
+    Args:
+        total: Total number of tests run.
+        failures: Number of test failures.
+
+    Returns:
+        True if the suite should abort, False otherwise.
+    """
+    if total <= 0:
+        return True
+    return failures / total > 0.5
+
+
+def call_pipeline(base_url: str, query: str, mode: str = "v2", top_k: int = 5) -> dict[str, Any]:
+    """Call the RAG pipeline API endpoint.
+
+    Args:
+        base_url: Base URL of the pipeline server (e.g. "http://localhost:8000").
+        query: Query string to send to the pipeline.
+        mode: "v1" or "v2". v1 calls /query, v2 calls /v2/query.
+        top_k: Number of top results to return (v2 mode only). Defaults to 5.
+
+    Returns:
+        JSON response from the pipeline as a dictionary.
+
+    Raises:
+        requests.HTTPError: If the response status is an error (4xx/5xx).
+    """
+    timeout = 120
+    if mode == "v1":
+        url = f"{base_url}/query"
+        payload = {"query": query, "force_rag_only": False}
+    else:
+        url = f"{base_url}/v2/query"
+        payload = {"query": query, "top_k": top_k}
+
+    response = requests.post(url, json=payload, timeout=timeout)
+    response.raise_for_status()
+    return response.json()
