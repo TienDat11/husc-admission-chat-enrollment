@@ -324,3 +324,37 @@ def build_diagnostic_report(result: dict[str, Any]) -> str:
 # =============================================================================
 
 GROUNDING_THRESHOLD = 0.18  # hallucination flag threshold
+
+# =============================================================================
+# Latency stats
+# =============================================================================
+
+def latency_stats(times: list[float]) -> dict[str, float]:
+    """Return median and p95 from a list of elapsed times in seconds.
+
+    Args:
+        times: List of elapsed times in seconds.
+    Returns:
+        dict with 'median' and 'p95' keys.
+    """
+    if not times:
+        return {"median": 0.0, "p95": 0.0}
+    sorted_times = sorted(times)
+    n = len(sorted_times)
+    median = sorted_times[(n - 1) // 2]
+    p95_idx = int((n - 1) * 0.95)
+    p95 = sorted_times[min(p95_idx, n - 1)]
+    return {"median": median, "p95": p95}
+
+
+# =============================================================================
+# Tests
+# =============================================================================
+
+def test_latency_stats_median_and_p95():
+    times = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95, 1.0]
+    stats = latency_stats(times)
+    assert stats["median"] == 0.5
+    assert stats["p95"] == 0.95
+    assert latency_stats([]) == {"median": 0.0, "p95": 0.0}
+
