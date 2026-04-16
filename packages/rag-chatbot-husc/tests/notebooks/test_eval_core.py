@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from notebooks.eval_core import load_test_questions, normalize_pipeline_output, should_abort_after_smoke, call_pipeline
+from notebooks.eval_core import load_test_questions, normalize_pipeline_output, should_abort_after_smoke, call_pipeline, PipelineError
 
 
 # =============================================================================
@@ -336,3 +336,32 @@ class TestCallPipeline:
         monkeypatch.setattr(requests, "post", mock_post)
         with pytest.raises(requests.HTTPError):
             call_pipeline("http://localhost:8000", "test query", mode="v2")
+
+
+    def test_call_pipeline_raises_pipeline_error_on_connection_error(self, monkeypatch):
+        """Should raise PipelineError on connection error."""
+        import requests
+        def mock_post(url, json, timeout):
+            raise requests.ConnectionError('Connection refused')
+        monkeypatch.setattr(requests, 'post', mock_post)
+        with pytest.raises(PipelineError) as exc_info:
+            call_pipeline('http://localhost:8000', 'test query', mode='v2')
+        assert 'Failed to connect' in str(exc_info.value)
+        assert exc_info.value.__cause__ is not None
+
+    def test_call_pipeline_raises_pipeline_error_on_non_json_response(self, monkeypatch):
+        """Should raise PipelineError when response is not JSON."""
+        class NonJsonResponse:
+            status_code = 200
+            def raise_for_status(self):
+                pass
+            def json(self):
+                raise json.JSONDecodeError('Expecting value', '', 0)
+        def mock_post(url, json, timeout):
+            return NonJsonResponse()
+        import requests
+        monkeypatch.setattr(requests, 'post', mock_post)
+        with pytest.raises(PipelineError) as exc_info:
+            call_pipeline('http://localhost:8000', 'test query', mode='v2')
+        assert 'non-JSON' in str(exc_info.value)
+        assert exc_info.value.__cause__ is not None

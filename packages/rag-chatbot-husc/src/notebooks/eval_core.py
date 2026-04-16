@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 
+class PipelineError(Exception):
+    """Raised when call_pipeline fails due to connection or response errors."""
 def load_test_questions(primary_path: str, fallback_path: str) -> tuple[list[dict[str, Any]], str]:
     """Load test questions from primary path, falling back to fallback_path on failure.
 
@@ -160,6 +162,15 @@ def call_pipeline(base_url: str, query: str, mode: str = "v2", top_k: int = 5) -
         url = f"{base_url}/v2/query"
         payload = {"query": query, "top_k": top_k}
 
-    response = requests.post(url, json=payload, timeout=timeout)
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = requests.post(url, json=payload, timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+    except requests.ConnectionError as e:
+        raise PipelineError(
+            f"Failed to connect to pipeline at {url}: {e}"
+        ) from e
+    except json.JSONDecodeError as e:
+        raise PipelineError(
+            f"Pipeline at {url} returned non-JSON response: {e}"
+        ) from e
