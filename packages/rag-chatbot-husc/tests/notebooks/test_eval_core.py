@@ -7,7 +7,14 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from notebooks.eval_core import load_test_questions, normalize_pipeline_output, should_abort_after_smoke, call_pipeline, PipelineError, normalize_text, exact_correctness, retrieval_recall_proxy, hallucination_flag
+from notebooks.eval_core import (
+    load_test_questions, normalize_pipeline_output, should_abort_after_smoke,
+    call_pipeline, PipelineError, normalize_text, exact_correctness,
+    retrieval_recall_proxy, hallucination_flag,
+    get_decision_table, bootstrap_ci95, non_inferiority_test,
+    rerun_stability, compute_route_parity, build_evidence_map,
+    validate_matrix_completeness,
+)
 
 
 # =============================================================================
@@ -414,3 +421,216 @@ def test_hallucination_flag_from_threshold():
     assert hallucination_flag(0.10, threshold=0.18) == 1
     assert hallucination_flag(0.25, threshold=0.18) == 0
     assert hallucination_flag(0.18, threshold=0.18) == 0
+
+
+# =============================================================================
+# Tests for decision_table
+# =============================================================================
+
+def test_decision_table_has_all_required_metrics():
+    table = get_decision_table()
+    required = {"accuracy", "groundedness", "hallucination_rate", "recall", "latency_p95", "partial_credit"}
+    assert required.issubset(table.keys()), f"Missing metrics: {required - table.keys()}"
+
+
+def test_decision_table_gate_types():
+    table = get_decision_table()
+    must_pass = {"accuracy", "groundedness", "hallucination_rate", "recall"}
+    support_only = {"latency_p95", "partial_credit"}
+    for m in must_pass:
+        assert table[m]["gate_type"] == "must-pass", f"{m} should be must-pass"
+    for m in support_only:
+        assert table[m]["gate_type"] == "support-only", f"{m} should be support-only"
+
+
+def test_decision_table_ni_margins_are_numeric():
+    table = get_decision_table()
+    for metric, row in table.items():
+        assert isinstance(row["ni_margin"], (int, float)), f"{metric} ni_margin not numeric"
+        assert isinstance(row["rationale"], str), f"{metric} rationale not str"
+        assert len(row["rationale"]) > 0, f"{metric} rationale empty"
+
+
+# =============================================================================
+# Tests for bootstrap_ci95
+# =============================================================================
+
+def test_bootstrap_ci95_returns_tuple():
+    import numpy as np
+    np.random.seed(42)
+    values = [1, 0, 1, 1, 0, 1, 1, 0, 1, 1]
+    result = bootstrap_ci95(values)
+    assert isinstance(result, tuple) and len(result) == 2
+    ci_low, ci_high = result
+    assert ci_low <= ci_high, f"ci_low ({ci_low}) should be <= ci_high ({ci_high})"
+
+
+def test_bootstrap_ci95_contains_mean():
+    import numpy as np
+    np.random.seed(42)
+    values = [1, 0, 1, 1, 0, 1, 1, 0, 1, 1] * 10  # 100 values, mean=0.6
+    ci_low, ci_high = bootstrap_ci95(values)
+    empirical_mean = float(np.mean(values))
+    assert ci_low <= empirical_mean <= ci_high, f"mean {empirical_mean} should be in [{ci_low:.4f}, {ci_high:.4f}]"
+
+
+def test_bootstrap_ci95_insufficient_data():
+    ci_low, ci_high = bootstrap_ci95([1.0])
+    import math
+    assert math.isnan(ci_low) and math.isnan(ci_high)
+
+
+# =============================================================================
+# Tests for non_inferiority_test
+# =============================================================================
+
+def test_non_inferiority_test_higher_is_better_pass():
+    passes, delta = non_inferiority_test(0.80, 0.79, 0.015, higher_is_better=True)
+    assert passes is True
+    assert abs(delta - (-0.01)) < 1e-6
+
+
+def test_non_inferiority_test_higher_is_better_fail():
+    passes, _delta = non_inferiority_test(0.80, 0.78, 0.01, higher_is_better=True)
+    assert passes is False
+
+
+def test_non_inferiority_test_lower_is_better_pass():
+    passes, _delta = non_inferiority_test(0.10, 0.11, 0.02, higher_is_better=False)
+    assert passes is True
+
+
+def test_non_inferiority_test_lower_is_better_fail():
+    passes, _delta = non_inferiority_test(0.10, 0.13, 0.02, higher_is_better=False)
+    assert passes is False
+
+
+# =============================================================================
+# Tests for rerun_stability
+# =============================================================================
+
+def test_rerun_stability_stable():
+    seed_metrics = {"accuracy": [0.820, 0.819, 0.821]}
+    result = rerun_stability(seed_metrics)
+    assert result["stable"] is True
+
+
+def test_rerun_stability_unstable():
+    seed_metrics = {"accuracy": [0.820, 0.800, 0.780]}
+    result = rerun_stability(seed_metrics)
+    assert result["stable"] is False
+
+
+def test_rerun_stability_multiple_metrics():
+    seed_metrics = {
+        "accuracy": [0.820, 0.819, 0.821],
+        "groundedness": [0.910, 0.908, 0.912],
+    }
+    result = rerun_stability(seed_metrics)
+    assert result["stable"] is True
+    assert "accuracy" in result["metrics"]
+    assert "groundedness" in result["metrics"]
+
+
+def test_rerun_stability_insufficient_reruns():
+    seed_metrics = {"accuracy": [0.820, 0.819]}  # only 2 runs
+    result = rerun_stability(seed_metrics)
+    assert result["stable"] is False
+
+
+# =============================================================================
+# Tests for compute_route_parity
+# =============================================================================
+
+def test_compute_route_parity_no_mismatch():
+    controlled = [
+        {"question": "q1", "route": "padded_rag"},
+        {"question": "q2", "route": "graph_rag"},
+    ]
+    auto = [
+        {"question": "q1", "route": "padded_rag"},
+        {"question": "q2", "route": "graph_rag"},
+    ]
+    result = compute_route_parity(controlled, auto)
+    assert result["global_mismatch_pct"] == 0.0
+    assert result["global_pass"] is True
+    assert result["mismatches"] == 0
+
+
+def test_compute_route_parity_one_percent_mismatch():
+    controlled = [{"question": f"q{i}", "route": "padded_rag"} for i in range(100)]
+    auto = [{"question": f"q{i}", "route": "padded_rag"} for i in range(100)]
+    auto[50]["route"] = "graph_rag"
+    result = compute_route_parity(controlled, auto)
+    assert result["global_mismatch_pct"] == 1.0
+    assert result["global_pass"] is True
+    assert result["mismatches"] == 1
+
+
+def test_compute_route_parity_fails_over_one_percent():
+    controlled = [{"question": f"q{i}", "route": "padded_rag"} for i in range(100)]
+    auto = [{"question": f"q{i}", "route": "padded_rag"} for i in range(100)]
+    auto[50]["route"] = "graph_rag"
+    auto[60]["route"] = "graph_rag"
+    result = compute_route_parity(controlled, auto)
+    assert result["global_mismatch_pct"] == 2.0
+    assert result["global_pass"] is False
+
+
+def test_compute_route_parity_mismatched_lengths():
+    controlled = [{"question": "q1", "route": "padded_rag"}, {"question": "q2", "route": "graph_rag"}]
+    auto = [{"question": "q1", "route": "padded_rag"}]
+    with pytest.raises(ValueError):
+        compute_route_parity(controlled, auto)
+
+
+# =============================================================================
+# Tests for build_evidence_map
+# =============================================================================
+
+def test_build_evidence_map_has_required_fields():
+    emap = build_evidence_map(
+        git_sha="abc123",
+        dataset_hash="hash456",
+        config_snapshot={"embedding": "BGE"},
+        n_queries=50,
+        run_ids=["run1", "run2"],
+    )
+    for field in ["git_sha", "dataset_hash", "config_snapshot", "runtime_info", "n_queries", "run_ids", "evidence_checksum"]:
+        assert field in emap, f"Missing field: {field}"
+    assert emap["git_sha"] == "abc123"
+    assert emap["dataset_hash"] == "hash456"
+    assert emap["n_queries"] == 50
+
+
+def test_build_evidence_map_runtime_info():
+    emap = build_evidence_map("sha", "hash", {}, 10, ["r1"])
+    assert "python_version" in emap["runtime_info"]
+    assert "platform" in emap["runtime_info"]
+    assert "timestamp" in emap["runtime_info"]
+
+
+# =============================================================================
+# Tests for validate_matrix_completeness
+# =============================================================================
+
+def test_validate_matrix_completeness_all_present():
+    manifests = [
+        {"embedding_model": "BGE", "force_route": "padded_rag"},
+        {"embedding_model": "BGE", "force_route": "graph_rag"},
+        {"embedding_model": "Harrier", "force_route": "padded_rag"},
+        {"embedding_model": "Harrier", "force_route": "graph_rag"},
+    ]
+    validate_matrix_completeness(manifests)  # should not raise
+
+
+def test_validate_matrix_completeness_missing_one_raises():
+    manifests = [
+        {"embedding_model": "BGE", "force_route": "padded_rag"},
+        {"embedding_model": "BGE", "force_route": "graph_rag"},
+        {"embedding_model": "Harrier", "force_route": "padded_rag"},
+        # missing Harrier+graph_rag
+    ]
+    with pytest.raises(RuntimeError) as exc:
+        validate_matrix_completeness(manifests)
+    assert "MATRIX_INCOMPLETE" in str(exc.value)
