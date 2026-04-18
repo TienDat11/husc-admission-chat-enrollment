@@ -209,6 +209,14 @@ __marimo__/
 
 
 rag2025/data/*
+!rag2025/data/chunked/
+!rag2025/data/chunked/**
+!rag2025/data/raw/
+!rag2025/data/raw/**
+!rag2025/data/normalized/
+!rag2025/data/normalized/**
+!rag2025/data/validated/
+!rag2025/data/validated/**
 rag2025/index/
 rag2025/venv/
 rag2025/.env*
