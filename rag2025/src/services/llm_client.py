@@ -19,13 +19,29 @@ import os
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
-from openai import AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncOpenAI,
+    RateLimitError,
+)
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
+
+
+def _is_retryable_llm_error(exc: BaseException) -> bool:
+    """Retry only transient transport/rate-limit/server errors."""
+    if isinstance(exc, (APIConnectionError, APITimeoutError, RateLimitError)):
+        return True
+    if isinstance(exc, APIStatusError):
+        status = getattr(exc, "status_code", None)
+        return status in {408, 409, 425, 429, 500, 502, 503, 504}
+    return False
 
 
 class LLMResponse:
@@ -152,8 +168,8 @@ class UnifiedLLMClient:
     @retry(
         stop=stop_after_attempt(2),
         wait=wait_exponential(min=1, max=8),
-        retry=retry_if_exception_type(Exception),
-        reraise=False,
+        retry=retry_if_exception(_is_retryable_llm_error),
+        reraise=True,
     )
     async def _call_provider(
         self,
@@ -240,6 +256,13 @@ class UnifiedLLMClient:
                     provider, messages, temperature, max_tokens, json_mode=True
                 )
                 return result.as_json()
+            except APIStatusError as exc:
+                status = getattr(exc, "status_code", None)
+                body = getattr(exc, "body", None)
+                logger.warning(
+                    f"LLM JSON [{provider.name}] json_mode=True APIStatusError "
+                    f"status={status} model={provider.model} body={body}"
+                )
             except Exception as exc:
                 logger.warning(f"LLM JSON [{provider.name}] json_mode=True failed: {exc}")
 
@@ -249,6 +272,13 @@ class UnifiedLLMClient:
                     provider, messages, temperature, max_tokens, json_mode=False
                 )
                 return result2.as_json()
+            except APIStatusError as exc:
+                status = getattr(exc, "status_code", None)
+                body = getattr(exc, "body", None)
+                logger.warning(
+                    f"LLM JSON [{provider.name}] json_mode=False fallback APIStatusError "
+                    f"status={status} model={provider.model} body={body}"
+                )
             except Exception as exc:
                 logger.warning(f"LLM JSON [{provider.name}] json_mode=False fallback failed: {exc}")
 

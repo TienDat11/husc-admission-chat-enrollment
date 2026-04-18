@@ -13,6 +13,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
+from openai import APIStatusError
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.domain.entities import (
@@ -85,6 +86,14 @@ class NERService:
                 max_tokens=1024,
             )
             return self._parse(data, chunk.chunk_id)
+        except APIStatusError as exc:
+            status = getattr(exc, "status_code", None)
+            body = getattr(exc, "body", None)
+            logger.warning(
+                f"NER provider APIStatusError chunk={chunk.chunk_id} "
+                f"status={status} body={body}"
+            )
+            return ExtractionResult(chunk_id=chunk.chunk_id, error=f"APIStatusError:{status}")
         except Exception as exc:
             logger.warning(f"NER failed for {chunk.chunk_id}: {exc}")
             return ExtractionResult(chunk_id=chunk.chunk_id, error=str(exc))
