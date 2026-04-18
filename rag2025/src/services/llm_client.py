@@ -239,17 +239,18 @@ class UnifiedLLMClient:
                 result = await self._call_provider(
                     provider, messages, temperature, max_tokens, json_mode=True
                 )
-                try:
-                    return result.as_json()
-                except (json.JSONDecodeError, ValueError):
-                    # Provider didn't return valid JSON despite json_mode
-                    # Try without json_mode
-                    result2 = await self._call_provider(
-                        provider, messages, temperature, max_tokens, json_mode=False
-                    )
-                    return result2.as_json()
+                return result.as_json()
             except Exception as exc:
-                logger.warning(f"LLM JSON [{provider.name}] failed: {exc}")
+                logger.warning(f"LLM JSON [{provider.name}] json_mode=True failed: {exc}")
+
+            try:
+                # Fallback for providers/models that reject response_format=json_object
+                result2 = await self._call_provider(
+                    provider, messages, temperature, max_tokens, json_mode=False
+                )
+                return result2.as_json()
+            except Exception as exc:
+                logger.warning(f"LLM JSON [{provider.name}] json_mode=False fallback failed: {exc}")
 
         raise RuntimeError("All LLM providers failed for JSON mode")
 
