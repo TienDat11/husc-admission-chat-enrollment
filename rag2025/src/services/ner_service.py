@@ -10,6 +10,7 @@ Scalable: Adding entity types = extend EntityType enum + update prompt only.
 from __future__ import annotations
 
 import json
+import sys
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
