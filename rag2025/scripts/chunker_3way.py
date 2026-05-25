@@ -150,7 +150,15 @@ def run_3way(
     Runners are injectable for testing. In production they default to the
     real implementations defined above.
     """
-    haiku_runner = haiku_runner or (lambda html, prompt: _run_haiku_chunker(html, prompt, api_key=api_key or os.environ["ANTHROPIC_API_KEY"]))
+    # HIGH-2: validate API key early, fail with actionable error not silent KeyError
+    if haiku_runner is None:
+        resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        if not resolved_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY not set and no haiku_runner injected. "
+                "Either set ANTHROPIC_API_KEY env var or pass haiku_runner=... explicitly."
+            )
+        haiku_runner = lambda html, prompt: _run_haiku_chunker(html, prompt, api_key=resolved_key)
     claude_runner = claude_runner or _run_claude_cli_chunker
     system_runner = system_runner or _run_system_v2_chunker
 

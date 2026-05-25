@@ -95,12 +95,13 @@ def crawl_one(
         target.write_bytes(new_bytes)
         return {"id": nid, "path": str(target), "sha256": new_hash, "status": "replaced"}
 
+    existed_before = target.exists()
     target.write_bytes(new_bytes)
     return {
         "id": nid,
         "path": str(target),
         "sha256": new_hash,
-        "status": "fetched" if not target.exists() else "fetched",
+        "status": "replaced" if existed_before else "fetched",
     }
 
 

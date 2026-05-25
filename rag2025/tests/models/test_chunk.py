@@ -91,10 +91,11 @@ def test_from_legacy_uses_year_field_when_data_year_missing():
     assert meta.data_year == 2025
 
 
-def test_from_legacy_falls_back_to_default_2025_when_no_year():
+def test_from_legacy_falls_back_to_default_when_no_year():
     legacy = {"info_type": "qa"}
     meta = ChunkMetadataV3.from_legacy(legacy)
-    assert meta.data_year == 2025
+    # HIGH-3 fix: default year now comes from CURRENT_ADMISSION_YEAR env (default 2026)
+    assert meta.data_year == 2026
     assert meta.chunk_method == "rule_v2"
     assert meta.chunk_version_hash == "0" * 64
 

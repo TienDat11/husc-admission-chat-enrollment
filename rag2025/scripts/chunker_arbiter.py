@@ -30,6 +30,12 @@ from typing import Any, Callable
 from loguru import logger
 
 
+def _is_jsonl_data_line(line: str) -> bool:
+    """Skip empty + comment lines when reading JSONL written by chunker_3way."""
+    stripped = line.strip()
+    return bool(stripped) and not stripped.startswith("#")
+
+
 WINNER_DEFAULT = "system_v2"
 IOU_THRESHOLD_OVERRIDE = 0.5
 FAITHFULNESS_DELTA_OVERRIDE = 0.1
@@ -121,30 +127,23 @@ def faithfulness_judge(
 
 
 def _default_deepseek_judge(prompt: str) -> float:
-    """Production path: deepseek-v4-pro via UnifiedLLMClient (per C12).
+    """Production path placeholder — callers MUST inject judge_runner.
 
-    Lazy-imported to avoid hard dependency at module load time. Tests should
-    inject a stub via faithfulness_judge(judge_runner=...).
+    The previous implementation used asyncio.run() to drive an async
+    UnifiedLLMClient call, which crashes inside any already-running event
+    loop (FastAPI route, pytest-asyncio test, async pipeline). To avoid
+    silent fallback to 0.0 (which then short-circuits the override rule
+    and locks the system to system_v2), we require explicit injection.
+
+    To wire deepseek-v4-pro in production, build a sync judge_runner using
+    httpx.Client (UnifiedLLMClient OpenAI-compatible endpoint) and pass it
+    via faithfulness_judge(judge_runner=...).
     """
-    from services.llm_client import get_llm_client  # lazy import
-    import asyncio
-
-    async def _ask() -> str:
-        client = get_llm_client(force_model="deepseek-v4-pro")
-        resp = await client.chat(
-            user_message=prompt,
-            system_message="You are a strict faithfulness scorer. Return only a float in [0,1].",
-            temperature=0.0,
-            max_tokens=8,
-        )
-        return resp.content.strip()
-
-    raw = asyncio.run(_ask())
-    try:
-        return max(0.0, min(1.0, float(raw)))
-    except ValueError:
-        logger.warning(f"deepseek judge returned non-numeric: {raw!r}; defaulting 0.0")
-        return 0.0
+    raise RuntimeError(
+        "faithfulness_judge requires explicit judge_runner injection. "
+        "The default async path was removed because asyncio.run() inside "
+        "an already-running event loop crashes. See arbiter docs."
+    )
 
 
 # ---------- Arbiter ----------
@@ -254,11 +253,14 @@ def main() -> int:
     args = parser.parse_args()
 
     indir = Path(args.input_dir)
-    sys_chunks = [json.loads(l) for l in (indir / "system_v2.jsonl").read_text(encoding="utf-8").splitlines() if l]
-    haiku_chunks = [json.loads(l) for l in (indir / "haiku_v1.jsonl").read_text(encoding="utf-8").splitlines() if l]
-    claude_chunks = [json.loads(l) for l in (indir / "claude_v1.jsonl").read_text(encoding="utf-8").splitlines() if l]
+    sys_chunks = [json.loads(l) for l in (indir / "system_v2.jsonl").read_text(encoding="utf-8").splitlines() if _is_jsonl_data_line(l)]
+    haiku_chunks = [json.loads(l) for l in (indir / "haiku_v1.jsonl").read_text(encoding="utf-8").splitlines() if _is_jsonl_data_line(l)]
+    claude_chunks = [json.loads(l) for l in (indir / "claude_v1.jsonl").read_text(encoding="utf-8").splitlines() if _is_jsonl_data_line(l)]
     source_html = Path(args.source_html).read_text(encoding="utf-8")
 
+    # NOTE: This CLI processes one notification per invocation. Multi-notification
+    # callers MUST maintain a single _ConsecutiveEscalation() across calls to
+    # honor the "3 consecutive low-IoU docs → escalate" hard rule (MED-5 fix).
     decision = arbitrate_one(
         nid=args.nid,
         source_html=source_html,

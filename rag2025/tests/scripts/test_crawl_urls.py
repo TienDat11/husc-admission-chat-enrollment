@@ -90,7 +90,8 @@ def test_crawl_one_force_overwrites_even_on_match(crawl_module, tmp_path):
     sess = _mock_session(200, b"<html>same</html>")
     crawl_module.crawl_one(74, tmp_path, session=sess)
     res = crawl_module.crawl_one(74, tmp_path, session=sess, force=True)
-    assert res["status"] == "fetched"
+    # MED-8 fix: force-overwrite of existing file now returns "replaced" not "fetched"
+    assert res["status"] == "replaced"
 
 
 def test_crawl_many_continues_on_failure(crawl_module, tmp_path):

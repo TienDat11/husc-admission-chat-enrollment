@@ -39,7 +39,17 @@ async def warmup() -> dict:
     Call after deploy before serving production traffic.
     @spec(S10.B7)
     """
-    from rag2025.src.app.lifecycle import AppServices
+    try:
+        # Project layout puts src/ on sys.path; prefer relative-style import.
+        from app.lifecycle import AppServices
+    except ModuleNotFoundError:
+        try:
+            from rag2025.src.app.lifecycle import AppServices  # legacy path
+        except ModuleNotFoundError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"AppServices module unavailable: {exc}",
+            ) from exc
 
     services = AppServices()
     results: dict = {}
