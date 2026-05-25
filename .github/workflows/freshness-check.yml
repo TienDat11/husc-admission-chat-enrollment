@@ -1,0 +1,36 @@
+name: Freshness Alert (daily)
+
+# Runs daily and posts a Slack warning if the latest crawl is stale.
+# Uses repo SLACK_RAG_OPS_WEBHOOK secret.
+
+on:
+  schedule:
+    # Daily at 03:30 UTC (10:30 ICT).
+    - cron: "30 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SLACK_RAG_OPS_WEBHOOK: ${{ secrets.SLACK_RAG_OPS_WEBHOOK }}
+      FRESHNESS_ALERT_DAYS: "90"
+      PYTHONPATH: rag2025/src
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install loguru httpx
+
+      - name: Run freshness check
+        run: |
+          python rag2025/scripts/freshness_alert.py \
+            --audit-path rag2025/data/audit_pre_reingest.json

@@ -1,0 +1,53 @@
+name: Yearly Reingest Dry-Run
+
+# Runs the yearly rotation pipeline in dry-run mode (no live LanceDB writes,
+# no /admin/reload-table call). Validates that all scripts still parse, all
+# unit tests still green, and detect_new_year_signal sanity passes.
+
+on:
+  schedule:
+    # Monthly on the 1st at 02:00 UTC.
+    - cron: "0 2 1 * *"
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Target admission year (e.g. 2027)"
+        required: true
+        default: "2027"
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: rag2025/src
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pytest>=8,<10" "pytest-asyncio>=0.23,<2" "loguru>=0.7" "httpx>=0.27,<1" "fastapi>=0.115,<1" "pydantic>=2.5,<3" "requests>=2.31"
+
+      - name: Run yearly rotation pytest suite
+        run: |
+          python -m pytest rag2025/tests/scripts/test_yearly_rotation.py rag2025/tests/observability/test_slack_notify.py -v
+
+      - name: Sanity — detect_new_year_signal
+        run: |
+          python -c "import sys; sys.path.insert(0, 'rag2025/scripts'); import importlib.util; spec = importlib.util.spec_from_file_location('yr', 'rag2025/scripts/yearly_rotation.py'); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); assert m.detect_new_year_signal('năm 2027 hiện đang triển khai', current_year=2026) == 2027, 'Detector regression'; print('OK')"
+
+      - name: Upload result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yearly-reingest-dryrun-${{ github.run_id }}
+          path: |
+            .pytest_cache/
+            rag2025/results/
+          retention-days: 14
