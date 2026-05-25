@@ -14,6 +14,8 @@ from jsonschema import ValidationError, validate
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from services._metadata_helpers import get_source_label
+
 
 class ValidationReport(BaseModel):
     """Validation report model."""
@@ -214,7 +216,7 @@ def _validate_custom_rules(record: dict[str, Any], line_num: int, report: Valida
 
     # Rule 2: Check metadata.source is non-empty
     metadata = record.get("metadata", {})
-    if not metadata.get("source"):
+    if not get_source_label({"metadata": metadata}) or get_source_label({"metadata": metadata}) == "Không rõ nguồn":
         report.warnings.append(f"Line {line_num}: Missing metadata.source")
 
     # Rule 3: Check vector dimension if present

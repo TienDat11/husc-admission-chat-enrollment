@@ -14,6 +14,8 @@ from typing import Any
 
 from loguru import logger
 
+from services._metadata_helpers import get_source_breadcrumb
+
 
 def _extract_sparse_terms(text: str) -> list[str]:
     stopwords = {
@@ -71,7 +73,7 @@ def _to_canonical(obj: Any, file_name: str, line_num: int) -> dict[str, Any] | N
             "text_plain": text,
             "summary": None,
             "metadata": metadata,
-            "breadcrumbs": [metadata["source"]],
+            "breadcrumbs": [get_source_breadcrumb({"metadata": metadata})],
             "prev_chunk_id": "",
             "next_chunk_id": "",
             "sparse_terms": _extract_sparse_terms(text_md),
@@ -108,7 +110,7 @@ def _to_canonical(obj: Any, file_name: str, line_num: int) -> dict[str, Any] | N
 
     breadcrumbs = obj.get("breadcrumbs") if isinstance(obj.get("breadcrumbs"), list) else []
     if not breadcrumbs:
-        breadcrumbs = [metadata["source"]]
+        breadcrumbs = [get_source_breadcrumb({"metadata": metadata})]
 
     sparse_terms = obj.get("sparse_terms") if isinstance(obj.get("sparse_terms"), list) else []
 

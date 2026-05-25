@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-05-25T16:37:00Z",
+  "source_files": [
+    "rag2025/results/86q_analysis.json",
+    "rag2025/results/86q_thi_sinh_results.json"
+  ],
+  "model": "deepseek-v4-pro",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "ner_model": "gpt-5.3",
+  "hyde_model": "gpt-5.3",
+  "total_questions": 86,
+  "has_answer_pct": 100.0,
+  "hallucination": {
+    "type1_year_mix": 2,
+    "type4_wrong_scope_or_major": 3,
+    "type5_fabricated_numeric": 36,
+    "type6_temporal_fabrication": 9,
+    "total_at_least_one_dimension_failed": 47
+  },
+  "quality_dims": {
+    "scope_pass": 83,
+    "lang_pass": 81,
+    "year_pass": 84,
+    "grounded_pass": 41,
+    "clarity_pass": 86
+  },
+  "category_distribution": {
+    "simple": 36,
+    "multihop": 25,
+    "temporal": 25
+  },
+  "weakness_distribution": {
+    "single_fact": 36,
+    "multi_entity": 25,
+    "temporal": 25
+  },
+  "latency": {
+    "p50_s": 49.4,
+    "p95_s": 95.99,
+    "samples": 87
+  }
+}

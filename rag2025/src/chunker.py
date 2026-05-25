@@ -13,6 +13,8 @@ import yaml
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from services._metadata_helpers import get_source_label, get_source_breadcrumb
+
 
 class ChunkProfile(BaseModel):
     """Chunk profile configuration."""
@@ -344,7 +346,7 @@ class Chunker:
 
         # Always keep 'source' field
         if "source" not in filtered and "source" in metadata:
-            filtered["source"] = metadata["source"]
+            filtered["source"] = get_source_label({"metadata": metadata})
 
         return filtered
 
@@ -370,7 +372,7 @@ class Chunker:
         # Add document source as top-level breadcrumb
         metadata = doc.get("metadata", {})
         if "source" in metadata:
-            breadcrumbs.insert(0, metadata["source"])
+            breadcrumbs.insert(0, get_source_breadcrumb({"metadata": metadata}))
 
         return breadcrumbs
 

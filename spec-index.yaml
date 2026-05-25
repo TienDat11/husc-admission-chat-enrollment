@@ -16,22 +16,46 @@
 #   - /phase-promote command (advances active_phase)
 
 active_phase: phase-1
-spec: docs/spec/rag-chatbot-husc-spec.md
+spec: docs/rag-chatbot-husc-spec.md
 layout: monorepo   # flat | monorepo (default: monorepo)
 
 phases:
   phase-1:
     status: in-progress
-    sections: [2,3.1,3.2,4,5,6]
+    # Sections 2-6: Colab quality eval (original phase-1 scope)
+    # Sections 7-9: Latency reduction (rag2025/.omc/plans/latency_reduction_plan_v2.md)
+    # Sections 10-12: Standardize FE/BE (rag2025/.omc/plans/standardize_frontend_backend_plan_v2.md)
+    # Section 13: Temporal correctness (rag2025/.omc/plans/temporal_reingest_plan.md)
+    sections: [2,3.1,3.2,4,5,6,7,8,9,10,11,12,13,13.1,13.2,13.3,13.4,13.5,13.6,13.7,13.8]
     paths:
+      # Original phase-1 scope (Colab eval)
       - packages/rag-chatbot-husc/src/**
       - packages/rag-chatbot-husc/tests/**
+      # Backend RAG pipeline (latency + standardize plans)
+      - rag2025/src/**
+      - rag2025/tests/**
+      - rag2025/scripts/**
+      - rag2025/prompts/**
+      - rag2025/config/**
+      - rag2025/.omc/plans/**
+      # Frontend (standardize plan)
+      - uni-guide-ai/src/**
+      - uni-guide-ai/tests/**
+      - uni-guide-ai/vite.config.ts
+      - uni-guide-ai/package.json
+      - uni-guide-ai/.lighthouserc.json
+      - uni-guide-ai/index.html
+      # Cross-cutting (CI, infra, API contract)
+      - .github/workflows/**
+      - api/**
+      - nginx.conf
+      - prompts/**
 
   # Example future phase (edit to match your spec):
   # phase-2:
   #   status: planned
   #   gate: "phase-1.status == verified"
-  #   sections: [8, 9]
+  #   sections: [13, 14]
   #   paths:
   #     - src/phase2/**        # flat layout example
   #     # OR packages/rag-chatbot-husc/src/phase2/**  (monorepo)
@@ -40,17 +64,48 @@ phases:
 
 tdd:
   enabled: true
-  src_patterns: ["packages/rag-chatbot-husc/src/**"]
+  src_patterns:
+    - "packages/rag-chatbot-husc/src/**"
+    - "rag2025/src/**"
+    - "uni-guide-ai/src/**"
   test_conventions:
+    # Original phase-1: TypeScript notebook eval
     - pattern: "^packages/rag-chatbot-husc/src/(.*)\\.ts$"
       test: "packages/rag-chatbot-husc/tests/$1.test.ts"
     - pattern: "^packages/rag-chatbot-husc/src/(.*)\\.ts$"
       test: "packages/rag-chatbot-husc/test/$1.test.ts"
+    # Original phase-1: Python notebook helpers
+    - pattern: "^packages/rag-chatbot-husc/src/(.*)\\.py$"
+      test: "packages/rag-chatbot-husc/tests/$1.py"
+    - pattern: "^packages/rag-chatbot-husc/src/notebooks/(.*)\\.py$"
+      test: "packages/rag-chatbot-husc/tests/notebooks/test_$1.py"
+    # Backend RAG pipeline (Python pytest)
+    - pattern: "^rag2025/src/(.*)\\.py$"
+      test: "rag2025/tests/$1.py"
+    - pattern: "^rag2025/src/services/(.*)\\.py$"
+      test: "rag2025/tests/services/test_$1.py"
+    - pattern: "^rag2025/src/(routers|app|models|observability)/(.*)\\.py$"
+      test: "rag2025/tests/$1/test_$2.py"
+    # Frontend (Vitest + Playwright)
+    - pattern: "^uni-guide-ai/src/(.*)\\.tsx?$"
+      test: "uni-guide-ai/tests/$1.test.tsx"
+    - pattern: "^uni-guide-ai/src/(.*)\\.tsx?$"
+      test: "uni-guide-ai/tests/$1.test.ts"
+    - pattern: "^uni-guide-ai/src/components/(.*)\\.tsx$"
+      test: "uni-guide-ai/tests/components/$1.test.tsx"
+    - pattern: "^uni-guide-ai/src/lib/(.*)\\.ts$"
+      test: "uni-guide-ai/tests/lib/$1.test.ts"
   exclude:
     - "**/*.d.ts"
     - "**/index.ts"
+    - "**/index.tsx"
     - "**/types.ts"
     - "**/__generated__/**"
+    - "**/api-types.ts"          # OpenAPI codegen output
+    - "**/*.config.ts"
+    - "**/main.tsx"
+    - "**/vite-env.d.ts"
+    - "rag2025/src/**/__init__.py"
 
 e2e:
   enabled: true
