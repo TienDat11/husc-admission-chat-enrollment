@@ -182,7 +182,9 @@ QUY TẮC:
             # Get all available fields
             summary = chunk.get("summary", "")
             text = chunk.get("text", chunk.get("text_plain", ""))
-            source = chunk.get("metadata", {}).get("source", "Không rõ nguồn")
+            # Architect MED-LOW fix (2026-05-25): route through dual-read helper
+            # so v3 source_url falls back cleanly when legacy field is absent.
+            source = get_source_label(chunk)
             info_type = chunk.get("metadata", {}).get("info_type", "")
 
             # Include BOTH summary and full text for complete context
