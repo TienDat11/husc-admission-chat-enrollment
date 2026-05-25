@@ -15,6 +15,8 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from loguru import logger
 
 from services.llm_client import get_llm_client
+from services.risky_intent import infer_intent_from_query, RISKY_INTENTS
+from services._metadata_helpers import get_source_label
 
 try:
     from zai import ZaiClient
@@ -193,9 +195,12 @@ QUY TẮC:
 
             content = "\n".join(content_parts) if content_parts else text
 
-            # Add metadata tags for context
+            # Add metadata tags for context (P5-5: include data_year + notification_id)
+            data_year = chunk.get("metadata", {}).get("data_year", "N/A")
+            notification_id = chunk.get("metadata", {}).get("notification_id")
+            tb_label = f"TB{notification_id}" if notification_id is not None else "pháp lý"
             context_parts.append(
-                f"[Đoạn {i}] (Nguồn: {source} | Loại: {info_type})\n{content}"
+                f"[Đoạn {i}] (Năm: {data_year} | TB: {tb_label} | Nguồn: {source} | Loại: {info_type})\n{content}"
             )
 
         return "\n\n---\n\n".join(context_parts)
@@ -306,46 +311,32 @@ QUY TẮC:
         # Enforce Vietnamese output
         answer = await self._enforce_vietnamese(answer, query, context, max_tokens)
 
-        # Anti-fallback retry: nếu LLM trả fallback NHƯNG context CÓ canonical chunks → retry
-        if self._has_useful_context(chunks) and (
-            'không tìm thấy' in answer.lower() or 'không cung cấp' in answer.lower()
-            or 'chúng ta cần trả lời' in answer.lower()
-            or answer.lower().startswith('phân tích:')
-            or answer.lower().startswith('phân tích ')
-        ):
-            logger.warning(
-                "Fallback detected but canonical chunks present — retry with stricter prompt"
+        # P5-4: Risky-intent graceful fallback.
+        # Replaces the deleted fabrication-forcing retry block (lines 309-345 pre-fix)
+        # which forced the LLM to fabricate numerics when current-year context
+        # was missing. Now we emit a graceful disclaimer instead.
+        intent = infer_intent_from_query(query)
+        if intent in RISKY_INTENTS:
+            current_year = int(os.getenv("CURRENT_ADMISSION_YEAR", "2026"))
+            current_year_str = str(current_year)
+            has_current_year_chunk = any(
+                str((c.get("metadata") or {}).get("data_year", "")) == current_year_str
+                for c in chunks
             )
-            strict_prompt = (
-                f"{self.generation_system_prompt}\n\n"
-                "QUAN TRỌNG: CONTEXT bên dưới CHẮC CHẮN có thông tin liên quan đến câu hỏi.\n"
-                "BẮT BUỘC: Đọc kỹ TẤT CẢ các đoạn context, tổng hợp các thông tin gần đúng nhất.\n"
-                "TUYỆT ĐỐI KHÔNG được trả 'Tôi không tìm thấy'.\n"
-                "Nếu chỉ có thông tin một phần — trả lời phần đó + ghi 'thông tin còn lại không có trong tài liệu'.\n"
-            )
-            try:
-                resp = await self.unified_client.chat(
-                    user_message=(
-                        f"CONTEXT:\n{context}\n\n"
-                        f"CÂU HỎI: {query}\n\n"
-                        "TRẢ LỜI (BẮT BUỘC TỔNG HỢP):"
-                    ),
-                    system_message=strict_prompt,
-                    temperature=0.0,
-                    max_tokens=max_tokens,
+            if not has_current_year_chunk:
+                friendly = {
+                    "diem_chuan": "điểm chuẩn",
+                    "hoc_phi": "học phí",
+                    "chi_tieu": "chỉ tiêu tuyển sinh",
+                    "da_hop": "tổ hợp xét tuyển",
+                }.get(intent, intent.replace("_", " "))
+                answer = (
+                    f"Thông tin {friendly} năm {current_year} chưa được công bố chính thức. "
+                    f"Vui lòng tham khảo https://tuyensinh.husc.edu.vn để cập nhật."
                 )
-                retry_ans = resp.content.strip()
-                if retry_ans and 'không tìm thấy' not in retry_ans.lower():
-                    # Re-enforce Vietnamese on the retried answer too
-                    retry_ans = await self._enforce_vietnamese(retry_ans, query, context, max_tokens)
-                    if 'không tìm thấy' not in retry_ans.lower():
-                        answer = retry_ans
-                        provider = f"{provider} + anti-fallback-retry"
-            except Exception as e:
-                logger.warning(f"Anti-fallback retry failed: {e}")
+                provider = f"{provider} + risky-intent-fallback".lstrip()
 
         # Extract sources via dual-read helper (v3 source_url > notification_id > legacy)
-        from services._metadata_helpers import get_source_label
         sources = list({get_source_label(chunk) for chunk in chunks})
 
         # Use first 3 chunks for chunks_used calculation
