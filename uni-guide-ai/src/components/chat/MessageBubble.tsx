@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { Copy, ThumbsUp, ThumbsDown, Volume2, Check, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Message, Source } from '@/lib/chat-types';
 
 interface MessageBubbleProps {
@@ -58,6 +59,7 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
           {isBot ? (
             <div className="message-content prose prose-sm max-w-none">
               <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
                 components={{
                   p: ({ children }) => (
                     <p className="mb-3 last:mb-0 text-[15px] leading-[1.7] font-medium">
@@ -97,6 +99,26 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
                     <code className="px-2 py-1 rounded-lg bg-muted text-sm font-mono font-semibold">
                       {children}
                     </code>
+                  ),
+                  table: ({ children }) => (
+                    <div className="overflow-x-auto my-3 -mx-2 px-2">
+                      <table className="min-w-full text-sm border-collapse">
+                        {children}
+                      </table>
+                    </div>
+                  ),
+                  thead: ({ children }) => (
+                    <thead className="bg-muted/50">{children}</thead>
+                  ),
+                  th: ({ children }) => (
+                    <th className="border border-border px-2 py-1.5 text-left font-bold text-xs">
+                      {children}
+                    </th>
+                  ),
+                  td: ({ children }) => (
+                    <td className="border border-border px-2 py-1.5 text-xs">
+                      {children}
+                    </td>
                   ),
                 }}
               >
@@ -168,15 +190,41 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
 }
 
 function SourceChip({ source }: { source: Source }) {
+  const content = (
+    <>
+      <span>📄</span>
+      <span className="max-w-[120px] truncate">{source.title}</span>
+      {source.data_year && source.data_year !== 'N/A' && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+          {source.data_year}
+        </span>
+      )}
+      <ExternalLink className="w-3 h-3 flex-shrink-0" />
+    </>
+  );
+
+  if (source.url) {
+    return (
+      <motion.a
+        href={source.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        whileHover={{ scale: 1.05, y: -2 }}
+        whileTap={{ scale: 0.95 }}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-muted hover:bg-primary hover:text-white text-xs font-bold transition-all border-2 border-border hover:border-primary shadow-[0_2px_0_hsl(var(--border))] hover:shadow-[0_2px_0_hsl(var(--primary-dark))]"
+      >
+        {content}
+      </motion.a>
+    );
+  }
+
   return (
     <motion.button
       whileHover={{ scale: 1.05, y: -2 }}
       whileTap={{ scale: 0.95 }}
       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-muted hover:bg-primary hover:text-white text-xs font-bold transition-all border-2 border-border hover:border-primary shadow-[0_2px_0_hsl(var(--border))] hover:shadow-[0_2px_0_hsl(var(--primary-dark))]"
     >
-      <span>📄</span>
-      <span className="max-w-[120px] truncate">{source.title}</span>
-      <ExternalLink className="w-3 h-3" />
+      {content}
     </motion.button>
   );
 }
