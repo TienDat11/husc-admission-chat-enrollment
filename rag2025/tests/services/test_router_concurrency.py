@@ -151,9 +151,9 @@ async def test_l1_classify_runs_concurrently_with_step_back_then_hyde():
     """
     call_log: list = []
     llm, _, _sb, _hyde, _clf = _make_concurrency_llm(
-        step_back_sleep=0.05,
-        hyde_sleep=0.05,
-        classify_sleep=0.05,
+        step_back_sleep=0.1,
+        hyde_sleep=0.1,
+        classify_sleep=0.1,
         call_log=call_log,
     )
     router = SmartQueryRouter(llm=llm)
@@ -184,15 +184,17 @@ async def test_l1_classify_runs_concurrently_with_step_back_then_hyde():
         f"classify_start={cs:.4f} hyde_end={he:.4f} delta={cs-he:+.4f}s"
     )
 
-    # Wall time bound: sum=150ms; concurrent max≈100ms. Allow generous slack
-    # for asyncio scheduling on slow CI but demand a clear margin.
-    sum_s = 0.05 + 0.05 + 0.05
+    # Wall time bound: sum=300ms; concurrent max≈200ms (step_back→hyde chain).
+    # Larger 100ms sleeps widen the absolute margin between concurrent (~200ms)
+    # and the threshold (255ms) to ~55ms, so asyncio scheduling jitter on a
+    # loaded machine no longer flips the result (50ms sleeps left only ~27ms).
+    sum_s = 0.1 + 0.1 + 0.1
     assert elapsed < sum_s * 0.85, (
         f"expected wall time ≪ sum({sum_s:.3f}s); got {elapsed:.4f}s. "
         f"Concurrency not achieved — calls ran sequentially."
     )
     # And a lower bound to catch a future "skip the chain entirely" regression:
-    assert elapsed >= max(0.05, 0.05) * 0.7  # at least the longest branch
+    assert elapsed >= max(0.1, 0.1) * 0.7  # at least the longest branch
 
     # And a result is still produced.
     assert result is not None
