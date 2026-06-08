@@ -26,6 +26,7 @@ Scalable: Adding new query types = extend the CLASSIFY_SYSTEM_PROMPT only.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from enum import Enum
@@ -396,6 +397,19 @@ class SmartQueryRouter:
         self._llm = llm or get_llm_client()
         self._threshold = simple_complexity_threshold
 
+    async def _chain_stepback_hyde(self, query: str) -> tuple[str, str]:
+        """Run step-back then HyDE sequentially, returning (step_back, hyde).
+
+        This is the dependent half of the router pipeline (step_back feeds
+        into hyde). It is invoked as a single task by `route()` so the
+        independent `_classify(query)` task can run concurrently via
+        `asyncio.gather`. Behaviour is identical to the pre-L2 inline chain
+        — only the scheduling changes.
+        """
+        step_back = await self._step_back(query)
+        hyde_doc = await self._generate_hyde_doc(query, step_back)
+        return step_back, hyde_doc
+
     async def _step_back(self, query: str) -> str:
         """Generate a step-back (abstracted) version of the query."""
         try:
@@ -572,14 +586,72 @@ class SmartQueryRouter:
         # the abstraction HURTS retrieval (loses the constraint that makes
         # the lookup 1-hop). For abstract / procedural queries the
         # abstraction helps.
+        #
+        # L2 (latency plan #2): `_classify(query)` depends ONLY on the raw
+        # query — it is INDEPENDENT of the step_back→hyde chain. Run the
+        # chain and the classify task concurrently so the wall-time bound is
+        # max(step_back+hyde, classify) instead of their sum. Behavior is
+        # unchanged; only timing differs. asyncio.gather's default
+        # return_exceptions=False propagates the first failure; each helper
+        # already has its own try/except → per-helper fallback. The
+        # classify fallback default is "hybrid" (S16.2 / CMF-1 (d)); step_back
+        # falls back to the raw query; hyde falls back to the raw query. So
+        # even if a gather task raises, the surviving result is still
+        # meaningful — and we explicitly catch here to preserve that
+        # existing fallback behaviour rather than letting gather cancel a
+        # sibling.
         if _should_stepback(query):
-            step_back = await self._step_back(query)
+            chain_task = asyncio.create_task(self._chain_stepback_hyde(query))
         else:
             step_back = query
-        hyde_doc = await self._generate_hyde_doc(query, step_back)
-        # S16.2 / AMF-2: classifier sees the RAW query only — HyDE doc was
-        # the #1 structural cause of over-routing to graph.
-        classification = await self._classify(query)
+
+            async def _hyde_only() -> tuple[str, str]:
+                # step_back is suppressed by _should_stepback=False, so the
+                # chain tuple's first element is the raw query — matches the
+                # downstream unpack and the post-L2 (step_back, hyde_doc)
+                # contract used everywhere in route().
+                return step_back, await self._generate_hyde_doc(query, step_back)
+
+            chain_task = asyncio.create_task(_hyde_only())
+        classify_task = asyncio.create_task(self._classify(query))
+        # Concurrency: chain and classify are awaited together. Each helper
+        # already try/excepts internally; if a helper raises its fallback is
+        # returned and the sibling task is unaffected. The explicit
+        # return_exceptions=True is a defense-in-depth — if a future refactor
+        # adds an unguarded raise inside a helper, gather will not cancel
+        # the sibling and we still receive a usable fallback result.
+        chain_result, classification = await asyncio.gather(
+            chain_task, classify_task, return_exceptions=True
+        )
+        if isinstance(chain_result, Exception):
+            # Step-back/HyDE chain failed catastrophically; preserve the
+            # pre-L2 fallback by re-deriving a chain-shaped result from the
+            # raw query. This keeps the deterministic overrides downstream
+            # operating on a well-formed step_back_query / hypothetical_doc.
+            logger.warning(
+                f"Step-back/HyDE chain raised ({chain_result!r}); "
+                f"using raw query as fallback (preserves pre-L2 behaviour)"
+            )
+            step_back = step_back if "step_back" in locals() else query
+            hyde_doc = query
+        else:
+            step_back, hyde_doc = chain_result
+        if isinstance(classification, Exception):
+            # Mirror the per-helper try/except by routing the failure into
+            # the safe-middle default the existing `_classify` already uses
+            # (S16.2 / CMF-1 (d): fail-toward-hybrid). The deterministic
+            # overrides downstream still run on the same default dict.
+            logger.warning(
+                f"Classification raised ({classification!r}); "
+                f"defaulting to safe-middle hybrid (S16.2 CMF-1 (d))"
+            )
+            classification = {
+                "route": "hybrid",
+                "complexity": 2,
+                "intent": "general",
+                "reasoning": "classification failed — default hybrid (S16.2)",
+                "hyde_variants": [query],
+            }
 
         # S16.2 / CMF-2: parse the 3-way classify output. The schema accepts
         # both new tokens (padded|hybrid|graph) and the legacy
