@@ -244,3 +244,58 @@ docs/specs/
 docs/plans/
 .omc/
 .superpowers/
+
+# ── Local-only docs / reports / thesis artifacts (keep on disk, never commit) ──
+# Load-bearing docs stay tracked via negations below.
+*.pdf
+*.docx
+*.doc
+*.rtf
+# Report/thesis markdown sprawl — broad ignore, then re-include load-bearing docs.
+GraphRAG_*.md
+Chapter2_*.md
+draft_chapter2_graphrag.md
+graph_rag_document.md
+thesis_context.md
+prompt.md
+requirements.md
+arxiv_results.txt
+clean_text.txt
+extracted_text.txt
+pdf_text.txt
+create-image/
+docs/reviews/
+docs/superpowers/
+docs/assessment-*.md
+docs/coverage.md
+docs/*-comparison.md
+docs/qwen3-*.md
+rag2025/backup_mail_package_2026/
+rag2025/results/**/*.md
+rag2025/results/**/*.pdf
+rag2025/results/**/*.json
+rag2025/ai_report_section*.md
+rag2025/AI_Engineering_Thesis_Report.md
+rag2025/thesis_*.md
+rag2025/docs/
+rag2025/rules/
+rag2025/plan/
+rag2025/momus_audit.txt
+rag2025/oracle_audit.txt
+rag2025/rag_book_extracted.txt
+rag2025/uvicorn_error_log.md
+# Re-include load-bearing docs that must stay in git:
+!CLAUDE.md
+!AGENTS.md
+!PROGRESS.md
+!docs/rag-chatbot-husc-spec.md
+!**/README.md
+!.claude/**
+
+# Amp report artifacts (local-only)
+.amp/in/artifacts/
+
+# Scratch dumps (local-only)
+status.txt
+test.txt
+toc_dump.txt
