@@ -16,7 +16,8 @@ from loguru import logger
 
 from services.llm_client import get_llm_client
 from services.risky_intent import infer_intent_from_query, RISKY_INTENTS
-from services._metadata_helpers import get_source_label
+from services.temporal_authority import get_current_admission_year
+from services._metadata_helpers import get_source_label, get_source_url
 
 try:
     from zai import ZaiClient
@@ -24,6 +25,220 @@ try:
 except ImportError:
     ZAI_AVAILABLE = False
     logger.warning("zai-sdk not installed. GLM-4.5 direct path will be disabled.")
+
+
+# ---------------------------------------------------------------------------
+# S16.5 / ADR-D / AMF-3 — module-level URL-faithfulness constants + helper.
+# Exposed at module scope (not as a class method) so tests can import and
+# exercise them directly without standing up an `LLMGenerator` instance.
+# ---------------------------------------------------------------------------
+
+# Canonical domain allowlist for the URL-faithfulness post-guard. Hosts
+# here are considered POLICY-grounded (HUSC/Bộ portals) and are exempt
+# from the ungrounded-URL strip even when they don't appear in any
+# retrieved chunk. This protects:
+#   * The season-aware GAP_DISCLAIMER (code in `generate_answer`) which
+#     injects `https://tuyensinh.husc.edu.vn` for friendly fallbacks.
+#   * The contact-abstain guard's URL preservation (thisinh.thitotnghiepthpt,
+#     dkxt.hueuni) without them being stripped by mistake.
+# Pinned by `test_url_faithfulness_guard.py::test_allowlist_constant_shape_is_pinned`.
+_URL_ALLOWLIST = frozenset({
+    "tuyensinh.husc.edu.vn",
+    "husc.edu.vn",
+    "dkxt.hueuni.edu.vn",
+    "thisinh.thitotnghiepthpt.edu.vn",
+})
+
+# URL-like token extractors (compile once at module load).
+# Matches `https?://...` (scheme-bearing) AND bare `[\w.-]+\.(edu\.vn|com|vn|gov\.vn)\S*`
+# (scheme-less, vietnamese TLDs + gov.vn). The bare-DNS branch catches
+# model emissions like "tuyensinh.husc.edu.vn/thong-bao" with no scheme.
+_URL_SCHEME_RX = re.compile(r"https?://\S+")
+_URL_BARE_TLD_RX = re.compile(
+    r"[\w.-]+\.(?:edu\.vn|com\.vn|gov\.vn|com|vn|edu)\S*",
+    re.IGNORECASE,
+)
+
+
+def _strip_ungrounded_urls(
+    answer: str,
+    chunk_texts: list,
+    allowlist,
+) -> str:
+    """Strip URL-like tokens from `answer` that are not grounded in any
+    chunk text and not in the canonical allowlist.
+
+    Args:
+        answer: The final answer string (post-generation, post-season-fallback,
+            post-contact-abstain-guard).
+        chunk_texts: List of retrieved chunk text contents.
+        allowlist: Iterable of canonical host strings (e.g.
+            ``{"tuyensinh.husc.edu.vn", ...}``). A URL whose host appears
+            in this set is considered policy-grounded and KEPT regardless
+            of whether it appears in any chunk.
+
+    Returns:
+        The answer with ungrounded URL tokens removed:
+          * Markdown ``[text](bad-url)`` -> ``text`` (text preserved, URL dropped)
+          * Bare URL token -> removed; orphan punctuation cleaned
+            (e.g. "tại " with empty trailing token collapsed).
+          * Already-grounded URLs (host/path substring in any chunk text)
+            are KEPT verbatim.
+          * Allowlist-policy URLs (host in ``allowlist``) are KEPT verbatim.
+
+    Never fabricates — only removes. Whitespace is normalized only where
+    a token removal leaves an obvious gap.
+    """
+    if not answer or not isinstance(answer, str):
+        return answer
+    if "http" not in answer and "." not in answer:
+        # Fast-path: no URL-like chars present, return as-is.
+        return answer
+
+    lowered_chunks = [str(t or "").lower() for t in chunk_texts]
+    allowlist_hosts = {h.lower() for h in (allowlist or set())}
+
+    def _is_grounded_or_allowlisted(url_token: str) -> bool:
+        """A URL is 'grounded' if its host/path substring appears in any
+        chunk text. It is 'allowlisted' if its host is in the allowlist
+        set. Either is sufficient to KEEP the token."""
+        token_lower = url_token.lower()
+        # 1. Allowlist by host (cheap set lookup).
+        for host in allowlist_hosts:
+            if host in token_lower:
+                return True
+        # 2. Grounded by chunk text (substring search).
+        for t in lowered_chunks:
+            if t and token_lower in t:
+                return True
+        return False
+
+    def _strip_token(text: str, token: str) -> str:
+        """Remove a token from `text`, cleaning orphan markdown syntax
+        ('[]()', 'tại :', double spaces)."""
+        # Strip the token verbatim.
+        out = text.replace(token, "")
+        # Clean orphan markdown link parens when token was a URL inside `[..](..)`.
+        # e.g. "[Cổng](https://bad.com/fake)" with the URL removed
+        # leaves "[Cổng]()". Reduce to "Cổng".
+        out = re.sub(r"\[\s*([^\]]+?)\s*\]\s*\(\s*\)", r"\1", out)
+        # Collapse double spaces left by the removal.
+        out = re.sub(r"  +", " ", out)
+        # Strip orphan "tại :" / "xem :" trailing punctuation.
+        out = re.sub(
+            r"\s+(tại|xem|theo|qua)\s+[.:;,]\s*",
+            " ",
+            out,
+            flags=re.IGNORECASE,
+        )
+        # Trim trailing whitespace before terminal period if we created one.
+        return out.rstrip()
+
+    # Collect candidate URL tokens (preserve order, dedupe).
+    candidates: list = []
+    for rx in (_URL_SCHEME_RX, _URL_BARE_TLD_RX):
+        for m in rx.finditer(answer):
+            tok = m.group(0)
+            # Strip trailing punctuation that the regex may have swallowed
+            # (commas, periods, parens that are sentence terminators, not
+            # part of the URL).
+            tok = tok.rstrip(".,;:!?)]}\"'")
+            if tok and tok not in candidates:
+                candidates.append(tok)
+
+    for tok in candidates:
+        if _is_grounded_or_allowlisted(tok):
+            continue
+        answer = _strip_token(answer, tok)
+
+    return answer
+
+
+# ---------------------------------------------------------------------------
+# T0 / rich-markdown-generation-plan — table structure validation post-guard.
+# Placed at module scope so tests can import it without standing up the full
+# LLMGenerator singleton (same pattern as _strip_ungrounded_urls above).
+#
+# Ensures LLM-emitted markdown tables have consistent column counts before
+# the answer reaches the FE. Broken tables are either padded or degraded to
+# bullet lists so the FE (with remark-gfm) never renders structurally invalid
+# HTML tables.
+# ---------------------------------------------------------------------------
+
+# Regexes compiled once at module load.
+_TABLE_ROW_RX = re.compile(r"^\|.*\|$")
+_TABLE_SEP_RX = re.compile(r"^\|[\s\-:\|]+\|$")
+
+
+def _validate_markdown_table(answer: str) -> str:
+    """Post-guard for LLM-emitted GFM tables before they reach the FE.
+
+    remark-gfm only renders a table when the block is well-formed: a header
+    row, a `|---|---|` separator row directly under it, and an equal column
+    count on every row. A malformed block renders as raw `| ... |` text. This
+    guard leaves a balanced, separator-backed table untouched (idempotent),
+    pads/truncates rows to the header column count when counts differ, and
+    degrades a table-shaped block with NO separator row into a bullet list so
+    no stray pipes survive. Non-table text passes through unchanged.
+    """
+    if not answer or not answer.strip():
+        return answer
+
+    def _is_row(line: str) -> bool:
+        return line.strip().startswith("|")
+
+    def _is_separator(line: str) -> bool:
+        body = line.strip().strip("|")
+        return "-" in body and re.fullmatch(r"[\s:\-|]+", body) is not None
+
+    def _cells(line: str) -> list:
+        s = line.strip()
+        if s.startswith("|"):
+            s = s[1:]
+        if s.endswith("|"):
+            s = s[:-1]
+        return [c.strip() for c in s.split("|")]
+
+    def _fix_block(block: list) -> list:
+        has_sep = len(block) >= 2 and _is_separator(block[1])
+        if not has_sep:
+            bullets = []
+            for line in block:
+                vals = [c for c in _cells(line) if c]
+                if vals:
+                    bullets.append("- " + ": ".join(vals))
+            return bullets or block
+        counts = [len(_cells(l)) for l in block]
+        if len(set(counts)) == 1:
+            return block
+        ncol = len(_cells(block[0]))
+        fixed = ["| " + " | ".join(_cells(block[0])) + " |"]
+        fixed.append("|" + "|".join(["---"] * ncol) + "|")
+        for line in block[2:]:
+            vals = _cells(line)
+            if len(vals) < ncol:
+                vals = vals + [""] * (ncol - len(vals))
+            elif len(vals) > ncol:
+                vals = vals[:ncol]
+            fixed.append("| " + " | ".join(vals) + " |")
+        return fixed
+
+    lines = answer.split("\n")
+    out = []
+    i = 0
+    while i < len(lines):
+        if _is_row(lines[i]):
+            j = i
+            block = []
+            while j < len(lines) and _is_row(lines[j]):
+                block.append(lines[j])
+                j += 1
+            out.extend(_fix_block(block))
+            i = j
+        else:
+            out.append(lines[i])
+            i += 1
+    return "\n".join(out)
 
 
 class LLMGenerator:
@@ -36,12 +251,52 @@ class LLMGenerator:
     3) Fallback static answer
     """
 
+    # S15.6 / ADR-F / CF-5 — narrow contact-keyword guard. Fires ONLY when
+    # the query contains one of these tokens AND no retrieved chunk text
+    # contains the matched term. Pinned (test_abstain_hardening.py) so
+    # accidental edits to the keyword set break tests loudly.
+    _CONTACT_KEYWORDS = re.compile(
+        r"\b(zalo|group|nhóm|fanpage|facebook|hotline|email|sđt|số điện thoại)\b",
+        re.IGNORECASE,
+    )
+    # Standard abstain phrasing — reused from the existing LLM-error path
+    # (line 428) and the fallback prompt rule #5. Single source of truth.
+    _ABSTAIN_STRING = (
+        "Tôi không tìm thấy thông tin này trong tài liệu hiện có."
+    )
+    # UW1 — markers that identify the intentional chunk-less clarification
+    # path (e.g. `query_router.hyde_auto_answer`, season-aware vague-query
+    # fallback). Any answer containing one of these markers is EXEMPT from
+    # the empty-retrieval guard because the route is deliberately
+    # chunk-less. Pinned by `test_empty_retrieval_guard.py`.
+    _CLARIFY_MARKERS = re.compile(
+        r"chưa đủ rõ|vui lòng cho biết cụ thể",
+        re.IGNORECASE,
+    )
+
     def __init__(self):
         # Load generation system prompt from file
         prompt_path = Path(__file__).parent.parent.parent / "prompts" / "generation_system_prompt.txt"
         if prompt_path.exists():
             self.generation_system_prompt = prompt_path.read_text(encoding="utf-8")
             logger.info(f"Loaded generation prompt from {prompt_path}")
+            # Inject year-specific facts at the {{YEAR_FACTS}} placeholder.
+            # Falls back to a sentinel string when no year-fact file exists yet.
+            try:
+                from services.year_facts import get_year_facts, render_year_briefing
+                _yf = get_year_facts(get_current_admission_year())
+                _briefing = render_year_briefing(_yf)
+                self.generation_system_prompt = self.generation_system_prompt.replace(
+                    "{{YEAR_FACTS}}", _briefing
+                )
+                logger.info(
+                    f"Injected year_facts briefing for year={_yf.year} available={_yf.available}"
+                )
+            except Exception as e:
+                logger.warning(f"year_facts injection skipped: {e}")
+                self.generation_system_prompt = self.generation_system_prompt.replace(
+                    "{{YEAR_FACTS}}", ""
+                )
         else:
             logger.warning(f"Generation prompt not found at {prompt_path}, using fallback")
             self.generation_system_prompt = self._get_fallback_prompt()
@@ -67,10 +322,22 @@ class LLMGenerator:
             self.groq_client = None
             logger.warning("GROQ_API_KEY not set, Groq direct path disabled")
 
-        # Unified client with RAMCLOUDS_GEN_MODEL for generation
-        gen_model = os.getenv("RAMCLOUDS_GEN_MODEL", "deepseek-v4-pro")
+        # Unified client with RAMCLOUDS_GEN_MODEL for generation.
+        # Primary = mimo-v2.5-pro (0 errors, richer answers, fast TTFT via SSE).
+        # Fallback = gpt-5.4 (faster total but ~33% intermittent internal errors,
+        # so demoted to fallback). Model-level fallback below covers the case
+        # where the primary model itself errors out after retries.
+        gen_model = os.getenv("RAMCLOUDS_GEN_MODEL", "mimo-v2.5-pro")
         self.unified_client = get_llm_client(force_model=gen_model)
-        logger.info(f"Generation: using model={gen_model} via UnifiedLLMClient")
+        self.gen_model = gen_model
+        gen_fallback = os.getenv("RAMCLOUDS_GEN_FALLBACK_MODEL", "gpt-5.4")
+        self.gen_fallback_model = gen_fallback
+        self.unified_fallback_client = (
+            get_llm_client(force_model=gen_fallback) if gen_fallback and gen_fallback != gen_model else None
+        )
+        logger.info(
+            f"Generation: primary={gen_model} | fallback={gen_fallback} via UnifiedLLMClient"
+        )
 
         # Track runtime readiness for diagnostics/preflight parity
         self.has_any_provider = bool(self.zai_client or self.groq_client or getattr(self.unified_client, "_providers", []))
@@ -121,26 +388,34 @@ class LLMGenerator:
                 return retry_answer
         except Exception as e:
             logger.warning(f"VI enforcement retry failed: {e}")
-        return "Tôi không tìm thấy thông tin chính xác cho câu hỏi này trong tài liệu HUSC 2026 hiện có."
+        # S14.4: year-parametrized — no literal "2026" allowed in this file.
+        current_year = get_current_admission_year()
+        return (
+            f"Tôi không tìm thấy thông tin chính xác cho câu hỏi này trong tài liệu "
+            f"HUSC năm {current_year} hiện có."
+        )
 
     def _get_fallback_prompt(self) -> str:
-        """Fallback generation prompt if file not found"""
-        return """Bạn là chuyên gia tư vấn tuyển sinh Trường Đại học Khoa học - Đại học Huế (HUSC) năm 2026.
+        """Fallback generation prompt if the .txt file is missing.
 
-Nhiệm vụ: Trả lời câu hỏi dựa trên context được cung cấp.
-
-QUY TẮC:
-1. Đọc toàn bộ context trước khi trả lời
-2. GỘP thông tin trùng lặp thành 1 câu trả lời duy nhất
-3. Độ dài: 50-150 từ (ngắn gọn, súc tích, đưa CON SỐ CỤ THỂ)
-4. Ưu tiên thông tin từ summary - thường tóm tắt tốt nhất
-5. Ưu tiên dữ liệu năm 2026. Nếu context chỉ có 2025: nêu rõ.
-6. Chỉ trả lời về tuyển sinh HUSC. Ngành không thuộc HUSC: nói rõ.
-7. Toàn bộ tiếng Việt, không trộn tiếng Anh.
-8. Khi KHÔNG có thông tin: "Tôi không tìm thấy thông tin này trong tài liệu hiện có."
-   KHÔNG bịa thông tin, KHÔNG dùng knowledge ngoài
-9. Tone: Thân thiện, chuyên nghiệp như tư vấn viên tuyển sinh
-"""
+        S14.4 / S14.6: stripped to YEAR-AGNOSTIC BEHAVIOR rules only. Static
+        major/code/tuition/year facts removed; rely on retrieved context +
+        the prompt-file `{{YEAR_FACTS}}` injection for facts.
+        """
+        current_year = get_current_admission_year()
+        return (
+            f"Bạn là chuyên gia tư vấn tuyển sinh Trường Đại học Khoa học - "
+            f"Đại học Huế (HUSC) năm {current_year}.\n\n"
+            "Nhiệm vụ: Trả lời câu hỏi DỰA HOÀN TOÀN trên context được cung cấp.\n\n"
+            "QUY TẮC:\n"
+            "1. Đọc toàn bộ context trước khi trả lời.\n"
+            "2. KHÔNG bịa số liệu, mã ngành, học phí, điểm chuẩn nằm ngoài context.\n"
+            "3. KHÔNG dùng kiến thức ngoài context (no external knowledge).\n"
+            "4. Toàn bộ tiếng Việt, không trộn tiếng Anh.\n"
+            "5. Khi KHÔNG có thông tin trong context: "
+            "\"Tôi không tìm thấy thông tin này trong tài liệu hiện có.\"\n"
+            "6. Tone: thân thiện, chuyên nghiệp như tư vấn viên tuyển sinh.\n"
+        )
 
     def _has_useful_context(self, chunks: List[Dict[str, Any]]) -> bool:
         """Check if retrieved chunks contain HUSC canonical data OR HUSC PDF source.
@@ -207,6 +482,41 @@ QUY TẮC:
 
         return "\n\n---\n\n".join(context_parts)
 
+    def _resolve_admission_context(self, chunks: List[Dict[str, Any]]):
+        """Resolve (current_year, season_phase, has_current_year_chunk) per call.
+
+        S14.4: this is the single seam used by the season-aware fallback in
+        `generate_answer`. Lazy imports avoid pulling heavy retrieval modules
+        at generator import-time. Tests monkey-patch this method directly to
+        drive season scenarios deterministically.
+
+        Year:    `temporal_authority.get_current_admission_year()` (live, per-call).
+        Season:  prefer `LanceDBRetriever.get_admission_context()` so the
+                 index-wide data-presence signal is used; if that import or
+                 call fails (e.g., no DB in tests), the season is computed
+                 from `services.season.get_season_phase(year, has_current_year_chunk)`
+                 — chunks-as-proxy for the data-presence flag.
+        """
+        year = int(get_current_admission_year())
+        year_str = str(year)
+        has_current_year_chunk = any(
+            str((c.get("metadata") or {}).get("data_year", "")) == year_str
+            for c in chunks
+        )
+        from services.season import get_season_phase  # pure, no heavy deps
+        has_index_data: Optional[bool] = None
+        try:
+            from services.lancedb_retrieval import get_retriever
+            has_index_data = bool(get_retriever().has_current_year_data(year))
+        except Exception as exc:
+            logger.debug(
+                f"_resolve_admission_context: retriever probe unavailable ({exc}); "
+                "using chunks-as-proxy for data-presence."
+            )
+            has_index_data = has_current_year_chunk
+        season_phase = get_season_phase(year, has_index_data)
+        return year, season_phase, has_current_year_chunk
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     async def generate_answer(
         self,
@@ -250,25 +560,70 @@ QUY TẮC:
         # DEBUG: Log prompt size only (avoid logging raw context content)
         logger.debug(f"Full prompt length: {len(full_prompt)} chars")
 
-        # Token limit for different query types (Phase F: raised from 800→1500)
-        max_tokens = 2500 if is_program_list_query else 1500
+        # Token limit for different query types — env-driven (gpt-5.4 + SSE
+        # tolerates larger budgets; raised so full answers aren't cut mid-sentence).
+        max_tokens_enum = int(os.getenv("MAX_GEN_TOKENS_ENUM", "4000"))
+        max_tokens_std = int(os.getenv("MAX_GEN_TOKENS", "3000"))
+        max_tokens = max_tokens_enum if is_program_list_query else max_tokens_std
 
         # Priority: UnifiedLLMClient → direct Groq → direct GLM-4.5
         answer = ""
         provider = ""
 
         try:
-            # Primary path: Unified provider chain (ramclouds/gemini → groq → compat)
+            # Primary path: Unified provider chain (mimo-v2.5-pro → groq → compat)
             if getattr(self.unified_client, "_providers", []):
-                logger.info("Generation: Using UnifiedLLMClient provider chain")
-                unified_resp = await self.unified_client.chat(
-                    user_message=f"CONTEXT:\n{context}\n\n---\n\nCÂU HỎI: {query}\n\nHãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context.",
-                    system_message=self.generation_system_prompt,
-                    temperature=0.1,
-                    max_tokens=max_tokens,
+                logger.info(f"Generation: Using {self.gen_model} (primary) via UnifiedLLMClient")
+                gen_user_msg = (
+                    f"CONTEXT:\n{context}\n\n---\n\nCÂU HỎI: {query}\n\n"
+                    "Hãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."
                 )
-                answer = unified_resp.content.strip()
-                provider = f"{unified_resp.model} ({unified_resp.provider})"
+                try:
+                    unified_resp = await self.unified_client.chat(
+                        user_message=gen_user_msg,
+                        system_message=self.generation_system_prompt,
+                        temperature=0.1,
+                        max_tokens=max_tokens,
+                    )
+                    answer = unified_resp.content.strip()
+                    provider = f"{unified_resp.model} ({unified_resp.provider})"
+
+                    # Empty-output guard: gpt-5.4 đôi khi trả "" mà không raise.
+                    # Coi là failure → fallback xuống gpt-5.3-codex (hoặc model
+                    # fallback đã cấu hình) để tránh trả rỗng.
+                    if (not answer or len(answer) < 20) and self.unified_fallback_client is not None:
+                        logger.warning(
+                            f"Primary gen model {self.gen_model} returned empty/short "
+                            f"output (len={len(answer)}); falling back to {self.gen_fallback_model}"
+                        )
+                        fb_resp = await self.unified_fallback_client.chat(
+                            user_message=gen_user_msg,
+                            system_message=self.generation_system_prompt,
+                            temperature=0.1,
+                            max_tokens=max_tokens,
+                        )
+                        fb_answer = fb_resp.content.strip()
+                        if fb_answer and len(fb_answer) >= 20:
+                            answer = fb_answer
+                            provider = f"{fb_resp.model} ({fb_resp.provider}, empty-fallback)"
+                except Exception as primary_err:
+                    # Model-level fallback: primary model errored after retries
+                    # → try fallback model (gpt-5.3-codex) before giving up.
+                    if self.unified_fallback_client is not None:
+                        logger.warning(
+                            f"Primary gen model {self.gen_model} failed ({primary_err}); "
+                            f"falling back to {self.gen_fallback_model}"
+                        )
+                        fb_resp = await self.unified_fallback_client.chat(
+                            user_message=gen_user_msg,
+                            system_message=self.generation_system_prompt,
+                            temperature=0.1,
+                            max_tokens=max_tokens,
+                        )
+                        answer = fb_resp.content.strip()
+                        provider = f"{fb_resp.model} ({fb_resp.provider}, fallback)"
+                    else:
+                        raise
 
             # Secondary: direct Groq path
             elif self.groq_client:
@@ -313,40 +668,175 @@ QUY TẮC:
         # Enforce Vietnamese output
         answer = await self._enforce_vietnamese(answer, query, context, max_tokens)
 
-        # P5-4: Risky-intent graceful fallback.
-        # Replaces the deleted fabrication-forcing retry block (lines 309-345 pre-fix)
-        # which forced the LLM to fabricate numerics when current-year context
-        # was missing. Now we emit a graceful disclaimer instead.
+        # ------------------------------------------------------------------
+        # S14.4 — Season-aware fallback (ADR-4 + PINNED Canonical strings).
+        # Replaces the previous RISKY_INTENTS-only guard. Behavior:
+        #   * has_current_year_chunk         → normal answer, NO disclaimer.
+        #   * PRE_SEASON_GAP + prior chunks  → PREPEND the canonical
+        #                                       GAP_DISCLAIMER, keep prior body.
+        #   * no usable chunks OR risky_intent without current
+        #                                    → graceful "chưa công bố" fallback
+        #                                       (year-parametrized, no major-code
+        #                                       fabrication).
+        #   * otherwise (has prior, not gap, not risky) → leave answer as is.
+        # ------------------------------------------------------------------
+        from services.season import SeasonPhase  # local import: pure module
+        current_year, season_phase, has_current_year_chunk = (
+            self._resolve_admission_context(chunks)
+        )
+        year_n_minus_1 = current_year - 1
         intent = infer_intent_from_query(query)
-        if intent in RISKY_INTENTS:
-            current_year = int(os.getenv("CURRENT_ADMISSION_YEAR", "2026"))
-            current_year_str = str(current_year)
-            has_current_year_chunk = any(
-                str((c.get("metadata") or {}).get("data_year", "")) == current_year_str
-                for c in chunks
-            )
-            if not has_current_year_chunk:
+
+        has_prior_chunks = any(
+            (c.get("text") or c.get("summary"))
+            and str((c.get("metadata") or {}).get("data_year", "")) != str(current_year)
+            for c in chunks
+        )
+
+        if not has_current_year_chunk:
+            if season_phase == SeasonPhase.PRE_SEASON_GAP and has_prior_chunks:
+                # Canonical GAP_DISCLAIMER — assert markers in test_generator_season.
+                disclaimer = (
+                    f"Thông tin tuyển sinh năm {current_year} chưa được công bố chính thức. "
+                    f"Dưới đây là thông tin năm {year_n_minus_1} (đã cũ, chỉ để tham khảo):"
+                )
+                answer = f"{disclaimer}\n\n{answer}"
+                provider = f"{provider} + gap-disclaimer".lstrip()
+            elif (intent in RISKY_INTENTS) or (not has_prior_chunks):
+                # Broadened beyond RISKY_INTENTS: ANY answer-intent with zero
+                # current-year AND zero usable prior chunk → graceful fallback.
                 friendly = {
                     "diem_chuan": "điểm chuẩn",
                     "hoc_phi": "học phí",
                     "chi_tieu": "chỉ tiêu tuyển sinh",
                     "da_hop": "tổ hợp xét tuyển",
-                }.get(intent, intent.replace("_", " "))
+                }.get(intent, "tuyển sinh")
                 answer = (
                     f"Thông tin {friendly} năm {current_year} chưa được công bố chính thức. "
                     f"Vui lòng tham khảo https://tuyensinh.husc.edu.vn để cập nhật."
                 )
-                provider = f"{provider} + risky-intent-fallback".lstrip()
+                provider = f"{provider} + season-fallback".lstrip()
+            # else: not gap, has prior chunks, not risky → leave answer untouched.
 
-        # Extract sources via dual-read helper (v3 source_url > notification_id > legacy)
-        sources = list({get_source_label(chunk) for chunk in chunks})
+        # ------------------------------------------------------------------
+        # S15.6 / ADR-F / CF-5 — narrow contact-keyword abstain guard.
+        # If the query contains a contact keyword (zalo, group, nhóm, fanpage,
+        # facebook, hotline, email, sđt, số điện thoại) AND no retrieved
+        # chunk text actually mentions the matched term → REPLACE the
+        # answer with the standard abstain string. Fixes the s14_fixed
+        # msg055 regression where the model fabricated "Zalo OA + mùa cao
+        # điểm tháng 5-9" when no chunk mentioned zalo.
+        # Keyword-scoped → never fires on normal admissions questions.
+        # Placed AFTER the season-aware block so this guard always wins.
+        # ------------------------------------------------------------------
+        contact_match = self._CONTACT_KEYWORDS.search(query or "")
+        if contact_match is not None:
+            term = contact_match.group(0).lower()
+            chunk_texts = [
+                str(c.get("text") or c.get("summary") or "") for c in chunks
+            ]
+            if not any(term in t.lower() for t in chunk_texts):
+                logger.info(
+                    f"Abstain guard fired: query contains contact keyword "
+                    f"{term!r} but no chunk text mentions it; replacing answer."
+                )
+                answer = self._ABSTAIN_STRING
+                provider = f"{provider} + contact-keyword-abstain".lstrip()
+
+        # ------------------------------------------------------------------
+        # UW1 — empty-retrieval substantive-answer guard. Closes the
+        # residual hallucination risk that the contact-keyword guard above
+        # does NOT cover: a SUBSTANTIVE draft answer produced with ZERO
+        # retrieved chunks (e.g. the model "knows" the cutoff from
+        # pre-training and volunteers a number). Exempt: already-abstain
+        # text, clarification/auto_answer templates (chunk-less by design,
+        # see `query_router.hyde_auto_answer`), and any answer that
+        # contains a clarify marker. Runs AFTER the season-aware block
+        # and AFTER the contact-keyword guard so it only catches the
+        # genuine case. Sits BEFORE the URL guard so a substituted
+        # abstain string is also URL-cleaned.
+        # ------------------------------------------------------------------
+        if (
+            not chunks
+            and answer
+            and answer.strip() != self._ABSTAIN_STRING
+            and not self._CLARIFY_MARKERS.search(answer)
+        ):
+            logger.info(
+                "Empty-retrieval guard fired: substantive answer produced "
+                "with 0 retrieved chunks; replacing with standard abstain."
+            )
+            answer = self._ABSTAIN_STRING
+            provider = f"{provider} + empty-retrieval-abstain".lstrip()
+
+        # ------------------------------------------------------------------
+        # S16.5 / ADR-D / AMF-3 — URL-faithfulness post-guard.
+        # Strips ungrounded URLs from the final answer (markdown links and
+        # bare tokens). Grounded URLs (host/path appears in a chunk) AND
+        # allowlist policy URLs (tuyensinh.husc, dkxt.hueuni, etc.) are
+        # kept. Adjacent to the S15.6 guard above; runs LAST so a guard-
+        # emitted abstain string is also cleaned of any URL artifacts.
+        # ------------------------------------------------------------------
+        chunk_texts_for_url_guard = [
+            str(c.get("text") or c.get("summary") or "") for c in chunks
+        ]
+        answer = _strip_ungrounded_urls(
+            answer, chunk_texts_for_url_guard, _URL_ALLOWLIST
+        )
+
+        # T0 — Validate markdown table structure before returning to FE.
+        # If the LLM emitted a structurally broken table (mismatched columns,
+        # missing separator row), fix it or degrade to bullet list so
+        # remark-gfm never renders invalid HTML.
+        answer = _validate_markdown_table(answer)
+
+        # T3 — Enrich sources with structured metadata for FE chip rendering.
+        # Each source dict has: id, title, url, snippet, data_year.
+        # Fallback chain per field is documented in:
+        #   .omc/plans/rich-markdown-generation-plan.md §Source Enrichment
+        enriched_sources: list = []
+        seen_ids: set = set()
+        for idx, chunk in enumerate(chunks):
+            md = chunk.get("metadata") or {}
+            # id: chunk_id or synthetic index
+            cid = str(chunk.get("chunk_id") or chunk.get("id") or f"chunk-{idx}")
+            if cid in seen_ids:
+                continue
+            seen_ids.add(cid)
+            # title: summary[:80] > text[:80] > chunk_id > "Không rõ"
+            summary = str(chunk.get("summary") or "")
+            text = str(chunk.get("text") or "")
+            title = (
+                summary[:80] or text[:80] or str(chunk.get("chunk_id", ""))[:80] or "Không rõ"
+            )
+            # url: source_url > notification_id → formatted URL > None
+            source_url = get_source_url(chunk)
+            if source_url:
+                url = source_url
+            else:
+                nid = md.get("notification_id") or chunk.get("notification_id")
+                if nid is not None:
+                    url = f"https://tuyensinh.husc.edu.vn/thongbao.php?id={nid}"
+                else:
+                    url = None
+            # snippet: summary[:120] > text[:120] > ""
+            snippet = (summary[:120] or text[:120] or "")
+            # data_year: metadata.data_year > "N/A"
+            data_year = str(md.get("data_year") or chunk.get("data_year") or "N/A")
+            enriched_sources.append({
+                "id": cid,
+                "title": title.strip(),
+                "url": url,
+                "snippet": snippet.strip(),
+                "data_year": data_year,
+            })
 
         # Use first 3 chunks for chunks_used calculation
         chunks_used = min(len(chunks), 3)
 
         return {
             "answer": answer,
-            "sources": sources,
+            "sources": enriched_sources,
             "confidence": confidence,
             "provider": provider,
             "chunks_used": chunks_used

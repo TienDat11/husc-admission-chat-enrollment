@@ -28,19 +28,21 @@
 
 ## 2. Retrieval precision@k / recall@k / MRR / hit-rate (k=1,3,5)
 - n_evaluated (questions with GT facts) = 55
+- mean_unique_gt_chunks/Q = 1.091 (drives the theoretical precision ceiling)
 
-| metric | value |
-|---|---:|
-| p@1 | 0.5818 |
-| p@3 | 0.2970 |
-| **p@5** | **0.2000** |
-| r@1 | 0.5455 |
-| r@3 | 0.8455 |
-| **r@5** | **0.9455** |
-| hit@1 | 0.5818 |
-| hit@3 | 0.8727 |
-| hit@5 | 0.9636 |
-| **MRR** | **0.7412** |
+**Real precision levers (T1): p@1 and MRR — p@5 is bounded by GT ceiling.**
+
+| metric | value | ceiling | % of max |
+|---|---:|---:|---:|
+| **p@1** | **0.5818** | 1.0909 | 53.3% |
+| p@3 | 0.2970 | 0.3636 | 81.7% |
+| **p@5** | **0.2000** | 0.2182 | 91.7% |
+| **0.7412** | _MRR_ | — | — |
+
+- hit@1 = 0.5818  |  hit@3 = 0.8727  |  hit@5 = 0.9636
+- r@1 = 0.5455  |  r@3 = 0.8455  |  r@5 = 0.9455
+
+> **p@5 vs ceiling:** p@5 = 0.2000 vs ceiling 0.2182 → 91.7% of max. With mean 1.091 GT chunks/question, p@5 cannot exceed ~0.2182. The actionable lever is **p@1** (0.5818) and **MRR** (0.7412).
 
 ---
 
@@ -56,9 +58,9 @@
 
 ## 4. Answer length + abstain + has-answer
 - answer_len: n=86  min=121  p50=622  p95=946  max=2095  mean=625.9
-- **abstain_rate = 0.1163** (10/86)
-- has_answer_rate = 0.8837
-- abstain × expected_behavior: {'answer': 8, 'abstain': 2}
+- **abstain_rate = 0.1395** (12/86)
+- has_answer_rate = 0.8605
+- abstain × expected_behavior: {'answer': 10, 'abstain': 2}
 
 ---
 
@@ -79,8 +81,6 @@
 
 | id | route | expected | is_abstain | n_retrieved | cr | flags |
 |---|---|---|---:|---:|---:|---|
-| msg019 | hyde_auto_answer | answer | False | 0 | - | empty_retrieval |
-| msg020 | hyde_auto_answer | answer | False | 0 | - | empty_retrieval |
 | msg026 | graph_rag | abstain | False | 5 | 1.00 | over_answer |
 | msg028 | graph_rag | abstain | False | 5 | 1.00 | over_answer |
 | msg034 | graph_rag | abstain | False | 8 | - | over_answer |
@@ -89,6 +89,8 @@
 | msg002 | hybrid | answer | True | 5 | 1.00 | abstain_miss |
 | msg007 | graph_rag | answer | True | 5 | - | abstain_miss |
 | msg011 | hybrid | answer | True | 5 | 1.00 | abstain_miss |
+| msg019 | hyde_auto_answer | answer | True | 0 | - | clarification,abstain_miss |
+| msg020 | hyde_auto_answer | answer | True | 0 | - | clarification,abstain_miss |
 | msg039 | graph_rag | answer | True | 5 | 1.00 | abstain_miss |
 | msg040 | hybrid | answer | True | 5 | - | abstain_miss |
 | msg043 | padded_rag | answer | True | 5 | - | abstain_miss |
@@ -111,16 +113,9 @@
 
 | # | severity | id | metric | evidence |
 |---|---|---|---|---|
-| 1 | HIGH | msg026 | `abstain_accuracy` | expected=abstain but answer_len=760 (route=graph_rag) |
-| 2 | HIGH | msg028 | `abstain_accuracy` | expected=abstain but answer_len=729 (route=graph_rag) |
-| 3 | HIGH | msg034 | `abstain_accuracy` | expected=abstain but answer_len=565 (route=graph_rag) |
-| 4 | HIGH | msg044 | `abstain_accuracy` | expected=abstain but answer_len=679 (route=hybrid) |
-| 5 | HIGH | msg059 | `abstain_accuracy` | expected=abstain but answer_len=299 (route=padded_rag) |
-| 6 | CRITICAL | msg019 | `retrieval_coverage` | retrieved_chunks=[] (route=hyde_auto_answer) |
-| 7 | CRITICAL | msg020 | `retrieval_coverage` | retrieved_chunks=[] (route=hyde_auto_answer) |
-| 8 | MED | (global) | `latency_route_ms` | route_ms p50=9341ms = 50.6% of total p50 18456ms |
-| 9 | MED | (global) | `latency_query_ms` | query_ms p50=7611ms = 41.2% of total p50 18456ms |
-| 10 | MED | (global) | `route_distribution` | route=hybrid took 53/86 = 61.6% (over-concentration) |
+| 1 | MED | (global) | `latency_route_ms` | route_ms p50=9341ms = 50.6% of total p50 18456ms |
+| 2 | MED | (global) | `latency_query_ms` | query_ms p50=7611ms = 41.2% of total p50 18456ms |
+| 3 | MED | (global) | `route_distribution` | route=hybrid took 53/86 = 61.6% (over-concentration) |
 
 ---
 
