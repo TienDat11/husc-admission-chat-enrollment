@@ -299,3 +299,6 @@ rag2025/uvicorn_error_log.md
 status.txt
 test.txt
 toc_dump.txt
+
+# Claude agent worktrees (runtime, local-only)
+.claude/worktrees/
