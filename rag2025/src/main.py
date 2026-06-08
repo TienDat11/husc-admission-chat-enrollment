@@ -918,7 +918,11 @@ class UnifiedQueryResponse(BaseModel):
     query: str
     route: str
     answer: str
-    sources: List[str]
+    # /v2 routes through generate_answer (S16.x), which now emits enriched
+    # SourceChip dicts (id/title/url/snippet/data_year) — same as /query.
+    # Was List[str]; mismatch caused a 500 ValidationError on every real
+    # query. Aligned to List[SourceChip] so the FE chip UX works on /v2.
+    sources: List[SourceChip]
     confidence: float
     groundedness_score: float = 0.0
     router_info: Dict[str, Any]

@@ -88,7 +88,15 @@ def _make_fake_generator(answer: str = "Đây là câu trả lời tổng hợp.
     gen = MagicMock()
     gen.generate_answer = AsyncMock(return_value={
         "answer": answer,
-        "sources": ["s1"],
+        # generate_answer emits enriched SourceChip dicts (id/title/url/
+        # snippet/data_year) — UnifiedQueryResponse.sources is List[SourceChip].
+        "sources": [{
+            "id": "s1",
+            "title": "Nguồn 1",
+            "url": None,
+            "snippet": "trích đoạn",
+            "data_year": "2026",
+        }],
         "confidence": 0.8,
         "provider": provider,
         "chunks_used": 1,
