@@ -205,13 +205,29 @@ else:
         "http://127.0.0.1:5173",
     ]
 
+# Any localhost/127.0.0.1 port is allowed in dev so the Vite dev server works
+# regardless of which port it lands on (8080 default, auto-increments to 8081+
+# when busy). Production should set ALLOWED_ORIGINS explicitly; when set, the
+# regex is disabled so only the configured origins are accepted.
+_localhost_origin_regex = (
+    None if raw_allowed_origins
+    else r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=_localhost_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "x-admin-token"],
 )
+
+# Mount the /api/meta router (admission-year banner + data-freshness for the FE
+# YearBanner). Without this the FE's GET /api/meta returns 404 and the banner
+# silently renders its error state.
+from routers.meta import router as meta_router
+app.include_router(meta_router)
 
 
 # ========== API Models ==========
