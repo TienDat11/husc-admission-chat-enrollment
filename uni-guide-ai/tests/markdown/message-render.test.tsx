@@ -198,3 +198,168 @@ describe('MessageBubble — status banner', () => {
     expect(banners).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// (i) Very long table — 50 rows — no crash, all <tr> rendered
+// ---------------------------------------------------------------------------
+describe('MessageBubble — very long table (50 rows)', () => {
+  it('renders a 50-row table without throwing and emits 50 <tr> elements', () => {
+    const header = `| Mã ngành | Tên ngành | Điểm chuẩn |`;
+    const sep = `| --- | --- | --- |`;
+    const rows = Array.from({ length: 50 }, (_, i) =>
+      `| ${7500000 + i} | Ngành ${i} | ${15 + (i % 10)}.${i % 10} |`
+    ).join('\n');
+    const content = [header, sep, ...rows.split('\n')].join('\n');
+    expect(() => render(<MessageBubble message={makeMessage(content)} />)).not.toThrow();
+    const trs = document.querySelectorAll('tr');
+    // 1 header + 50 data rows = 51
+    expect(trs.length).toBeGreaterThanOrEqual(50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (j) Markdown link inside a table cell — should render as <a>
+// ---------------------------------------------------------------------------
+describe('MessageBubble — markdown link inside a table cell', () => {
+  it('renders a [link](url) inside a table cell as <a>', () => {
+    const content = `| Tài liệu | Liên kết |
+| --- | --- |
+| Quy chế | [Xem tại đây](https://husc.edu.vn/quyche) |`;
+    render(<MessageBubble message={makeMessage(content)} />);
+    const anchor = document.querySelector('a[href="https://husc.edu.vn/quyche"]');
+    expect(anchor).not.toBeNull();
+    expect(anchor!.textContent).toBe('Xem tại đây');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (k) Vietnamese diacritics + emoji in content
+// ---------------------------------------------------------------------------
+describe('MessageBubble — Vietnamese diacritics + emoji', () => {
+  it('renders diacritics and emoji without throwing', () => {
+    const content = `Chào bạn! 👋 Trường **Đại học Khoa học** (HUSC) tuyển sinh năm nay với các ngành: Công nghệ thông tin, Trí tuệ nhân tạo, Khoa học dữ liệu 🎓.`;
+    expect(() => render(<MessageBubble message={makeMessage(content)} />)).not.toThrow();
+    expect(document.body.textContent).toContain('Đại học Khoa học');
+    expect(document.body.textContent).toContain('🎓');
+  });
+
+  it('handles all-Vietnamese text with all diacritic forms', () => {
+    const content = `Tiêu chí: Trắc nghiệm, tự luận, vấn đáp. Ngành: Y khoa, Dược học, Điều dưỡng.`;
+    expect(() => render(<MessageBubble message={makeMessage(content)} />)).not.toThrow();
+    expect(document.body.textContent).toContain('Trắc nghiệm');
+    expect(document.body.textContent).toContain('Dược học');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (l) Real http link — anchor hardening (target/rel)
+// ---------------------------------------------------------------------------
+describe('MessageBubble — link hardening', () => {
+  it('renders an http link with target=_blank and rel="noopener noreferrer"', () => {
+    const content = `Xem chi tiết tại [trang tuyển sinh](https://husc.edu.vn/tuyensinh).`;
+    render(<MessageBubble message={makeMessage(content)} />);
+    const anchor = document.querySelector('a[href="https://husc.edu.vn/tuyensinh"]');
+    expect(anchor).not.toBeNull();
+    expect(anchor!.getAttribute('target')).toBe('_blank');
+    // react-markdown v10 emits "noopener noreferrer" (no underscore) by default
+    expect(anchor!.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('renders a relative link (with target=_blank as per MessageBubble custom renderer)', () => {
+    const content = `[nội bộ](/faq)`;
+    render(<MessageBubble message={makeMessage(content)} />);
+    const anchor = document.querySelector('a[href="/faq"]');
+    expect(anchor).not.toBeNull();
+    // MessageBubble's custom `a` component (line 88-97) always sets
+    // target=_blank + rel=noopener noreferrer — both for external and
+    // internal links. This is intentional UX (every link opens new tab) but
+    // can be surprising; pin the contract here.
+    expect(anchor!.getAttribute('target')).toBe('_blank');
+    expect(anchor!.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (m) XSS — javascript: URL in markdown link — MUST NOT be a live href
+// ---------------------------------------------------------------------------
+describe('MessageBubble — XSS javascript: URL hardening', () => {
+  it('javascript: URL in a markdown link is NOT rendered as a clickable javascript: href', () => {
+    const content = `[click me](javascript:alert(1))`;
+    render(<MessageBubble message={makeMessage(content)} />);
+    // react-markdown v10 strips javascript: URLs by default — no live
+    // <a href="javascript:..."> should be present.
+    const live = document.querySelector('a[href^="javascript:"]');
+    expect(live).toBeNull();
+  });
+
+  it('VBScript: URL is also stripped', () => {
+    const content = `[click](vbscript:msgbox(1))`;
+    render(<MessageBubble message={makeMessage(content)} />);
+    const live = document.querySelector('a[href^="vbscript:"]');
+    expect(live).toBeNull();
+  });
+
+  it('data:text/html URL in a markdown link is neutralized', () => {
+    const content = `[evil](data:text/html,<script>alert(1)</script>)`;
+    render(<MessageBubble message={makeMessage(content)} />);
+    const live = document.querySelector('a[href^="data:"]');
+    expect(live).toBeNull();
+  });
+
+  it('image-style XSS via markdown image with javascript: does not execute', () => {
+    const content = `![alt](javascript:alert(1))`;
+    expect(() => render(<MessageBubble message={makeMessage(content)} />)).not.toThrow();
+    // No <img> with javascript: src
+    const evilImg = document.querySelector('img[src^="javascript:"]');
+    expect(evilImg).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (n) Deeply nested markdown — bullet within bullet
+// ---------------------------------------------------------------------------
+describe('MessageBubble — nested markdown', () => {
+  it('renders nested bullet list without throwing', () => {
+    const content = `### Danh sách
+- Cấp 1 A
+  - Cấp 2 A1
+  - Cấp 2 A2
+- Cấp 1 B`;
+    expect(() => render(<MessageBubble message={makeMessage(content)} />)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (o) Code blocks — fenced (```)
+// ---------------------------------------------------------------------------
+describe('MessageBubble — code blocks', () => {
+  it('renders a fenced code block without throwing', () => {
+    const content = '```ts\nconst x: number = 1;\nfunction f() { return x; }\n```';
+    expect(() => render(<MessageBubble message={makeMessage(content)} />)).not.toThrow();
+    const code = document.querySelector('code');
+    expect(code).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (p) Mixed heavy content — table + list + link + bold
+// ---------------------------------------------------------------------------
+describe('MessageBubble — mixed heavy content', () => {
+  it('renders a kitchen-sink message without throwing', () => {
+    const content = `### Ngành **Công nghệ thông tin** 🎓
+
+- **Mã ngành:** 7480201
+- **Chỉ tiêu:** 120
+- **Tổ hợp:** A00, A01, D01
+
+| Môn | Tổ hợp | Điểm |
+| --- | --- | --- |
+| Toán | A00 | 22.5 |
+| Lý | A01 | 21.0 |
+
+Xem thêm tại [trang tuyển sinh](https://husc.edu.vn/tuyensinh).`;
+    expect(() => render(<MessageBubble message={makeMessage(content)} />)).not.toThrow();
+    expect(document.querySelector('table')).not.toBeNull();
+    expect(document.querySelector('a[href^="https://"]')).not.toBeNull();
+  });
+});

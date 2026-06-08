@@ -1,0 +1,374 @@
+{
+  "gt_path": "D:\\chunking\\husc-admission-chat-enrollment\\rag2025\\data\\eval\\husc_thi_sinh_thuc_gt.json",
+  "records_path": "D:\\chunking\\husc-admission-chat-enrollment\\rag2025\\results\\eval_harness\\86q_records_s16.jsonl",
+  "n_records": 86,
+  "context_recall_offline": {
+    "n_facts": 59,
+    "n_hits": 59,
+    "n_questions": 52,
+    "context_recall": 1.0,
+    "per_question": [
+      {
+        "id": "msg001",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg002",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg003",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg004",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg005",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg008",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg009",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg010",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg011",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg012",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg014",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg015",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg016",
+        "n_facts": 5,
+        "n_hits": 5,
+        "recall": 1.0
+      },
+      {
+        "id": "msg017",
+        "n_facts": 2,
+        "n_hits": 2,
+        "recall": 1.0
+      },
+      {
+        "id": "msg018",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg021",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg022",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg023",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg026",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg027",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg028",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg030",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg035",
+        "n_facts": 2,
+        "n_hits": 2,
+        "recall": 1.0
+      },
+      {
+        "id": "msg037",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg038",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg039",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg041",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg042",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg044",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg046",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg047",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg048",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg054",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg056",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg058",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg060",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg062",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg065",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg066",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg068",
+        "n_facts": 2,
+        "n_hits": 2,
+        "recall": 1.0
+      },
+      {
+        "id": "msg069",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg072",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg073",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg077",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg078",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg079",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg080",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg081",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg082",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg083",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg085",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      },
+      {
+        "id": "msg086",
+        "n_facts": 1,
+        "n_hits": 1,
+        "recall": 1.0
+      }
+    ]
+  },
+  "abstain_accuracy_offline": {
+    "n_total": 7,
+    "n_correct": 1,
+    "abstain_accuracy": 0.14285714285714285,
+    "detail": [
+      {
+        "id": "msg026",
+        "expected_behavior": "abstain",
+        "abstained": false,
+        "answer_excerpt": "Theo dữ liệu năm 2025, điểm chuẩn (điểm trúng tuyển) của HUSC dao động theo các phương thức xét tuyển như sau:\n\n- **Xét điểm thi THPT (thang 30):** Thấp nhất là"
+      },
+      {
+        "id": "msg027",
+        "expected_behavior": "abstain",
+        "abstained": true,
+        "answer_excerpt": "Hiện tại, điểm chuẩn năm 2026 của HUSC chưa được công bố. Tài liệu tuyển sinh hiện có không cung cấp số liệu của các năm trước đó (như 2024, 2023) nên chưa thể "
+      },
+      {
+        "id": "msg028",
+        "expected_behavior": "abstain",
+        "abstained": false,
+        "answer_excerpt": "Theo dữ liệu năm 2025, điểm chuẩn xét học bạ (thang điểm 30) của các ngành tại HUSC cụ thể như sau:\n\n- **Lịch sử, Văn học**: 23,50 điểm\n- **Truyền thông số**: 2"
+      },
+      {
+        "id": "msg034",
+        "expected_behavior": "abstain",
+        "abstained": false,
+        "answer_excerpt": "Có, HUSC chấp nhận kết quả thi năng khiếu môn Vẽ mỹ thuật năm 2026 từ Trường Đại học Kiến trúc Thành phố Hồ Chí Minh (UAH).\n\nTiêu chí xét tuyển cụ thể như sau:\n"
+      },
+      {
+        "id": "msg044",
+        "expected_behavior": "abstain",
+        "abstained": false,
+        "answer_excerpt": "Chào bạn, hiện tại bạn có thể đăng ký xét tuyển và tải các biểu mẫu qua các địa chỉ sau:\n\n- **Đăng ký xét tuyển đợt 1**: Thí sinh thực hiện đăng ký trực tuyến t"
+      },
+      {
+        "id": "msg055",
+        "expected_behavior": "abstain",
+        "abstained": false,
+        "answer_excerpt": "Hiện tại, tài liệu tuyển sinh chưa cập nhật link nhóm Zalo hoặc Facebook tư vấn cụ thể. Tuy nhiên, bạn có thể liên hệ trực tiếp qua các kênh hỗ trợ tuyển sinh c"
+      },
+      {
+        "id": "msg059",
+        "expected_behavior": "abstain",
+        "abstained": false,
+        "answer_excerpt": "Mã trường tuyển sinh của Trường Đại học Khoa học, Đại học Huế (HUSC) là **DHT**. \n\nBạn hãy sử dụng mã **DHT** này khi thực hiện đăng ký nguyện vọng xét tuyển tr"
+      }
+    ]
+  }
+}

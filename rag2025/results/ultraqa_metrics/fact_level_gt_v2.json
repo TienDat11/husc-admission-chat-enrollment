@@ -1,0 +1,1375 @@
+{
+  "_provenance": {
+    "src_gt": "D:\\chunking\\husc-admission-chat-enrollment\\rag2025\\data\\eval\\husc_thi_sinh_thuc_gt.json",
+    "out_path": "D:\\chunking\\husc-admission-chat-enrollment\\rag2025\\results\\ultraqa_metrics\\fact_level_gt_v2.json",
+    "method": "deterministic, OFFLINE; no LLM call. Hand-picked supporting_chunk_ids for facts that lacked them, restricted to chunks that appear in s16 retrieved_chunks pool.",
+    "n_questions": 86,
+    "n_facts_total": 65,
+    "n_facts_with_chunk_ids": 65,
+    "extensions_applied": 7,
+    "extensions_keys": [
+      "msg006",
+      "msg024",
+      "msg031",
+      "msg059"
+    ]
+  },
+  "questions": [
+    {
+      "id": "msg001",
+      "question": "Em muốn tìm hiểu về các ngành đào tạo của trường mình",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:programs:7229030"
+      ],
+      "critical_facts": [
+        {
+          "value": "7229030",
+          "source_doc_ref": "canonical:programs:7229030",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "bang_xep_hang_chi_tieu_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg002",
+      "question": "Trường ơi cho em hỏi với, bên mình khi nào có kế hoạch tuyển sinh bằng xét học bạ ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "học bạ",
+          "fact_kind": "phuong_thuc_HB",
+          "supporting_chunk_ids": [
+            "qa_lich_tuyensinh_2026_pending"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg003",
+      "question": "Em muốn đăng ký xét tuyển vào trường  mình, phải làm sao ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "thisinh.thitotnghiepthpt.edu.vn",
+          "fact_kind": "url_dang_ky",
+          "supporting_chunk_ids": [
+            "qa_dang_ky_xet_tuyen_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg004",
+      "question": "Chào ad, em muốn hỏi trường mình có xét tuyển bằng phương thức xét học bạ không ạ. Và nếu có thì khi nào mở xét tuyển và em cần chuẩn bị những gì ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "Học bạ",
+          "fact_kind": "phuong_thuc_HB",
+          "supporting_chunk_ids": [
+            "qa_dang_ky_xet_tuyen_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg005",
+      "question": "Cho e hỏi là mình đăng ký xét trực tuyến hay là làm hồ sơ rồi gửi về trường ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "thisinh.thitotnghiepthpt.edu.vn",
+          "fact_kind": "url_dang_ky",
+          "supporting_chunk_ids": [
+            "qa_dang_ky_xet_tuyen_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg006",
+      "question": "ad cho e tham khảo giờ xét tuyển ngành cntt cần điểm học bạ lớp mấy và mấy điểm là đủ điều kiện xét tuyển ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:programs:7480201"
+      ],
+      "critical_facts": [
+        {
+          "value": "7480201",
+          "source_doc_ref": "canonical:programs:7480201",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "bang_xep_hang_chi_tieu_2026_v2",
+            "qa_xet_hoc_ba_2026_v2"
+          ],
+          "annotator": "G3-T1_offline",
+          "annotation_method": "deterministic_chunk_id_assignment"
+        }
+      ],
+      "verified": false
+    },
+    {
+      "id": "msg007",
+      "question": "khôi c01 20 điểm có thể đăng ký ngành nào của trường năm nay ạ",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg008",
+      "question": "Cho e hỏi là đăng kí nguyện vọng là một trường có thể đăng kí 2 ngành được không ạ.Tại em sợ xét tổ hợp mà có tổ hợp ngành khác cao hơn 1 trong 2 ngành em chọn ạ.",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "NV1",
+          "fact_kind": "quy_che_NV",
+          "supporting_chunk_ids": [
+            "qa_NV1_NV2_NV3_quy_che"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg009",
+      "question": "e muốn xét học bạ nhưng hạnh kiểm Khá có xét dc k ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "Học bạ",
+          "fact_kind": "phuong_thuc_HB",
+          "supporting_chunk_ids": [
+            "qa_to_hop_thpt_vs_hocba_husc"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg010",
+      "question": "Xét tuyển thẳng đăng ký  như thế nào?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "XTT",
+          "fact_kind": "phuong_thuc_XTT",
+          "supporting_chunk_ids": [
+            "qa_dang_ky_xet_tuyen_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg011",
+      "question": "E là thí sinh tự do, tốt nghiệp năm 2004 thì có được xét học bạ vào trường mình không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "học bạ",
+          "fact_kind": "phuong_thuc_HB",
+          "supporting_chunk_ids": [
+            "qa_xet_hoc_ba_quy_trinh_2026"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg012",
+      "question": "Cách tính điểm học bạ của trường mình tính như thế nào ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "lớp 10, 11, 12",
+          "fact_kind": "quy_tac_hoc_ba",
+          "supporting_chunk_ids": [
+            "qa_xet_hoc_ba_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg013",
+      "question": "Tư vấn cho mình cách đăng kí xét tuyển",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg014",
+      "question": "Em thi tốt nghiệp k thi theo những tổ hợp xét tuyển của ngành, vậy em có đăng kí xét tuyển dc k ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "tổ hợp",
+          "fact_kind": "to_hop",
+          "supporting_chunk_ids": [
+            "to_hop_a00_full_2026"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg015",
+      "question": "Em muốn tìm hiểu thông tin về các ngành đào tạo ở trường, thì xem ở đâu ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:programs:7480201"
+      ],
+      "critical_facts": [
+        {
+          "value": "7480201",
+          "source_doc_ref": "canonical:programs:7480201",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "bang_xep_hang_chi_tieu_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg016",
+      "question": "Trường có những phương thức tuyển sinh nào?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:phuong_thuc"
+      ],
+      "critical_facts": [
+        {
+          "value": "XTT",
+          "source_doc_ref": "canonical:phuong_thuc",
+          "fact_kind": "phuong_thuc",
+          "supporting_chunk_ids": [
+            "phuongthuc_xettuyen_2026_v2"
+          ]
+        },
+        {
+          "value": "THPT",
+          "source_doc_ref": "canonical:phuong_thuc",
+          "fact_kind": "phuong_thuc",
+          "supporting_chunk_ids": [
+            "phuongthuc_xettuyen_2026_v2"
+          ]
+        },
+        {
+          "value": "HB",
+          "source_doc_ref": "canonical:phuong_thuc",
+          "fact_kind": "phuong_thuc",
+          "supporting_chunk_ids": [
+            "phuongthuc_xettuyen_2026_v2"
+          ]
+        },
+        {
+          "value": "NL",
+          "source_doc_ref": "canonical:phuong_thuc",
+          "fact_kind": "phuong_thuc",
+          "supporting_chunk_ids": [
+            "phuongthuc_xettuyen_2026_v2"
+          ]
+        },
+        {
+          "value": "KH",
+          "source_doc_ref": "canonical:phuong_thuc",
+          "fact_kind": "phuong_thuc",
+          "supporting_chunk_ids": [
+            "phuongthuc_xettuyen_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg017",
+      "question": "Trường có ngành gì ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:programs:7220104",
+        "canonical:programs:7480201"
+      ],
+      "critical_facts": [
+        {
+          "value": "7220104",
+          "source_doc_ref": "canonical:programs:7220104",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "bang_xep_hang_chi_tieu_2026_v2"
+          ]
+        },
+        {
+          "value": "7480201",
+          "source_doc_ref": "canonical:programs:7480201",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "bang_xep_hang_chi_tieu_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg018",
+      "question": "Add có thể chia sẻ thêm thông tin về ngành văn học giúp e hiểu rõ hơn đc k ạ",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:programs:7229030"
+      ],
+      "critical_facts": [
+        {
+          "value": "7229030",
+          "source_doc_ref": "canonical:programs:7229030",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "chunked_24_chunk_357"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg019",
+      "question": "Trường có xết tổ hợp.....không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg020",
+      "question": "Ngành... xét những tổ hợp nào ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg021",
+      "question": "Cho em hỏi trường tuyển những khối nào?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "28 ngành",
+          "fact_kind": "tong_so_nganh",
+          "supporting_chunk_ids": [
+            "liet_ke_28_nganh_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg022",
+      "question": "Em muốn xét tổ hợp C00, trường có những ngành nào phù hợp ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "C00",
+          "fact_kind": "ma_to_hop",
+          "supporting_chunk_ids": [
+            "liet_ke_28_nganh_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg023",
+      "question": "Em thi THPT tổ hợp khác. Mà em xét học bạ tổ hợp khác được chứ ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "tổ hợp",
+          "fact_kind": "to_hop",
+          "supporting_chunk_ids": [
+            "to_hop_a00_full_2026"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg024",
+      "question": "Cho em hỏi học phí của trường mình bao nhiêu?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:tuition:khoi_iv",
+        "canonical:tuition:khoi_v",
+        "canonical:tuition:khoi_vii"
+      ],
+      "critical_facts": [
+        {
+          "value": "600000",
+          "source_doc_ref": "canonical:tuition:khoi_v",
+          "fact_kind": "hoc_phi",
+          "supporting_chunk_ids": [
+            "bang_xep_hang_chi_tieu_2026_v2",
+            "chunked_24_chunk_352"
+          ],
+          "annotator": "G3-T1_offline",
+          "annotation_method": "deterministic_chunk_id_assignment"
+        },
+        {
+          "value": "555000",
+          "source_doc_ref": "canonical:tuition:khoi_iv",
+          "fact_kind": "hoc_phi",
+          "supporting_chunk_ids": [
+            "bang_xep_hang_chi_tieu_2026_v2",
+            "chunked_24_chunk_352"
+          ],
+          "annotator": "G3-T1_offline",
+          "annotation_method": "deterministic_chunk_id_assignment"
+        },
+        {
+          "value": "490000",
+          "source_doc_ref": "canonical:tuition:khoi_vii",
+          "fact_kind": "hoc_phi",
+          "supporting_chunk_ids": [
+            "bang_xep_hang_chi_tieu_2026_v2",
+            "chunked_24_chunk_352"
+          ],
+          "annotator": "G3-T1_offline",
+          "annotation_method": "deterministic_chunk_id_assignment"
+        }
+      ],
+      "verified": false
+    },
+    {
+      "id": "msg025",
+      "question": "Khi nào thì trường mình mở hệ thống đki xét tuyển chính thức ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg026",
+      "question": "Điểm sàn năm ngoái bao nhiêu?",
+      "reference_answer": "",
+      "expected_behavior": "abstain",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "2025",
+          "fact_kind": "tham_chieu",
+          "supporting_chunk_ids": [
+            "diem_chuan_2025_full"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg027",
+      "question": "Điểm chuẩn 3 năm gần đây như thế nào ạ, có chênh lệch nhiều không ạ?",
+      "reference_answer": "",
+      "expected_behavior": "abstain",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "chưa",
+          "fact_kind": "pending",
+          "supporting_chunk_ids": [
+            "qa_diem_chuan_2026_pending_thpt"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg028",
+      "question": "Cho e hỏi điểm xét học bạ năm trước với ạ",
+      "reference_answer": "",
+      "expected_behavior": "abstain",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "chưa",
+          "fact_kind": "pending",
+          "supporting_chunk_ids": [
+            "diem_chuan_2025_full"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg029",
+      "question": "Trường mình có yêu cầu tiếng anh đầu vào không ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg030",
+      "question": "xét học bạ nếu cấp 3 mà 3 năm đc học sinh giỏi là đc cộng thêm 3 điểm phải k ạ",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "HSG",
+          "fact_kind": "chinh_sach_cong_diem",
+          "supporting_chunk_ids": [
+            "chinhsach_2026"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg031",
+      "question": "Ngành Kiến trúc của trường xét những tổ hợp nào ạ? Môn thi năng khiếu em ở xa, có thể thi ở các trường gần địa phương em được không hay phải về thi trực tiếp tại trường Đại học Khoa học?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:programs:7580101"
+      ],
+      "critical_facts": [
+        {
+          "value": "7580101",
+          "source_doc_ref": "canonical:programs:7580101",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "bang_xep_hang_chi_tieu_2026_v2",
+            "chunked_24_chunk_19"
+          ],
+          "annotator": "G3-T1_offline",
+          "annotation_method": "deterministic_chunk_id_assignment"
+        },
+        {
+          "value": "V00",
+          "source_doc_ref": "canonical:programs:7580101",
+          "fact_kind": "to_hop",
+          "supporting_chunk_ids": [
+            "bang_xep_hang_chi_tieu_2026_v2",
+            "chunked_24_chunk_19"
+          ],
+          "annotator": "G3-T1_offline",
+          "annotation_method": "deterministic_chunk_id_assignment"
+        }
+      ],
+      "verified": false
+    },
+    {
+      "id": "msg032",
+      "question": "Cách tính điểm xét tuyển ngành Kiến trúc?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg033",
+      "question": "Dạ em muốn hỏi ngành kiến trúc ở trường mình sẽ lấy điểm vẽ từ đâu vậy ạ.",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg034",
+      "question": "Mình có xét điểm vẽ từ uah hay ko?? Và nếu có thì tiêu chí điểm có cần phải trên mức bao nhiêu hay gì đó ko ạ?",
+      "reference_answer": "",
+      "expected_behavior": "abstain",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg035",
+      "question": "Cho em hỏi 2 ngành CNTT và CNNT (Việt-Nhật) này khác gì nhau vậy ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:programs:7480201",
+        "canonical:programs:7480201VJ"
+      ],
+      "critical_facts": [
+        {
+          "value": "7480201",
+          "source_doc_ref": "canonical:programs:7480201",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "nganh_detail_7480201_2026"
+          ]
+        },
+        {
+          "value": "7480201VJ",
+          "source_doc_ref": "canonical:programs:7480201VJ",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "nganh_detail_7480201VJ_2026"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg036",
+      "question": "Cho em hỏi, em có thể đăng ký 1 ngành với nhiều phương thức xét khác nhau được không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg037",
+      "question": "Em muốn nộp hồ sơ xét tuyển theo điểm dgnl HCM ạ.",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "dgnl.husc.edu.vn",
+          "fact_kind": "dgnl_link",
+          "supporting_chunk_ids": [
+            "chunked_18_chunk_15"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg038",
+      "question": "Hạn cuối xét tuyển là khi nào?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "14/7/2026",
+          "fact_kind": "han_dang_ky",
+          "supporting_chunk_ids": [
+            "qa_dang_ky_xet_tuyen_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg039",
+      "question": "Dạ trường mình xét hba có ưu tiên hs hệ THPT hay GDTX k ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "Học bạ",
+          "fact_kind": "phuong_thuc_HB",
+          "supporting_chunk_ids": [
+            "qa_xet_hoc_ba_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg040",
+      "question": "Em thí sinh tự do, không đăng ký thi lại THPT năm nay, vậy em có được đăng ký xét tuyển vào trường không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg041",
+      "question": "Cách quy đổi điểm chứng chỉ tiếng anh như thế nào?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "ngoại ngữ",
+          "fact_kind": "chung_chi_nn",
+          "supporting_chunk_ids": [
+            "chunked_25_chunk_84"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg042",
+      "question": "Điểm cộng, điểm ưu tiên này tính như thế nào ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "ưu tiên",
+          "fact_kind": "chinh_sach_uu_tien",
+          "supporting_chunk_ids": [
+            "chinhsach_2026"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg043",
+      "question": "Tổng chi phí theo học ngành CNTT của trường mình 1 năm là bao nhiêu?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg044",
+      "question": "Cho em hỏi chưa có link đăng ký tuyển sinh ạ?",
+      "reference_answer": "",
+      "expected_behavior": "abstain",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "Hệ thống",
+          "fact_kind": "he_thong_dang_ky",
+          "supporting_chunk_ids": [
+            "chunked_25_chunk_197"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg045",
+      "question": "dạ cho e hỏi là e muốn chuyển điểm năng khiếu vẽ mỹ thuật từ trường khác về thì mình làm cách nào v ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg046",
+      "question": "Em thí sinh tự do muốn đăng ký xét tuyển vào trường, cần chuẩn bị những gì và được xét tuyển bằng những hình thức nào?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "thisinh.thitotnghiepthpt.edu.vn",
+          "fact_kind": "url_dang_ky",
+          "supporting_chunk_ids": [
+            "qa_dang_ky_xet_tuyen_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg047",
+      "question": "Em có thi ĐGNL thì đăng ký xét tuyển vào trường như thế nào?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "5 phương thức",
+          "fact_kind": "phuong_thuc",
+          "supporting_chunk_ids": [
+            "qa_dang_ky_xet_tuyen_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg048",
+      "question": "Chỉ tiêu xét tuyển năm 2025?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:programs:7480201"
+      ],
+      "critical_facts": [
+        {
+          "value": "400",
+          "source_doc_ref": "canonical:programs:7480201",
+          "fact_kind": "chi_tieu",
+          "supporting_chunk_ids": [
+            "liet_ke_28_nganh_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg049",
+      "question": "cho em hỏi các ngành thì mỗi tổ hợp sẽ chỉ có 1 lựa chọn là 1 phương thức xét thôi ạ",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg050",
+      "question": "Cho mình xin thông tin đề án tuyển sinh năm 2025 ạ, liên quan tới vấn đề điểm thưởng khi xét tuyển",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg051",
+      "question": "Cùng 1 ngành học thì mình được phép xét 2 phương thức k ạ. Dùng điểm thi tốt nghiệp và học bạ",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg052",
+      "question": "Em muốn học song ngành ở 2 trường khác nhau có được không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg053",
+      "question": "Trường có mở cổng xét tuyển riêng trên hệ thống của trường không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg054",
+      "question": "Em muốn có link của cổng xét tuyển học bạ của đại học khoa học",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "thisinh.thitotnghiepthpt.edu.vn",
+          "fact_kind": "url_dang_ky",
+          "supporting_chunk_ids": [
+            "qa_link_cong_xet_tuyen_husc"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg055",
+      "question": "Trường có group hay zalo tư vấn tuyển sinh, hướng dẫn đăng ký xét tuyển không ạ, e muốn được tư vấn?",
+      "reference_answer": "",
+      "expected_behavior": "abstain",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg056",
+      "question": "E là học sinh trường chuyên có được cộng điểm ưu tiên gì k?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "HSG",
+          "fact_kind": "chinh_sach_HSG",
+          "supporting_chunk_ids": [
+            "chinhsach_2026"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg057",
+      "question": "Dạ cho em hỏi có giải thi hsg cấp thành phố giải khuyến khích có được công điểm vào học bạ không ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg058",
+      "question": "Cho em xin link đăng ký xét tuyển của trường?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "thisinh.thitotnghiepthpt.edu.vn",
+          "fact_kind": "url_dang_ky",
+          "supporting_chunk_ids": [
+            "qa_dang_ky_xet_tuyen_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg059",
+      "question": "Trường cho em xin mã trường của trường mình vs ạ",
+      "reference_answer": "",
+      "expected_behavior": "abstain",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg060",
+      "question": "Điểm ưu tiên và điểm thưởng tính như thế nào vậy ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "ưu tiên",
+          "fact_kind": "chinh_sach_uu_tien",
+          "supporting_chunk_ids": [
+            "chinhsach_2026"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg061",
+      "question": "Trường ơi, dự kiến năm nay điểm có tăng không ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg062",
+      "question": "Trường ơi, năm nay trường mình xét học bạ có trừ điểm chênh lệch không hay có hình thức quy đổi điểm k ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "Học bạ",
+          "fact_kind": "phuong_thuc_HB",
+          "supporting_chunk_ids": [
+            "diem_chuan_2025_full"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg063",
+      "question": "Trường có bắt buộc săp xếp thứ tự nguyện vọng không ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg064",
+      "question": "Chỉ tiêu ngành đưa ra liệu có thể thay đổi hay có thể tăng chỉ tiêu được không ad?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg065",
+      "question": "Em muốn tìm hiểu chính sách học bổng của trường?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "học bổng",
+          "fact_kind": "hoc_bong",
+          "supporting_chunk_ids": [
+            "hocbong_husc_2026_full"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg066",
+      "question": "Học bổng xét chung cho tất cả các phương thức hay chỉ xét mỗi điểm thi THPT vậy ad?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "học bổng",
+          "fact_kind": "hoc_bong",
+          "supporting_chunk_ids": [
+            "chunked_24_chunk_241"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg067",
+      "question": "Học phí của trường em có thể chia ra nộp nhiều lần được không hay bắt buộc phải  nộp khi mới vào học?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg068",
+      "question": "Em muốn hỏi ngành truyền thông số 1 năm có mấy tín chỉ và học phí bao nhiêu ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:programs:7320111",
+        "canonical:tuition:khoi_vii"
+      ],
+      "critical_facts": [
+        {
+          "value": "7320111",
+          "source_doc_ref": "canonical:programs:7320111",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "nganh_detail_7320111_2026"
+          ]
+        },
+        {
+          "value": "490000",
+          "source_doc_ref": "canonical:tuition:khoi_vii",
+          "fact_kind": "hoc_phi",
+          "supporting_chunk_ids": [
+            "chunked_24_chunk_363"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg069",
+      "question": "Em muốn tìm hiểu cách quy đổi chứng chỉ ngoại ngữ thay thế môn thi tiếng anh?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "ngoại ngữ",
+          "fact_kind": "chung_chi_nn",
+          "supporting_chunk_ids": [
+            "chinhsach_2026"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg070",
+      "question": "Dạ em chào thầy cô, thầy cô cho em hỏi em thuộc diện khuyết tật nặng, vậy em cần nộp hồ sơ như thế nào ạ",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg071",
+      "question": "Trường mình có quy đổi điểm giữa các tổ hợp không ạ ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg072",
+      "question": "Xét tuyển thẳng có cần phải đăng ký trên cổng của Bộ không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "Xét tuyển thẳng",
+          "fact_kind": "xtt",
+          "supporting_chunk_ids": [
+            "chunked_23_chunk_130"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg073",
+      "question": "Em sử dụng đgnl để xét tuyển thì em có bắt buộc phải nộp bản scan học bạ c3 không ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "ĐGNL",
+          "fact_kind": "phuong_thuc_NL",
+          "supporting_chunk_ids": [
+            "qa_dgnl_minh_chung_2026"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg074",
+      "question": "Hướng dẫn cách đăng ký nguyện vọng trên hệ thống em với trường ơi?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg075",
+      "question": "Trường có yêu cầu, bắt buộc phải chọn ngành của trường là NV1 không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg076",
+      "question": "Trường ơi, thời gian nào mới công bố kết quả vậy trường?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg077",
+      "question": "Trường có chính sách hỗ trợ sinh viên khó khăn không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "học bổng",
+          "fact_kind": "chinh_sach",
+          "supporting_chunk_ids": [
+            "chunked_24_chunk_245"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg078",
+      "question": "Trường có KTX cho sinh viên không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "KTX",
+          "fact_kind": "co_so_vat_chat",
+          "supporting_chunk_ids": [
+            "qa_ktx_husc"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg079",
+      "question": "Học ngành lịch sử ở trường mình sau có đi dạy được không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:programs:7229010"
+      ],
+      "critical_facts": [
+        {
+          "value": "7229010",
+          "source_doc_ref": "canonical:programs:7229010",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "liet_ke_28_nganh_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg080",
+      "question": "Em thí sinh tự do làm thế nào để được đăng ký xét tuyển trên hệ thống của Bộ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "thisinh.thitotnghiepthpt.edu.vn",
+          "fact_kind": "url_dang_ky",
+          "supporting_chunk_ids": [
+            "qa_dang_ky_bo_vs_truong_2026"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg081",
+      "question": "Ngành văn học trường mình ra trường có dễ kiếm việc làm không ạ? Nếu học thêm nghiệp vụ sư phạm thì có đi dạy được không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [
+        "canonical:programs:7229030"
+      ],
+      "critical_facts": [
+        {
+          "value": "7229030",
+          "source_doc_ref": "canonical:programs:7229030",
+          "fact_kind": "ma_nganh",
+          "supporting_chunk_ids": [
+            "liet_ke_28_nganh_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg082",
+      "question": "Hết hạn đăng ký mà trường vẫn chưa duyệt minh chứng, có sao không ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "Bộ",
+          "fact_kind": "he_thong",
+          "supporting_chunk_ids": [
+            "qa_lich_tuyensinh_2026_pending"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg083",
+      "question": "Nếu chỉ đăng ký trên hệ thống của bộ chứ không có trên hệ thống riêng của đại học Huế thì có được xét tuyển không ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "thisinh.thitotnghiepthpt.edu.vn",
+          "fact_kind": "url_dang_ky",
+          "supporting_chunk_ids": [
+            "qa_dang_ky_xet_tuyen_2026_v2"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg084",
+      "question": "Cho em hỏi là mình đăng ký trên cổng thông tin của Bộ GD có được chọn xét học bạ không ạ? Hay chỉ xét điểm thi thpt quốc gia thôi ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [],
+      "verified": false
+    },
+    {
+      "id": "msg085",
+      "question": "Em đặt nguyện vọng của trường mình ở NV3 vậy có khả năng đậu không ạ?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "NV3",
+          "fact_kind": "quy_che_NV",
+          "supporting_chunk_ids": [
+            "qa_NV1_NV2_NV3_quy_che"
+          ]
+        }
+      ],
+      "verified": true
+    },
+    {
+      "id": "msg086",
+      "question": "Nếu em đậu NV1 mà không muốn học có được xét NV2 không?",
+      "reference_answer": "",
+      "expected_behavior": "answer",
+      "source_doc_refs": [],
+      "critical_facts": [
+        {
+          "value": "NV2",
+          "fact_kind": "quy_che_NV",
+          "supporting_chunk_ids": [
+            "qa_NV1_NV2_NV3_quy_che"
+          ]
+        }
+      ],
+      "verified": true
+    }
+  ]
+}

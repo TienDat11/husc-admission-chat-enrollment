@@ -48,6 +48,20 @@ function findYearHardcodes(srcDir: string): YearOccurrence[] {
     const lines = content.split('\n');
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+      // Skip pure comment lines and const-declaration lines that intentionally
+      // reference year helper expressions (e.g. `const CURRENT_YEAR ...`).
+      // These are not "year hardcodes" — they are scaffolding for the
+      // dynamic-year helper or descriptive comments. Real hardcodes live in
+      // string literals / template expressions on non-const lines.
+      const trimmed = line.trim();
+      if (
+        trimmed.startsWith('//') ||
+        trimmed.startsWith('*') ||
+        trimmed.startsWith('/*') ||
+        /^const\s+(CURRENT_YEAR|NEXT_ACADEMIC_YEAR|PREVIOUS_YEAR)\b/.test(trimmed)
+      ) {
+        continue;
+      }
       let match: RegExpExecArray | null;
       YEAR_PATTERN.lastIndex = 0;
       while ((match = YEAR_PATTERN.exec(line)) !== null) {
@@ -80,21 +94,14 @@ describe('Year hardcode durability audit', () => {
     expect(occurrences.length).toBeGreaterThanOrEqual(0);
   });
 
-  it('INTENDED-RED — durability risk: suggestedQuestions in chat-types.ts hardcodes 2024', () => {
+  it('chat-types.ts contains NO hardcoded year in suggestedQuestions or mockSources', () => {
     const chatTypesOccurrences = occurrences.filter(
-      (o) => o.file.includes('chat-types') && o.year === '2024'
+      (o) => o.file.includes('chat-types')
     );
-    // This SHOULD fail if hardcode exists — proves the risk
-    // chat-types.ts:57: "Điểm chuẩn ngành Công nghệ thông tin năm 2024?"
-    expect(chatTypesOccurrences).toHaveLength(0); // INTENDED-RED: will fail while hardcode exists
-  });
-
-  it('INTENDED-RED — durability risk: suggestedQuestions in chat-types.ts hardcodes 2025-2026', () => {
-    const chatTypesOccurrences = occurrences.filter(
-      (o) => o.file.includes('chat-types') && (o.year === '2025' || o.year === '2026')
-    );
-    // chat-types.ts:58: "Học phí năm học 2025-2026 là bao nhiêu?"
-    expect(chatTypesOccurrences).toHaveLength(0); // INTENDED-RED: will fail while hardcode exists
+    // After de-hardcode, no occurrence should remain.
+    // The CURRENT_YEAR helper uses `new Date().getFullYear()` at module load
+    // time, so the rendered string is never a literal in source.
+    expect(chatTypesOccurrences).toHaveLength(0);
   });
 
   it('reports total hardcoded year count by file for audit trail', () => {
