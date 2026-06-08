@@ -223,6 +223,15 @@ class SimpleQueryRequest(BaseModel):
     force_rag_only: Optional[bool] = Field(default=False, description="Force RAG only mode")
 
 
+class SourceChip(BaseModel):
+    """Structured source citation for FE chip rendering (rich-markdown T4)."""
+    id: str = Field(..., description="Unique chunk or source identifier")
+    title: str = Field(..., description="Human-readable source title (first 80 chars)")
+    url: Optional[str] = Field(default=None, description="Canonical source URL when available")
+    snippet: str = Field(default="", description="Short excerpt from the chunk (first 120 chars)")
+    data_year: str = Field(default="N/A", description="Effective year of the data (e.g. 2025, 2026)")
+
+
 class QueryResponse(BaseModel):
     """Enhanced query response with all fields"""
     original_query: str
@@ -230,7 +239,7 @@ class QueryResponse(BaseModel):
     query_type: str
 
     answer: str
-    sources: List[str]
+    sources: List[SourceChip]
     confidence: float
     groundedness_score: float = 0.0
 
@@ -644,6 +653,7 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
                     query_vector=query_vector,
                     top_k=retrieval_top_k,
                     metadata_filter=metadata_filter,
+                    query=variant,
                 )
 
             if retrieval_result.error_type is None and len(retrieval_result.documents) == 0 and metadata_filter is not None:
@@ -660,6 +670,7 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
                         query_vector=query_vector,
                         top_k=retrieval_top_k,
                         metadata_filter=None,
+                        query=variant,
                     )
 
             if retrieval_result.error_type is not None:
@@ -915,6 +926,131 @@ class UnifiedQueryResponse(BaseModel):
     latency_ms: float
     trace_id: str
 
+    # G2 contract — mirror /query's status surface so the FE ChatLayout
+    # banner + gap-hint UX behaves identically on /v2. All Optional with
+    # safe defaults; existing /v2 consumers are unaffected.
+    status_code: str = "SUCCESS"
+    status_reason: Optional[str] = None
+    data_gap_hints: List[str] = Field(default_factory=list)
+    internal_status_code: Optional[str] = None
+    pii_detected: bool = False
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# /v2 answer-synthesis helper (S16.x / PROD-path correctness fix).
+#
+# The previous /v2 handler called `llm.chat(...)` INLINE, which bypassed:
+#   * S16.5 URL-faithfulness post-guard (ungrounded URL strip)
+#   * Season-aware GAP_DISCLAIMER + RISKY_INTENTS graceful fallback
+#   * S15.6 contact-keyword abstain guard
+#
+# It also SWALLOWED `RouterResult.auto_answer` (CONTACT_BLOCK / vague_reject)
+# by emitting a generic "không có thông tin" string for skip_retrieval
+# routes. This helper is the single seam used by the /v2 endpoint so the
+# fixes are testable in isolation (no GraphRAG or LanceDB needed).
+#
+# Returns a dict shaped like `LLMGenerator.generate_answer()` so the
+# downstream `UnifiedQueryResponse(**payload)` builder is unchanged.
+# ───────────────────────────────────────────────────────────────────────────
+def _v2_program_list_heuristic(query: str) -> bool:
+    """Mirror the /v3 `is_enum` heuristic so /v2 honors the larger token
+    budget for enumeration/overview queries (max_tokens_enum)."""
+    if not query:
+        return False
+    q = query.lower()
+    return any(k in q for k in [
+        "bao nhiêu", "danh sách", "liệt kê", "tất cả",
+        "các ngành", "tổng cộng",
+    ])
+
+
+def _build_v2_chunks(documents: List[Any]) -> List[Dict[str, Any]]:
+    """Map `RAGResult.documents` (RetrievedDocument objects) into the
+    dict shape `LLMGenerator.generate_answer()` expects. Mirrors the
+    /v3 endpoint's `chunks_for_rerank` construction so the two
+    endpoints feed the generator identically.
+    """
+    chunks: List[Dict[str, Any]] = []
+    for d in documents or []:
+        meta = d.metadata if isinstance(d.metadata, dict) else {}
+        chunks.append({
+            "text": getattr(d, "text", "") or "",
+            "summary": meta.get("summary", "") if isinstance(meta, dict) else "",
+            "metadata": meta or {},
+            "score": float(getattr(d, "score", 0.0) or 0.0),
+            "chunk_id": getattr(d, "chunk_id", None),
+            "source": getattr(d, "source", None),
+        })
+    return chunks
+
+
+async def _synthesize_v2_answer(
+    rag_result: Any,
+    query: str,
+    generator: Any,
+) -> Dict[str, Any]:
+    """Build the (answer, sources, confidence, provider) dict for the
+    /v2 endpoint.
+
+    Behavior:
+      1. If `rag_result.router_result.skip_retrieval` AND
+         `router_result.auto_answer` is set (e.g. CONTACT_BLOCK /
+         HYDE_REJECT_VAGUE) → return the auto_answer string VERBATIM
+         (do NOT call the generator; do NOT emit a generic fallback).
+         This is the regression fix for the swallowed CONTACT_BLOCK.
+      2. Otherwise, build the chunks list from `rag_result.documents`
+         and call `generator.generate_answer(...)`. This puts /v2 on
+         the same S16.5 URL-guard + season-gap + S15.6 contact-abstain
+         path as /v3 and /query.
+
+    Args:
+        rag_result: The `RAGResult` returned by
+            `UnifiedRAGPipeline.query()`. Must expose `.documents`,
+            `.router_result` (with `skip_retrieval`/`auto_answer`),
+            and `.confidence`.
+        query: Raw user query.
+        generator: An `LLMGenerator`-like object exposing
+            `async generate_answer(query, chunks, confidence, is_program_list_query)`.
+
+    Returns:
+        Dict with keys: `answer`, `sources`, `confidence`, `provider`.
+        The shape matches `LLMGenerator.generate_answer()`'s return
+        so the /v2 response builder is unchanged.
+    """
+    router_result = getattr(rag_result, "router_result", None)
+
+    # 1) Honor auto_answer / CONTACT_BLOCK — never swallow it.
+    if (
+        router_result is not None
+        and getattr(router_result, "skip_retrieval", False)
+        and getattr(router_result, "auto_answer", None)
+    ):
+        return {
+            "answer": router_result.auto_answer,
+            "sources": [],
+            "confidence": float(getattr(rag_result, "confidence", 1.0) or 1.0),
+            "provider": "auto_answer",
+        }
+
+    # 2) Normal path: build chunks and route through LLMGenerator so the
+    # S16.5 URL-guard, season-aware GAP_DISCLAIMER, and S15.6 contact-
+    # abstain guard all run.
+    chunks = _build_v2_chunks(getattr(rag_result, "documents", []) or [])
+    is_program_list = _v2_program_list_heuristic(query)
+    gen_result = await generator.generate_answer(
+        query=query,
+        chunks=chunks,
+        confidence=float(getattr(rag_result, "confidence", 0.0) or 0.0),
+        is_program_list_query=is_program_list,
+    )
+    # Ensure the contract keys the /v2 response builder reads are present.
+    return {
+        "answer": gen_result.get("answer", ""),
+        "sources": list(gen_result.get("sources", [])),
+        "confidence": float(getattr(rag_result, "confidence", 0.0) or 0.0),
+        "provider": gen_result.get("provider", "unknown"),
+    }
+
 
 @app.post("/v2/query", response_model=UnifiedQueryResponse)
 async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
@@ -950,6 +1086,57 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
             payload["trace_id"] = trace_id
             return UnifiedQueryResponse(**payload)
 
+    # G2-T0: guardrail precheck (mirror /query:533-563) so out-of-scope
+    # queries short-circuit with the same status_code / data_gap_hints /
+    # pii_detected surface that /query already returns. Without this, /v2
+    # silently returns SUCCESS for OOS queries, breaking the FE ChatLayout
+    # banner + gap-hint UX.
+    if guardrail_service is not None:
+        try:
+            precheck = await guardrail_service.precheck(request.query)
+            if precheck and not precheck.is_in_scope:
+                await _metric_inc("query_guardrail_blocks")
+                if precheck.pii_detected:
+                    await _metric_inc("query_pii_blocks")
+                public_code = guardrail_service.public_status(precheck.internal_code)
+                internal_code = (
+                    precheck.internal_code if guardrail_service.expose_internal() else None
+                )
+                logger.info(
+                    f"v2_guardrail_block trace_id={trace_id} query='{request.query[:80]}' "
+                    f"internal_code={precheck.internal_code} reason={precheck.reason}"
+                )
+                oos_payload = {
+                    "query": request.query,
+                    "route": "guardrail",
+                    "answer": precheck.short_answer,
+                    "sources": [],
+                    "confidence": 0.0,
+                    "groundedness_score": 0.0,
+                    "router_info": {
+                        "step_back": None,
+                        "intent": "guardrail_block",
+                        "complexity": 0,
+                        "reasoning": precheck.reason,
+                        "hyde_variants": [],
+                    },
+                    "graph_stats": None,
+                    "latency_ms": 0.0,
+                    "trace_id": trace_id,
+                    "status_code": public_code,
+                    "status_reason": precheck.reason,
+                    "data_gap_hints": list(precheck.data_gap_hints or []),
+                    "internal_status_code": internal_code,
+                    "pii_detected": precheck.pii_detected,
+                }
+                if query_cache:
+                    query_cache.set(cache_key, oos_payload)
+                return UnifiedQueryResponse(**oos_payload)
+        except Exception as _guard_exc:
+            # Never let a guardrail outage break the /v2 pipeline — fall through
+            # and serve the normal path with default SUCCESS status.
+            logger.warning(f"v2_guardrail_precheck_error: {_guard_exc}")
+
     # 1. Get PaddedRAG baseline documents first (from LanceDB)
     baseline_docs = []
     if lancedb_retriever_service and embedding_service:
@@ -960,6 +1147,7 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
             result = lancedb_retriever_service.retrieve(
                 query_vector=query_vec,
                 top_k=request.top_k * 3,
+                query=request.query,
             )
             if result.is_success:
                 baseline_docs = result.documents
@@ -967,6 +1155,14 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
             logger.warning(f"LanceDB retrieval failed: {exc}")
 
     # 2. Run unified pipeline (router + optional graph fusion)
+    # G2-T0: status fields default to SUCCESS; populated below when the
+    # pipeline returns zero documents (mirror /query:726-736).
+    status_code = "SUCCESS"
+    status_reason: Optional[str] = None
+    data_gap_hints: List[str] = []
+    internal_status_code: Optional[str] = None
+    pii_detected = False
+
     try:
         async with _track_latency("unified_query_total_latency_ms", "unified_query_count_latency"):
             rag_result = await unified_pipeline.query(
@@ -974,6 +1170,29 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
                 baseline_docs=baseline_docs,
                 top_k=request.top_k,
             )
+
+            # G2-T0: classify no-result (mirror /query:726-736) so the FE
+            # banner + gap-hint path lights up when retrieval is empty.
+            if (not rag_result.documents) and guardrail_service is not None:
+                try:
+                    no_result = await guardrail_service.classify_no_result(request.query)
+                    # Only surface the classification when the guardrail
+                    # actually transitioned the status away from SUCCESS —
+                    # mirrors /query:728 which reassigns unconditionally
+                    # only inside the same `if len(chunks) == 0` branch.
+                    if no_result.internal_code != "SUCCESS":
+                        status_code = guardrail_service.public_status(no_result.internal_code)
+                        status_reason = no_result.reason
+                        data_gap_hints = list(no_result.data_gap_hints or [])
+                        internal_status_code = (
+                            no_result.internal_code if guardrail_service.expose_internal() else None
+                        )
+                        logger.info(
+                            f"v2_no_result_classification trace_id={trace_id} "
+                            f"internal_code={no_result.internal_code} reason={no_result.reason}"
+                        )
+                except Exception as _nr_exc:
+                    logger.warning(f"v2_classify_no_result_error: {_nr_exc}")
 
             if request.force_route == "padded_rag":
                 rag_result.route = "padded_rag"
@@ -994,37 +1213,24 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
                 rag_result.confidence = docs[0].score if docs else 0.0
                 logger.info("Route override applied: graph_rag")
 
-            # 3. Generate answer from top documents
-            context_texts = [d.text for d in rag_result.documents[:5]]
-            context = "\n\n".join(context_texts)
-
-            answer = "Không có thông tin phù hợp."
-            if rag_result.confidence < settings.RAG_CONF_THRESHOLD:
-                answer = "Tôi không tìm thấy đủ thông tin đáng tin cậy trong tài liệu hiện có."
-            elif context:
-                try:
-                    from services.llm_client import get_llm_client
-                    llm = get_llm_client()
-                    resp = await llm.chat(
-                        user_message=f"Câu hỏi: {request.query}\n\nNgữ cảnh:\n{context}",
-                        system_message=(
-                            "Bạn là trợ lý tư vấn tuyển sinh Đại học Khoa học Huế (HUSC). "
-                            "Trả lời câu hỏi dựa HOÀN TOÀN vào ngữ cảnh được cung cấp. "
-                            "Nếu ngữ cảnh không đủ thông tin, nói rõ điều đó. "
-                            "Trả lời bằng tiếng Việt, súc tích (50-150 từ)."
-                        ),
-                        temperature=0.1,
-                        max_tokens=512,
-                    )
-                    answer = resp.content
-                except Exception as exc:
-                    logger.warning(f"Answer generation failed: {exc}")
-                    answer = context[:500] if context else "Không có thông tin."
-
-            sources = list({
-                d.metadata.get("source", d.chunk_id or "unknown")
-                for d in rag_result.documents
-            })
+            # 3. Generate answer — route through LLMGenerator (NOT inline llm.chat).
+            #    This wires /v2 into the SAME S16.5 URL-faithfulness guard,
+            #    season-aware GAP_DISCLAIMER, and S15.6 contact-keyword abstain
+            #    guard that /v3 and /query already use. The helper also honors
+            #    RouterResult.auto_answer (CONTACT_BLOCK / vague_reject) so the
+            #    skip_retrieval path is no longer swallowed by a generic fallback.
+            if llm_generator_service is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="LLM generator not initialized",
+                )
+            synthesis = await _synthesize_v2_answer(
+                rag_result=rag_result,
+                query=request.query,
+                generator=llm_generator_service,
+            )
+            answer = synthesis["answer"]
+            sources = synthesis["sources"]
 
             groundedness = _safe_groundedness_score(answer, [
                 {"text": d.text, "summary": d.text, "text_plain": d.text}
@@ -1059,6 +1265,11 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
                 "graph_stats": unified_pipeline._graphrag.graph_stats,
                 "latency_ms": rag_result.latency_ms,
                 "trace_id": trace_id,
+                "status_code": status_code,
+                "status_reason": status_reason,
+                "data_gap_hints": data_gap_hints,
+                "internal_status_code": internal_status_code,
+                "pii_detected": pii_detected,
             }
 
             if query_cache:
@@ -1070,6 +1281,198 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
         await _metric_inc("unified_query_errors")
         logger.exception(f"Unified query failed trace_id={trace_id}: {exc}")
         raise HTTPException(status_code=500, detail="Unified query processing failed")
+
+
+# ========================================================================
+# /v3/query — Hybrid (Dense+BM25 RRF) + Aggregation Booster + Reranker
+# ------------------------------------------------------------------------
+# Khác /v2/query:
+#   - /v2 chỉ dùng dense LanceDB → SmartRouter (HyDE+Step-back) → GraphRAG
+#   - /v3 dùng HybridSearchService (RRF k=60) → Aggregation Booster
+#     → Reranker (Qwen3-Reranker-8B + lost-in-middle) → LLMGenerator
+# Mục tiêu: tăng has_answer rate cho corpus tuyển sinh HUSC, giảm
+# hallucination khi câu trả lời bị cắt ngắn. Giữ /v2/query nguyên cho
+# rollback và so sánh AB.
+# ========================================================================
+
+
+class V3QueryRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=MAX_QUERY_LENGTH)
+    top_k: int = Field(default=5, ge=1, le=20)
+    candidate_pool: int = Field(default=20, ge=5, le=50,
+                                description="Số doc lấy từ Hybrid trước khi rerank")
+    apply_lost_in_middle: bool = Field(default=True)
+
+
+class V3QueryResponse(BaseModel):
+    query: str
+    answer: str
+    sources: List[str]
+    confidence: float
+    chunks_used: int
+    pipeline_stages: Dict[str, Any]
+    latency_ms: float
+    provider: str
+    trace_id: str
+
+
+@app.post("/v3/query", response_model=V3QueryResponse)
+async def v3_query(request: V3QueryRequest, raw_request: Request):
+    """V3 query: Hybrid (Dense+BM25 RRF) + Booster + Reranker + Generator.
+
+    Flow:
+      1. Embedding service: encode query
+      2. HybridSearchService.retrieve(top_k=candidate_pool) → fused docs
+         (fallback dense-only nếu hybrid_search_service is None)
+      3. boost_with_aggregation(query, docs, max_inject=2)
+      4. reranker.rerank(query, chunks, top_k, apply_lost_in_middle)
+      5. llm_generator.generate_answer(query, chunks, confidence, is_enum)
+    """
+    if (lancedb_retriever_service is None
+            or embedding_service is None
+            or llm_generator_service is None):
+        raise HTTPException(status_code=503,
+                            detail="Core services not initialized")
+
+    await _enforce_rate_limit(raw_request)
+    trace_id = str(uuid.uuid4())
+    t_start = time.perf_counter()
+
+    stages: Dict[str, Any] = {
+        "hybrid_used": False,
+        "booster_injected": 0,
+        "reranker_used": False,
+        "lost_in_middle": False,
+        "candidate_pool": request.candidate_pool,
+        "final_top_k": request.top_k,
+    }
+
+    cache_key = (
+        f"v3:{request.query.strip().lower()}|tk:{request.top_k}|cp:{request.candidate_pool}"
+    )
+    if query_cache:
+        cached_response = query_cache.get(cache_key)
+        if cached_response is not None:
+            payload = dict(cached_response)
+            payload["trace_id"] = trace_id
+            return V3QueryResponse(**payload)
+
+    try:
+        # Stage 1: Embedding
+        query_vec = await run_in_threadpool(
+            lambda: embedding_service.encode_query(request.query).tolist()
+        )
+
+        # Stage 2: Hybrid retrieval (Dense + BM25 RRF) or fallback dense-only
+        if hybrid_search_service is not None:
+            retrieval = await hybrid_search_service.retrieve(
+                query=request.query,
+                query_vector=query_vec,
+                top_k=request.candidate_pool,
+            )
+            stages["hybrid_used"] = True
+        else:
+            retrieval = await run_in_threadpool(
+                lambda: lancedb_retriever_service.retrieve(
+                    query_vector=query_vec,
+                    top_k=request.candidate_pool,
+                    query=request.query,
+                )
+            )
+            stages["hybrid_used"] = False
+
+        if not retrieval.is_success:
+            raise HTTPException(status_code=502, detail="Retrieval failed")
+
+        baseline_docs = list(retrieval.documents)
+
+        # Stage 3: Aggregation Booster
+        try:
+            from services.aggregation_booster import boost_with_aggregation
+            before_n = len(baseline_docs)
+            baseline_docs = boost_with_aggregation(
+                query=request.query,
+                baseline_docs=baseline_docs,
+                lancedb_retriever=lancedb_retriever_service,
+                top_k=request.candidate_pool + 2,
+                max_inject=2,
+            )
+            stages["booster_injected"] = max(0, len(baseline_docs) - before_n)
+        except Exception as exc:
+            logger.warning(f"Booster failed: {exc}")
+
+        # Convert RetrievedDocument -> dict for reranker
+        chunks_for_rerank = [
+            {
+                "text": d.text,
+                "summary": (d.metadata or {}).get("summary", ""),
+                "metadata": d.metadata or {},
+                "score": float(getattr(d, "score", 0.0) or 0.0),
+                "chunk_id": d.chunk_id,
+                "source": d.source,
+            }
+            for d in baseline_docs
+        ]
+
+        # Stage 4: Reranker
+        if reranker_service is not None and reranker_service.enabled:
+            chunks_top = await run_in_threadpool(
+                lambda: reranker_service.rerank(
+                    query=request.query,
+                    chunks=chunks_for_rerank,
+                    top_k=request.top_k,
+                    apply_lost_in_middle=request.apply_lost_in_middle,
+                )
+            )
+            stages["reranker_used"] = True
+            stages["lost_in_middle"] = request.apply_lost_in_middle
+        else:
+            chunks_top = chunks_for_rerank[: request.top_k]
+
+        confidence = float(chunks_top[0].get("score", 0.0)) if chunks_top else 0.0
+
+        # Stage 5: Generation
+        is_enum = any(k in request.query.lower()
+                      for k in ["bao nhiêu", "danh sách", "liệt kê", "tất cả",
+                                "các ngành", "tổng cộng"])
+        gen_result = await llm_generator_service.generate_answer(
+            query=request.query,
+            chunks=chunks_top,
+            confidence=confidence,
+            is_program_list_query=is_enum,
+        )
+        answer = gen_result.get("answer", "")
+        provider = gen_result.get("provider", "unknown")
+
+        sources = list({
+            (c.get("source") or (c.get("metadata") or {}).get("source", "unknown"))
+            for c in chunks_top
+        })
+
+        latency_ms = (time.perf_counter() - t_start) * 1000
+
+        response_payload = {
+            "query": request.query,
+            "answer": answer,
+            "sources": sources,
+            "confidence": confidence,
+            "chunks_used": len(chunks_top),
+            "pipeline_stages": stages,
+            "latency_ms": round(latency_ms, 1),
+            "provider": provider,
+            "trace_id": trace_id,
+        }
+
+        if query_cache:
+            query_cache.set(cache_key, response_payload)
+
+        return V3QueryResponse(**response_payload)
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(f"v3_query failed trace_id={trace_id}: {exc}")
+        raise HTTPException(status_code=500, detail="V3 query processing failed")
 
 
 @app.post("/v2/graph/update")
