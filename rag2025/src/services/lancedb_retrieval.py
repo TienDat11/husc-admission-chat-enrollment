@@ -547,13 +547,14 @@ class LanceDBRetriever:
             return None
 
     def fetch_by_ids(self, chunk_ids: List[str]) -> Dict[str, RetrievedDocument]:
-        """Batch-fetch many chunks by their chunk_ids in a SINGLE table scan.
+        """Batch-fetch many chunks by their chunk_ids in a SINGLE filtered query.
 
-        Performance: replaces the GraphRAG expander's per-id `fetch_by_id`
-        loop (which used to cost M full-table scans per query) with one
-        `to_pandas()` followed by an in-memory `isin` filter. The return
-        value is a `{chunk_id: RetrievedDocument}` map; ids not found are
-        simply absent from the dict (caller treats the miss as `None`).
+        Performance: replaces the previous `to_pandas()` full-table scan
+        with a server-side `id IN (...)` predicate pushed down to LanceDB
+        (`LanceDBAdapter.fetch_rows_by_ids`). Only matching rows are
+        returned; no full materialization. The return value is a
+        `{chunk_id: RetrievedDocument}` map; ids not found are simply
+        absent from the dict (caller treats the miss as `None`).
 
         Mirrors `fetch_by_id` construction exactly (same `score=1.0`
         injected-priority sentinel, same metadata_json parse) so the
@@ -563,33 +564,24 @@ class LanceDBRetriever:
         if not chunk_ids:
             return {}
         try:
-            self._adapter.ensure_table()
-            # ONE full-table scan, then in-memory filter by id set.
-            df = self._adapter._table.to_pandas()
-            if 'id' not in df.columns or df.empty:
-                return {}
-            target_ids = set(chunk_ids)
-            match = df[df['id'].isin(target_ids)]
-            if match.empty:
+            rows = self._adapter.fetch_rows_by_ids(chunk_ids)
+            if not rows:
                 return {}
 
             result: Dict[str, RetrievedDocument] = {}
-            # Build a dict keyed by the row's 'id' so duplicates (if any)
-            # collapse deterministically to the FIRST occurrence, matching
-            # the per-id path's `iloc[0]` semantics.
-            for _, row in match.iterrows():
+            for row in rows:
                 row_id = row.get('id')
-                if row_id is None or row_id in result:
+                if row_id is None or str(row_id) in result:
                     continue
-                raw_meta = row.get('metadata_json') if 'metadata_json' in df.columns else None
+                raw_meta = row.get('metadata_json')
                 metadata = json.loads(raw_meta) if isinstance(raw_meta, str) and raw_meta else {}
                 result[str(row_id)] = RetrievedDocument(
-                    text=row.get('text', '') if 'text' in df.columns else '',
-                    source=row.get('source') if 'source' in df.columns else None,
-                    chunk_id=row.get('id') if 'id' in df.columns else row_id,
+                    text=row.get('text', ''),
+                    source=row.get('source'),
+                    chunk_id=row.get('chunk_id', row_id),
                     metadata=metadata,
                     score=1.0,  # injected priority — same sentinel as fetch_by_id
-                    point_id=str(row.get('id')) if 'id' in df.columns and row.get('id') is not None else None,
+                    point_id=str(row_id),
                 )
             return result
         except Exception as e:

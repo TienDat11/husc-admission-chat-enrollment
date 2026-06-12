@@ -2,13 +2,15 @@
 
 Contract pinned by these tests:
   1. `LanceDBRetriever.fetch_by_ids` returns a {cid: RetrievedDocument}
-     dict from a single `to_pandas()` scan (vs M scans in the per-id path).
+     dict from a SINGLE server-side `id IN (...)` filter on the adapter
+     (vs M full-table `to_pandas()` scans in the old per-id path).
   2. The expander wired with `chunk_batch_fetcher` produces the IDENTICAL
      injected docs (same chunk_ids in same order, same score=0.0,
      same graph_injected=True) as the same retriever wired with the
      per-id `chunk_fetcher`.
-  3. With `chunk_batch_fetcher` wired and M=8, the underlying `to_pandas`
-     is called ONCE for the whole expander admit (not 8×).
+  3. With `chunk_batch_fetcher` wired and M=8, the underlying adapter
+     `fetch_rows_by_ids` is called ONCE for the whole expander admit
+     (not 8×) AND `to_pandas()` is NEVER invoked.
 """
 from __future__ import annotations
 
@@ -40,26 +42,35 @@ from src.services.query_router import QueryRoute, RouterResult  # noqa: E402
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _build_lance_retriever(rows: List[Dict[str, Any]]) -> Tuple[LanceDBRetriever, MagicMock]:
-    """Build a LanceDBRetriever bypassing __init__ + return the table mock.
+def _build_lance_retriever(rows: List[Dict[str, Any]]) -> Tuple[LanceDBRetriever, MagicMock, MagicMock]:
+    """Build a LanceDBRetriever bypassing __init__ + return the adapter/table mocks.
 
-    Mirrors the faking style of `tests/services/test_admission_context.py`
-    and `tests/test_hybrid_search.py`. The table's `to_pandas` is a real
-    pd.DataFrame-backed call so `df['id'].isin(...)` works natively.
+    The fake adapter's `fetch_rows_by_ids` is a real lookup against the
+    canned `rows` list — this mirrors the lancedb `id IN (...)` filter
+    behavior (predicate-pushed, no full-table materialization) so the
+    test asserts on the SHAPE of the call, not the SQL syntax.
+    `to_pandas` is set to raise if called — a full-table scan is forbidden.
     """
-    df = pd.DataFrame(rows)
+    rows_by_id = {r["id"]: r for r in rows}
+
+    def fake_fetch_rows_by_ids(ids: List[str]) -> List[Dict[str, Any]]:
+        return [rows_by_id[i] for i in ids if i in rows_by_id]
+
     fake_table = MagicMock()
-    fake_table.to_pandas = MagicMock(return_value=df)
+    fake_table.to_pandas = MagicMock(
+        side_effect=AssertionError("to_pandas MUST NOT be called by fetch_by_ids")
+    )
     fake_adapter = MagicMock()
     fake_adapter.ensure_table = MagicMock()
     fake_adapter._table = fake_table
+    fake_adapter.fetch_rows_by_ids = MagicMock(side_effect=fake_fetch_rows_by_ids)
 
     retriever = LanceDBRetriever.__new__(LanceDBRetriever)
     retriever._config = LanceDBRetrieverConfig(
         uri="memory://", table_name="t", embedding_dim=4, default_top_k=5
     )
     retriever._adapter = fake_adapter
-    return retriever, fake_table
+    return retriever, fake_adapter, fake_table
 
 
 def _row(cid: str, text: str = "", source: str = "synthetic", meta: Optional[dict] = None) -> Dict[str, Any]:
@@ -73,22 +84,20 @@ def _row(cid: str, text: str = "", source: str = "synthetic", meta: Optional[dic
 
 
 def test_fetch_by_ids_empty_input_returns_empty_dict():
-    """Empty list and None input must return `{}` without touching the table."""
-    retriever, fake_table = _build_lance_retriever(
+    """Empty list input must return `{}` without touching the adapter."""
+    retriever, fake_adapter, fake_table = _build_lance_retriever(
         [_row("c1"), _row("c2"), _row("c3")]
     )
 
     assert retriever.fetch_by_ids([]) == {}
-    # To be conservative, the empty-list short-circuit must NOT trigger a
-    # table scan (otherwise a hot loop with no candidates still pays the cost).
-    assert fake_table.to_pandas.call_count == 0, (
-        f"empty list must not scan; got {fake_table.to_pandas.call_count} calls"
+    assert fake_adapter.fetch_rows_by_ids.call_count == 0, (
+        f"empty list must not query adapter; got {fake_adapter.fetch_rows_by_ids.call_count} calls"
     )
 
 
 def test_fetch_by_ids_three_ids_two_exist_returns_dict_of_two():
     """3 ids requested, 2 exist in table → dict of 2; missing id absent."""
-    retriever, _ = _build_lance_retriever(
+    retriever, _, _ = _build_lance_retriever(
         [_row("c1", text="one"), _row("c2", text="two"), _row("c3", text="three")]
     )
 
@@ -105,16 +114,16 @@ def test_fetch_by_ids_three_ids_two_exist_returns_dict_of_two():
     assert out["c1"].chunk_id == "c1"
 
 
-def test_fetch_by_ids_calls_to_pandas_exactly_once():
-    """The whole point: one scan, not N."""
-    retriever, fake_table = _build_lance_retriever(
+def test_fetch_by_ids_calls_adapter_exactly_once():
+    """The whole point: one filtered adapter query, not N."""
+    retriever, fake_adapter, _ = _build_lance_retriever(
         [_row(f"c{i}", text=f"row-{i}") for i in range(10)]
     )
 
     out = retriever.fetch_by_ids(["c0", "c3", "c7", "c9"])
 
-    assert fake_table.to_pandas.call_count == 1, (
-        f"fetch_by_ids MUST scan once, got {fake_table.to_pandas.call_count} "
+    assert fake_adapter.fetch_rows_by_ids.call_count == 1, (
+        f"fetch_by_ids MUST call adapter once, got {fake_adapter.fetch_rows_by_ids.call_count} "
         f"calls (this is the latency fix)"
     )
     assert set(out.keys()) == {"c0", "c3", "c7", "c9"}
@@ -122,8 +131,8 @@ def test_fetch_by_ids_calls_to_pandas_exactly_once():
 
 def test_fetch_by_ids_exception_does_not_raise_returns_empty_dict():
     """Adapter failure must log warning + return `{}` (never raise)."""
-    retriever, fake_table = _build_lance_retriever([])
-    fake_table.to_pandas = MagicMock(side_effect=RuntimeError("disk gone"))
+    retriever, fake_adapter, _ = _build_lance_retriever([])
+    fake_adapter.fetch_rows_by_ids = MagicMock(side_effect=RuntimeError("disk gone"))
 
     out = retriever.fetch_by_ids(["c1", "c2"])
 
@@ -306,17 +315,17 @@ def test_batch_fetcher_produces_identical_injected_docs_as_per_id_fetcher():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Part C — Scan-count: batch_fetcher path → 1 to_pandas() per admit
+# Part C — Scan-count: batch_fetcher path → 1 adapter call per admit
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 class _CountingBatchFetcher:
-    """Records every call and the to_pandas() count after the wrap.
+    """Records every call and the adapter-call count after the wrap.
 
     We wrap a real `fetch_by_ids` call by counting per-call invocations
     AND by exposing a `to_pandas_calls` counter that the test inspects
-    AFTER the expander run. This proves the upstream LanceDB table is
-    scanned exactly once per admit, regardless of M.
+    AFTER the expander run. This proves the upstream LanceDB adapter
+    is queried exactly once per admit, regardless of M.
     """
 
     def __init__(self, retriever: LanceDBRetriever) -> None:
@@ -328,12 +337,13 @@ class _CountingBatchFetcher:
         return self._retriever.fetch_by_ids(chunk_ids)
 
 
-def test_batch_path_calls_to_pandas_once_for_M8():
+def test_batch_path_calls_adapter_once_for_M8():
     """With M=8 (comparison) and 8 admitted chunks, the underlying
-    `to_pandas()` MUST be called EXACTLY ONCE (not 8 times)."""
+    adapter `fetch_rows_by_ids` MUST be called EXACTLY ONCE (not 8 times)
+    and `to_pandas()` MUST NEVER be called."""
     # Real LanceDBRetriever shape with a fake table, M=8 chunks in it.
     rows = [_row(f"c_inj_{i}", text=f"body-{i}") for i in range(8)]
-    retriever, fake_table = _build_lance_retriever(rows)
+    retriever, fake_adapter, fake_table = _build_lance_retriever(rows)
 
     # Adapter that delegates fetch_by_ids to the real one.
     def batch_fetch(chunk_ids: List[str]) -> Dict[str, RetrievedDocument]:
@@ -348,17 +358,21 @@ def test_batch_path_calls_to_pandas_once_for_M8():
     )
 
     # Confirm starting counter is 0.
-    pre = fake_table.to_pandas.call_count
+    pre = fake_adapter.fetch_rows_by_ids.call_count
     assert pre == 0
 
     reranked, _ = asyncio.run(
         graphrag.retrieve("so sánh CNTT và Truyền thông", _router(), baseline_docs=[], top_k=5)
     )
 
-    # M=8 → up to 8 admitted, and exactly 1 to_pandas call.
-    assert fake_table.to_pandas.call_count == 1, (
-        f"batch path MUST scan ONCE for the whole admit; got "
-        f"{fake_table.to_pandas.call_count} calls (M=8 → this is the latency fix)"
+    # M=8 → up to 8 admitted, and exactly 1 adapter call.
+    assert fake_adapter.fetch_rows_by_ids.call_count == 1, (
+        f"batch path MUST call adapter ONCE for the whole admit; got "
+        f"{fake_adapter.fetch_rows_by_ids.call_count} calls (M=8 → this is the latency fix)"
+    )
+    # to_pandas() must NEVER be called by the new path (would mean a full-table scan).
+    assert fake_table.to_pandas.call_count == 0, (
+        f"to_pandas MUST NOT be called; got {fake_table.to_pandas.call_count} calls"
     )
     # All 8 PPR-only chunks surfaced (M=8 cap, none in baseline).
     injected_ids = {d.chunk_id for d in reranked}
