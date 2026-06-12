@@ -10,6 +10,24 @@ interface ChatMessagesProps {
   isTyping: boolean;
 }
 
+/**
+ * The streaming assistant placeholder bubble is the one ChatLayout pushes
+ * onto `messages` immediately after the user sends a question (content
+ * starts as "⏳ Đang phân tích câu hỏi…" and gets replaced as deltas
+ * arrive). While that bubble is the last message, ChatLayout also keeps
+ * `isTyping=true`, so the standalone <TypingIndicator/> must be hidden
+ * to avoid the user-reported double-bubble ("Đang phân tích…" + "Đang
+ * suy nghĩ…"). Once the BE's `done` (or the fallback path) writes a
+ * non-loading content into the bubble, the placeholder is gone and the
+ * indicator can render again (e.g. for the next pending request).
+ */
+export function isAssistantPlaceholderLast(messages: Message[]): boolean {
+  if (messages.length === 0) return false;
+  const last = messages[messages.length - 1];
+  if (last.role !== 'assistant') return false;
+  return last.content.startsWith('⏳ ');
+}
+
 export function ChatMessages({ messages, isTyping }: ChatMessagesProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -72,9 +90,14 @@ export function ChatMessages({ messages, isTyping }: ChatMessagesProps) {
           ))}
         </AnimatePresence>
 
-        {/* Typing Indicator */}
+        {/* Typing Indicator — suppressed when the last message is the
+            streaming assistant placeholder (its own bubble already shows
+            the transient ⏳ label). Showing both produces a visible
+            double-bubble ("Đang phân tích…" + "Đang suy nghĩ…"). */}
         <AnimatePresence>
-          {isTyping && <TypingIndicator />}
+          {isTyping && !isAssistantPlaceholderLast(messages) && (
+            <TypingIndicator />
+          )}
         </AnimatePresence>
 
         {/* Scroll anchor */}

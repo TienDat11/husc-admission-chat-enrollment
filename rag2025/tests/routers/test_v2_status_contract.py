@@ -108,6 +108,13 @@ def _make_fake_pipeline_and_retriever(rag_result: SimpleNamespace) -> tuple:
     pipeline = MagicMock()
     pipeline.query = AsyncMock(return_value=rag_result)
     pipeline._graphrag = SimpleNamespace(graph_stats={"nodes": 1, "edges": 0})
+    # The /v2 hot path now kicks off `unified_pipeline._router.route(query)`
+    # CONCURRENTLY with baseline retrieval (latency refactor). The router
+    # must therefore be awaitable here — wire it as an AsyncMock returning
+    # the same router_result the pipeline reports, so the pass-through is
+    # faithful and `create_task(...)` gets a real coroutine.
+    pipeline._router = MagicMock()
+    pipeline._router.route = AsyncMock(return_value=rag_result.router_result)
 
     retriever = MagicMock()
     result = SimpleNamespace(

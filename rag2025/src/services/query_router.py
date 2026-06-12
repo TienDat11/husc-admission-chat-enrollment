@@ -1,7 +1,7 @@
 """
 Smart Query Router – HyDE + Step-Back Prompting + Query Classification
 
-Pipeline (per query):
+Pipeline (per query) — L3 single-call rewrite:
 1. **HyDE Vague-Detection**: nếu câu hỏi quá mơ hồ (placeholder, độ dài <4 từ
    không có entity, "...") → reject hoặc trả meta-answer (link tuyensinh) thay vì
    chạy retrieval rỗng → tránh tốn 130-200s LLM cho câu user chưa cung cấp ý.
@@ -11,13 +11,16 @@ Pipeline (per query):
    Câu hỏi về NGÀNH ("trường có ngành gì", "tìm hiểu các ngành") rơi xuống
    retrieval thật (enumeration→graph_rag) — kills the structural hallucination
    previously emitted by the hardcoded 28-ngành list. (ADR-3 / S14.5)
-3. Step-Back Prompting: abstract the query to find underlying principle/concept
-4. HyDE (Hypothetical Document Embeddings): generate a fake answer document
-   → embed both original + hypothetical → average vector for better retrieval
-5. Query Classification: decide routing
-   - "simple"      → PaddedRAG (vector + BM25 + cross-encoder, 1-hop)
-   - "multihop"    → GraphRAG (PPR + entity graph traversal)
-   - "comparative" → GraphRAG (multi-entity comparison via graph)
+3. Step-Back + Classify in ONE call: L3 merges step-back into the classify
+   prompt; HyDE is dropped (the hypothetical_doc no longer exists, just
+   echoes query so downstream embedding stays unchanged). Net: ONE LLM
+   call per query instead of the pre-L3 chain (step_back → hyde +
+   classify) — cuts wall-time by ~7s on weak net without re-bundling
+   HyDE into classify (which was the S16 over-routing trigger).
+4. Query Classification: decide routing
+   - "padded"     → PaddedRAG (vector + BM25 + cross-encoder, 1-hop)
+   - "hybrid"     → vector + PPR fusion + expander M=5
+   - "graph"      → GraphRAG (PPR + entity graph traversal, M=8)
 
 Vietnamese domain: HUSC admission system.
 
@@ -374,6 +377,40 @@ VÍ DỤ FEW-SHOT (4 ví dụ - phân bố nhãn hợp lý, KHÔNG >40% cho 1 ro
 CHỈ trả về JSON hợp lệ, không có text bên ngoài. KHÔNG bịa thêm field ngoài schema."""
 
 
+_CLASSIFY_STEPBACK_SYSTEM = """Bạn là hệ thống phân loại câu hỏi tuyển sinh đại học Việt Nam (HUSC - Đại học Khoa học Huế).
+
+Phân tích câu hỏi và trả về JSON DUY NHẤT với cấu trúc:
+{
+  "route": "padded" | "hybrid" | "graph",
+  "complexity": 1-5,
+  "intent": "diem_chuan" | "hoc_phi" | "nganh_hoc" | "to_hop" | "chinh_sach" | "thu_tuc" | "so_sanh" | "da_hop" | "liet_ke" | "general",
+  "reasoning": "lý do ngắn gọn (≤20 từ)",
+  "step_back": "câu hỏi đã được trừu tượng hóa về nguyên lý/khái niệm nền tảng (tiếng Việt). Nếu câu hỏi đã là single-fact lookup cụ thể (đã có NGÀNH + NĂM ràng buộc), echo nguyên câu hỏi."
+}
+
+QUY TẮC ROUTE (theo thứ tự ưu tiên):
+1) SO SÁNH / ĐA-THỰC-THỂ / QUAN HỆ / LIỆT KÊ nhiều ngành → route = "graph", complexity = 4-5
+2) TRA CỨU 1 THỰC THỂ + 1 THUỘC TÍNH (1-hop đơn giản) → route = "padded", complexity = 1
+3) MỌI TRƯỜNG HỢP KHÁC → route = "hybrid", complexity = 2-3
+
+COMPLEXITY:
+1 = tra cứu 1 thông tin         4 = liên kết 3+ thực thể
+2 = tra cứu 2 thông tin         5 = so sánh / phân tích đa chiều / liệt kê nhiều thực thể
+3 = liên kết 2 thực thể
+
+QUY TẮC STEP_BACK (BẮT BUỘC — bảo toàn ràng buộc):
+- PHẢI giữ nguyên các thực thể ràng buộc: MÃ NGÀNH (7 chữ số bắt đầu bằng 7), NĂM (20xx), TỔ HỢP (A00, B00, C01…), ĐỐI TƯỢNG.
+- CHỈ trừu tượng hóa Ý ĐỊNH (intent), KHÔNG trừu tượng hóa ràng buộc.
+- Nếu câu hỏi đã là single-fact lookup (1 NGÀNH + 1 NĂM) → echo nguyên câu hỏi, KHÔNG trừu tượng.
+
+Ví dụ:
+- "Ngành CNTT tại HUSC điểm chuẩn năm 2026?" → step_back = "Quy trình xác định điểm chuẩn xét tuyển ngành CNTT năm 2026 tại Việt Nam hoạt động như thế nào?"
+- "học phí ngành CNTT 2026?" → step_back = "học phí ngành CNTT 2026?" (echo — đã có ràng buộc)
+- "cách xét học bạ và thời gian xét tuyển?" → step_back = "Quy trình và thời gian xét tuyển bằng học bạ tại đại học Việt Nam"
+
+CHỈ trả về JSON hợp lệ, không có text bên ngoài. KHÔNG bịa thêm field ngoài schema."""
+
+
 class SmartQueryRouter:
     """Routes queries to PaddedRAG or GraphRAG using HyDE + Step-Back.
 
@@ -397,7 +434,47 @@ class SmartQueryRouter:
         self._llm = llm or get_llm_client()
         self._threshold = simple_complexity_threshold
 
+    async def _classify_combined(self, query: str) -> Dict:
+        """Single LLM call: classify route + emit step_back in one JSON.
+
+        L3: replaces the pre-L3 `_chain_stepback_hyde` (step_back) +
+        `_generate_hyde_doc` (hyde) + `_classify` chain with a single
+        `chat_json` round-trip. Halves the LLM cost (one call instead of
+        three) and removes the HyDE-doc→classify injection that caused the
+        S16 over-routing regression (re-bundling HyDE into classify is
+        what triggered S16; we DROP HyDE entirely instead).
+
+        Returns a dict with: route, complexity, intent, reasoning, step_back.
+        On failure returns the safe-middle default (S16.2 / CMF-1 (d)).
+        """
+        user_msg = f"Câu hỏi gốc: {query}"
+        try:
+            data = await self._llm.chat_json(
+                user_message=user_msg,
+                system_message=_CLASSIFY_STEPBACK_SYSTEM,
+                temperature=0.1,
+                max_tokens=512,
+            )
+            return data
+        except Exception as exc:
+            logger.warning(
+                f"Combined classify failed: {exc} – defaulting to hybrid "
+                "(S16.2 fail-toward-safe-middle)"
+            )
+            return {
+                "route": "hybrid",
+                "complexity": 2,
+                "intent": "general",
+                "reasoning": "classification failed — default hybrid (S16.2)",
+                "step_back": query,
+            }
+
     async def _chain_stepback_hyde(self, query: str) -> tuple[str, str]:
+        """DEPRECATED in L3: route() no longer calls this. Retained for
+        back-compat with any external test/caller that still patches or
+        awaits it. New code path: `_classify_combined` (single chat_json
+        call) — see route() below.
+        """
         """Run step-back then HyDE sequentially, returning (step_back, hyde).
 
         This is the dependent half of the router pipeline (step_back feeds
@@ -581,77 +658,44 @@ class SmartQueryRouter:
             cache.put(query, result)
             return result
 
-        # S16.3 / CMF nice-to-have: skip step-back for short factual lookups
-        # that already carry their own constraints (year + major). For these
-        # the abstraction HURTS retrieval (loses the constraint that makes
-        # the lookup 1-hop). For abstract / procedural queries the
-        # abstraction helps.
-        #
-        # L2 (latency plan #2): `_classify(query)` depends ONLY on the raw
-        # query — it is INDEPENDENT of the step_back→hyde chain. Run the
-        # chain and the classify task concurrently so the wall-time bound is
-        # max(step_back+hyde, classify) instead of their sum. Behavior is
-        # unchanged; only timing differs. asyncio.gather's default
-        # return_exceptions=False propagates the first failure; each helper
-        # already has its own try/except → per-helper fallback. The
-        # classify fallback default is "hybrid" (S16.2 / CMF-1 (d)); step_back
-        # falls back to the raw query; hyde falls back to the raw query. So
-        # even if a gather task raises, the surviving result is still
-        # meaningful — and we explicitly catch here to preserve that
-        # existing fallback behaviour rather than letting gather cancel a
-        # sibling.
-        if _should_stepback(query):
-            chain_task = asyncio.create_task(self._chain_stepback_hyde(query))
-        else:
-            step_back = query
-
-            async def _hyde_only() -> tuple[str, str]:
-                # step_back is suppressed by _should_stepback=False, so the
-                # chain tuple's first element is the raw query — matches the
-                # downstream unpack and the post-L2 (step_back, hyde_doc)
-                # contract used everywhere in route().
-                return step_back, await self._generate_hyde_doc(query, step_back)
-
-            chain_task = asyncio.create_task(_hyde_only())
-        classify_task = asyncio.create_task(self._classify(query))
-        # Concurrency: chain and classify are awaited together. Each helper
-        # already try/excepts internally; if a helper raises its fallback is
-        # returned and the sibling task is unaffected. The explicit
-        # return_exceptions=True is a defense-in-depth — if a future refactor
-        # adds an unguarded raise inside a helper, gather will not cancel
-        # the sibling and we still receive a usable fallback result.
-        chain_result, classification = await asyncio.gather(
-            chain_task, classify_task, return_exceptions=True
-        )
-        if isinstance(chain_result, Exception):
-            # Step-back/HyDE chain failed catastrophically; preserve the
-            # pre-L2 fallback by re-deriving a chain-shaped result from the
-            # raw query. This keeps the deterministic overrides downstream
-            # operating on a well-formed step_back_query / hypothetical_doc.
-            logger.warning(
-                f"Step-back/HyDE chain raised ({chain_result!r}); "
-                f"using raw query as fallback (preserves pre-L2 behaviour)"
+        # ─── Pre-routing 3: Regex fast-path for enum/comparison ─────────
+        # Deterministic override (CMF-2, lines 703-713 below) already FORCES
+        # route=graph for any query matching _ENUMERATION_PATTERNS or
+        # _COMPARISON_PATTERNS. The LLM call is wasted work for that whole
+        # class of query (~5s on the gateway). Short-circuit here, AFTER
+        # the vague-placeholder and contact-block pre-routing gates (those
+        # must still win first), but BEFORE `await self._classify_combined`.
+        is_enum_fast = bool(_ENUMERATION_PATTERNS.search(normalized_query))
+        is_comparison_fast = bool(_COMPARISON_PATTERNS.search(normalized_query))
+        if is_enum_fast or is_comparison_fast:
+            fast_intent = "liet_ke" if is_enum_fast else "so_sanh"
+            logger.info(
+                f"Fast-path: khớp pattern liệt kê/so sánh → graph (bỏ qua LLM classify). "
+                f"query={normalized_query[:60]}"
             )
-            step_back = step_back if "step_back" in locals() else query
-            hyde_doc = query
-        else:
-            step_back, hyde_doc = chain_result
-        if isinstance(classification, Exception):
-            # Mirror the per-helper try/except by routing the failure into
-            # the safe-middle default the existing `_classify` already uses
-            # (S16.2 / CMF-1 (d): fail-toward-hybrid). The deterministic
-            # overrides downstream still run on the same default dict.
-            logger.warning(
-                f"Classification raised ({classification!r}); "
-                f"defaulting to safe-middle hybrid (S16.2 CMF-1 (d))"
+            result = RouterResult(
+                original_query=query,
+                step_back_query=query,
+                hypothetical_doc=query,
+                hyde_variants=[query],
+                route=QueryRoute.GRAPH_RAG,
+                complexity=4,
+                intent=fast_intent,
+                reasoning="Fast-path: khớp pattern liệt kê/so sánh → graph (bỏ qua LLM classify)",
+                auto_answer=None,
+                skip_retrieval=False,
             )
-            classification = {
-                "route": "hybrid",
-                "complexity": 2,
-                "intent": "general",
-                "reasoning": "classification failed — default hybrid (S16.2)",
-                "hyde_variants": [query],
-            }
+            cache.put(query, result)
+            return result
+
+        # L3: replace the pre-L3 `asyncio.gather(chain_task, classify_task)`
+        # block with a SINGLE `await self._classify_combined(query)` call.
+        # This drops HyDE entirely and folds step_back into the classify
+        # prompt — net: ONE LLM round-trip per query (was 3: step_back,
+        # hyde, classify) instead of 2 concurrent, saving ~one gateway
+        # round-trip (~7s on weak net) without re-bundling HyDE into
+        # classify (which caused the S16 over-routing regression).
+        classification = await self._classify_combined(query)
 
         # S16.2 / CMF-2: parse the 3-way classify output. The schema accepts
         # both new tokens (padded|hybrid|graph) and the legacy
@@ -665,6 +709,17 @@ class SmartQueryRouter:
         else:
             route_str = raw_route if raw_route in ("padded", "hybrid", "graph") else "padded"
         complexity = int(classification.get("complexity", 1))
+
+        # step_back: from model output, but `_should_stepback` gate wins.
+        # When the gate says False (year+major or short single-fact lookup),
+        # echoing the raw query beats any abstraction the model produced
+        # — same pre-L3 contract.
+        model_step_back = classification.get("step_back", query) or query
+        step_back = query if not _should_stepback(query) else model_step_back
+        # HyDE dropped: hypothetical_doc is a no-op echo of the query so
+        # downstream embedding consumers (`all_queries_for_embedding` /
+        # vector averaging) keep working unchanged.
+        hyde_doc = query
 
         # ─── CMF-2 precedence (terminal-marked) ────────────────────────────
         # 1) vague/contact auto-answer → already returned above (terminal).
@@ -714,9 +769,10 @@ class SmartQueryRouter:
         else:
             route = QueryRoute.PADDED_RAG
 
-        hyde_variants: List[str] = classification.get("hyde_variants", [])
-        if not hyde_variants:
-            hyde_variants = [query]
+        # L3: HyDE dropped → hyde_variants is just [query]. Kept the
+        # field on RouterResult for downstream embedding consumers; the
+        # value is the same as pre-L3 fallback (single-element list).
+        hyde_variants: List[str] = [query]
 
         result = RouterResult(
             original_query=query,

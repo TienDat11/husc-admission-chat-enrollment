@@ -19,14 +19,16 @@ import config.env_loader  # noqa: F401
 
 from typing import Any, Dict, List, Literal, Optional
 from collections import defaultdict, deque
-from asyncio import Lock
+from asyncio import Lock, create_task
 import time
 import uuid
+import json
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -506,6 +508,27 @@ async def metrics_endpoint():
         "status": "ok",
         "metrics": _metrics_snapshot(),
     }
+
+
+# @spec(SLICE-A.LATENCY) — Fire-and-forget model preloader. The Qwen3
+# embedding model is lazy-loaded on first encode (~15s). When the FE
+# opens the chat screen it calls GET /warmup so the first /v2/query
+# does not pay the cold-load. Idempotent: the underlying _ensure_loaded
+# double-checked lock makes repeat calls cheap.
+@app.get("/warmup", response_model=Dict[str, Any])
+async def warmup_endpoint():
+    """Preload the embedding model to remove the cold-start penalty from
+    the user's first real query. Returns 503 if the service is not yet
+    initialized; otherwise 200 with the warmup latency in ms."""
+    if embedding_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Embedding service not initialized. Please check server logs.",
+        )
+    t0 = time.perf_counter()
+    await run_in_threadpool(lambda: embedding_service.encode_query("warmup"))
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+    return {"warmed": True, "ms": elapsed_ms}
 
 
 @app.post("/query", response_model=QueryResponse)
@@ -1072,21 +1095,22 @@ async def _synthesize_v2_answer(
     }
 
 
-@app.post("/v2/query", response_model=UnifiedQueryResponse)
-async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
-    """Unified RAG query: auto-routes to PaddedRAG or GraphRAG.
-
-    - Simple 1-hop queries → PaddedRAG (faster, ~150ms)
-    - Multi-hop / comparative → GraphRAG (+PPR, ~400ms)
-
-    Routing is performed by HyDE + Step-Back classification using gemini-2.5-flash.
-    """
-    if not unified_pipeline:
-        raise HTTPException(
-            status_code=503,
-            detail="Unified pipeline not initialized"
-        )
-
+# ───────────────────────────────────────────────────────────────────────────
+# /v2 shared core — extracted so /v2/query AND /v2/query/stream call the
+# IDENTICAL pipeline (router → booster → graph → _synthesize_v2_answer with
+# all post-guards). The stream endpoint must NEVER re-implement the pipeline;
+# it must reuse this helper so the streamed text is the post-guard answer.
+# Returns a tuple (response_payload, rag_result) where rag_result is needed
+# for the route label in the meta event.
+# ───────────────────────────────────────────────────────────────────────────
+async def _build_v2_query_payload(
+    request: UnifiedQueryRequest,
+    raw_request: Request,
+) -> Dict[str, Any]:
+    """Run the /v2 pipeline end-to-end and return the response_payload dict
+    shaped for `UnifiedQueryResponse(**payload)`. Raises HTTPException on
+    guardrail precheck / 503 (caller decides whether to short-circuit
+    streaming or surface the JSON error)."""
     await _enforce_rate_limit(raw_request)
     trace_id = str(uuid.uuid4())
     await _metric_inc("unified_query_total")
@@ -1104,15 +1128,23 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
             logger.info(f"Unified query cache hit trace_id={trace_id}")
             payload = dict(cached_response)
             payload["trace_id"] = trace_id
-            return UnifiedQueryResponse(**payload)
+            return payload
 
-    # G2-T0: guardrail precheck (mirror /query:533-563) so out-of-scope
-    # queries short-circuit with the same status_code / data_gap_hints /
-    # pii_detected surface that /query already returns. Without this, /v2
-    # silently returns SUCCESS for OOS queries, breaking the FE ChatLayout
-    # banner + gap-hint UX.
     if guardrail_service is not None:
         try:
+            # SLICE-D1.LATENCY round-trip profile (architect verdict D1, keep
+            # as-is): precheck is CHEAP on the demo happy-path. PII detection
+            # is pure regex (guardrail.py:_contains_sensitive_pii, no network)
+            # and in-scope detection has a keyword fast-path
+            # (_looks_admission_related) that returns WITHOUT an LLM call for
+            # normal admission queries. The guardrail LLM round-trip fires
+            # ONLY for ambiguous / out-of-scope queries — NOT the queries a
+            # demo exercises. So the "merge guardrail into router" idea (D2)
+            # was rejected: it would buy ~0 happy-path latency while forcing a
+            # structural router-before-embedding reorder (today precheck
+            # rejects OOS BEFORE embedding/retrieval run — a cheap reject we
+            # keep). Hot-path round-trips for a normal query: router(1) +
+            # generation(1); guardrail adds 0 on the keyword fast-path.
             precheck = await guardrail_service.precheck(request.query)
             if precheck and not precheck.is_in_scope:
                 await _metric_inc("query_guardrail_blocks")
@@ -1151,156 +1183,300 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
                 }
                 if query_cache:
                     query_cache.set(cache_key, oos_payload)
-                return UnifiedQueryResponse(**oos_payload)
+                return oos_payload
         except Exception as _guard_exc:
-            # Never let a guardrail outage break the /v2 pipeline — fall through
-            # and serve the normal path with default SUCCESS status.
             logger.warning(f"v2_guardrail_precheck_error: {_guard_exc}")
 
-    # 1. Get PaddedRAG baseline documents first (from LanceDB)
-    baseline_docs = []
-    if lancedb_retriever_service and embedding_service:
-        try:
-            query_vec = await run_in_threadpool(
-                lambda: embedding_service.encode_query(request.query).tolist()
-            )
-            result = lancedb_retriever_service.retrieve(
-                query_vector=query_vec,
-                top_k=request.top_k * 3,
-                query=request.query,
-            )
-            if result.is_success:
-                baseline_docs = result.documents
-        except Exception as exc:
-            logger.warning(f"LanceDB retrieval failed: {exc}")
+    async def _compute_baseline() -> list:
+        """Compute the PaddedRAG baseline_docs for the /v2 hot path.
 
-    # 2. Run unified pipeline (router + optional graph fusion)
-    # G2-T0: status fields default to SUCCESS; populated below when the
-    # pipeline returns zero documents (mirror /query:726-736).
+        Wraps the original sequential block (embed + lancedb retrieve +
+        aggregation-booster) in a coroutine so it can run CONCURRENTLY with
+        the router's LLM round-trip. The router depends only on the raw
+        query string, so today the two were strictly sequential (sum of
+        latencies); running them in parallel turns that into max(). All
+        existing try/except fallbacks, the booster call, and the
+        `request.top_k * 3` slicing are preserved EXACTLY.
+        """
+        baseline_docs: list = []
+        if lancedb_retriever_service and embedding_service:
+            try:
+                query_vec = await run_in_threadpool(
+                    lambda: embedding_service.encode_query(request.query).tolist()
+                )
+                result = lancedb_retriever_service.retrieve(
+                    query_vector=query_vec,
+                    top_k=request.top_k * 3,
+                    query=request.query,
+                )
+                if result.is_success:
+                    baseline_docs = result.documents
+            except Exception as exc:
+                logger.warning(f"LanceDB retrieval failed: {exc}")
+
+        # 1b. Aggregation Booster
+        if lancedb_retriever_service is not None and baseline_docs:
+            try:
+                from services.aggregation_booster import boost_with_aggregation
+                baseline_docs = boost_with_aggregation(
+                    query=request.query,
+                    baseline_docs=baseline_docs,
+                    lancedb_retriever=lancedb_retriever_service,
+                    top_k=request.top_k * 3,
+                    max_inject=2,
+                )
+            except Exception as exc:
+                logger.warning(f"v2_booster_failed: {exc}")
+
+        return baseline_docs
+
+    # Kick off the router LLM round-trip and the baseline retrieval
+    # CONCURRENTLY. The router depends only on the raw query string — it
+    # does NOT need baseline_docs — so the ~5s router LLM call and the
+    # embedding+retrieve+booster block are independent and can overlap.
+    # total_latency: max(router, baseline) instead of sum(router, baseline).
+    # The router already has its own internal try/except fallback (returns
+    # safe-middle hybrid), so a bare await is acceptable; we deliberately
+    # do NOT wrap it in a second try/except that would swallow a
+    # programming error silently.
+    router_task = create_task(unified_pipeline._router.route(request.query))
+    baseline_docs = await _compute_baseline()
+    router_result = await router_task
+
     status_code = "SUCCESS"
     status_reason: Optional[str] = None
     data_gap_hints: List[str] = []
     internal_status_code: Optional[str] = None
     pii_detected = False
 
-    try:
-        async with _track_latency("unified_query_total_latency_ms", "unified_query_count_latency"):
-            rag_result = await unified_pipeline.query(
-                user_query=request.query,
+    async with _track_latency("unified_query_total_latency_ms", "unified_query_count_latency"):
+        rag_result = await unified_pipeline.query(
+            user_query=request.query,
+            baseline_docs=baseline_docs,
+            top_k=request.top_k,
+            router_result=router_result,
+        )
+
+        if (not rag_result.documents) and guardrail_service is not None:
+            try:
+                no_result = await guardrail_service.classify_no_result(request.query)
+                if no_result.internal_code != "SUCCESS":
+                    status_code = guardrail_service.public_status(no_result.internal_code)
+                    status_reason = no_result.reason
+                    data_gap_hints = list(no_result.data_gap_hints or [])
+                    internal_status_code = (
+                        no_result.internal_code if guardrail_service.expose_internal() else None
+                    )
+                    logger.info(
+                        f"v2_no_result_classification trace_id={trace_id} "
+                        f"internal_code={no_result.internal_code} reason={no_result.reason}"
+                    )
+            except Exception as _nr_exc:
+                logger.warning(f"v2_classify_no_result_error: {_nr_exc}")
+
+        if request.force_route == "padded_rag":
+            rag_result.route = "padded_rag"
+            rag_result.documents = baseline_docs[:request.top_k]
+            rag_result.ppr_scores = {}
+            rag_result.confidence = rag_result.documents[0].score if rag_result.documents else 0.0
+            logger.info("Route override applied: padded_rag")
+        elif request.force_route == "graph_rag" and baseline_docs:
+            docs, ppr_scores = await unified_pipeline._graphrag.retrieve(
+                query=request.query,
+                router_result=rag_result.router_result,
                 baseline_docs=baseline_docs,
                 top_k=request.top_k,
             )
+            rag_result.route = "graph_rag"
+            rag_result.documents = docs
+            rag_result.ppr_scores = ppr_scores
+            rag_result.confidence = docs[0].score if docs else 0.0
+            logger.info("Route override applied: graph_rag")
 
-            # G2-T0: classify no-result (mirror /query:726-736) so the FE
-            # banner + gap-hint path lights up when retrieval is empty.
-            if (not rag_result.documents) and guardrail_service is not None:
-                try:
-                    no_result = await guardrail_service.classify_no_result(request.query)
-                    # Only surface the classification when the guardrail
-                    # actually transitioned the status away from SUCCESS —
-                    # mirrors /query:728 which reassigns unconditionally
-                    # only inside the same `if len(chunks) == 0` branch.
-                    if no_result.internal_code != "SUCCESS":
-                        status_code = guardrail_service.public_status(no_result.internal_code)
-                        status_reason = no_result.reason
-                        data_gap_hints = list(no_result.data_gap_hints or [])
-                        internal_status_code = (
-                            no_result.internal_code if guardrail_service.expose_internal() else None
-                        )
-                        logger.info(
-                            f"v2_no_result_classification trace_id={trace_id} "
-                            f"internal_code={no_result.internal_code} reason={no_result.reason}"
-                        )
-                except Exception as _nr_exc:
-                    logger.warning(f"v2_classify_no_result_error: {_nr_exc}")
-
-            if request.force_route == "padded_rag":
-                rag_result.route = "padded_rag"
-                rag_result.documents = baseline_docs[:request.top_k]
-                rag_result.ppr_scores = {}
-                rag_result.confidence = rag_result.documents[0].score if rag_result.documents else 0.0
-                logger.info("Route override applied: padded_rag")
-            elif request.force_route == "graph_rag" and baseline_docs:
-                docs, ppr_scores = await unified_pipeline._graphrag.retrieve(
-                    query=request.query,
-                    router_result=rag_result.router_result,
-                    baseline_docs=baseline_docs,
-                    top_k=request.top_k,
-                )
-                rag_result.route = "graph_rag"
-                rag_result.documents = docs
-                rag_result.ppr_scores = ppr_scores
-                rag_result.confidence = docs[0].score if docs else 0.0
-                logger.info("Route override applied: graph_rag")
-
-            # 3. Generate answer — route through LLMGenerator (NOT inline llm.chat).
-            #    This wires /v2 into the SAME S16.5 URL-faithfulness guard,
-            #    season-aware GAP_DISCLAIMER, and S15.6 contact-keyword abstain
-            #    guard that /v3 and /query already use. The helper also honors
-            #    RouterResult.auto_answer (CONTACT_BLOCK / vague_reject) so the
-            #    skip_retrieval path is no longer swallowed by a generic fallback.
-            if llm_generator_service is None:
-                raise HTTPException(
-                    status_code=503,
-                    detail="LLM generator not initialized",
-                )
-            synthesis = await _synthesize_v2_answer(
-                rag_result=rag_result,
-                query=request.query,
-                generator=llm_generator_service,
+        if llm_generator_service is None:
+            raise HTTPException(
+                status_code=503,
+                detail="LLM generator not initialized",
             )
-            answer = synthesis["answer"]
-            sources = synthesis["sources"]
+        synthesis = await _synthesize_v2_answer(
+            rag_result=rag_result,
+            query=request.query,
+            generator=llm_generator_service,
+        )
+        answer = synthesis["answer"]
+        sources = synthesis["sources"]
 
-            groundedness = _safe_groundedness_score(answer, [
-                {"text": d.text, "summary": d.text, "text_plain": d.text}
-                for d in rag_result.documents
-            ])
-            if groundedness < GROUNDING_THRESHOLD and rag_result.documents:
-                await _metric_inc("unified_query_low_groundedness")
-                logger.warning(
-                    f"LOW_GROUNDEDNESS_UNIFIED trace_id={trace_id} score={groundedness:.3f} "
-                    f"threshold={GROUNDING_THRESHOLD}"
-                )
-                answer = (
-                    "⚠️ " + answer + "\n\n"
-                    "(Lưu ý: Câu trả lời này có mức bám sát tài liệu nguồn thấp. "
-                    "Vui lòng kiểm tra lại với tài liệu chính thức.)"
-                )
+        groundedness = _safe_groundedness_score(answer, [
+            {"text": d.text, "summary": d.text, "text_plain": d.text}
+            for d in rag_result.documents
+        ])
+        if groundedness < GROUNDING_THRESHOLD and rag_result.documents:
+            await _metric_inc("unified_query_low_groundedness")
+            logger.warning(
+                f"LOW_GROUNDEDNESS_UNIFIED trace_id={trace_id} score={groundedness:.3f} "
+                f"threshold={GROUNDING_THRESHOLD}"
+            )
+            answer = (
+                "⚠️ " + answer + "\n\n"
+                "(Lưu ý: Câu trả lời này có mức bám sát tài liệu nguồn thấp. "
+                "Vui lòng kiểm tra lại với tài liệu chính thức.)"
+            )
 
-            response_payload = {
-                "query": request.query,
-                "route": rag_result.route,
-                "answer": answer,
-                "sources": sources,
-                "confidence": rag_result.confidence,
-                "groundedness_score": 0.0,
-                "router_info": {
-                    "step_back": rag_result.router_result.step_back_query,
-                    "intent": rag_result.router_result.intent,
-                    "complexity": rag_result.router_result.complexity,
-                    "reasoning": rag_result.router_result.reasoning,
-                    "hyde_variants": rag_result.router_result.hyde_variants,
-                },
-                "graph_stats": unified_pipeline._graphrag.graph_stats,
-                "latency_ms": rag_result.latency_ms,
-                "trace_id": trace_id,
-                "status_code": status_code,
-                "status_reason": status_reason,
-                "data_gap_hints": data_gap_hints,
-                "internal_status_code": internal_status_code,
-                "pii_detected": pii_detected,
-            }
+        response_payload = {
+            "query": request.query,
+            "route": rag_result.route,
+            "answer": answer,
+            "sources": sources,
+            "confidence": rag_result.confidence,
+            "groundedness_score": 0.0,
+            "router_info": {
+                "step_back": rag_result.router_result.step_back_query,
+                "intent": rag_result.router_result.intent,
+                "complexity": rag_result.router_result.complexity,
+                "reasoning": rag_result.router_result.reasoning,
+                "hyde_variants": rag_result.router_result.hyde_variants,
+            },
+            "graph_stats": unified_pipeline._graphrag.graph_stats,
+            "latency_ms": rag_result.latency_ms,
+            "trace_id": trace_id,
+            "status_code": status_code,
+            "status_reason": status_reason,
+            "data_gap_hints": data_gap_hints,
+            "internal_status_code": internal_status_code,
+            "pii_detected": pii_detected,
+        }
 
-            if query_cache:
-                query_cache.set(cache_key, response_payload)
+        if query_cache:
+            query_cache.set(cache_key, response_payload)
 
-            return UnifiedQueryResponse(**response_payload)
+        return response_payload
 
+
+def _chunk_answer_for_stream(answer: str, *, max_chunk: int = 40) -> List[str]:
+    """Split the post-guard `answer` into word-boundary-safe chunks for
+    SSE deltas. Never splits mid-word, mid-markdown-token, or mid-entity.
+    Returns at least 1 chunk."""
+    if not answer:
+        return [""]
+    chunks: List[str] = []
+    i = 0
+    n = len(answer)
+    while i < n:
+        target_end = min(i + max_chunk, n)
+        if target_end < n:
+            # walk back to nearest whitespace (or end of token) so we never
+            # split mid-word. Prefer sentence boundaries when present.
+            best = target_end
+            for k in range(target_end, max(i + 1, target_end - 30), -1):
+                ch = answer[k - 1]
+                if ch in " \n\t,.;:!?。，：；！？":
+                    best = k
+                    break
+            # If we found a whitespace within range, break there.
+            if best > i:
+                chunks.append(answer[i:best])
+                i = best
+            else:
+                # Fallback: take the whole window (rare; no whitespace found).
+                chunks.append(answer[i:target_end])
+                i = target_end
+        else:
+            chunks.append(answer[i:target_end])
+            i = target_end
+    return chunks
+
+
+def _format_sse(event: str, data: Dict[str, Any]) -> bytes:
+    """Render a single SSE frame as bytes: `event: <name>\\ndata: <json>\\n\\n`.
+
+    The payload is sanitized via `repr()` fallback so a stray MagicMock
+    in the meta dict (e.g. from a unit-test fake) does not crash the
+    streaming response with a 500. Real /v2 payloads contain only
+    JSON-serializable primitives (str, int, float, bool, list, dict)."""
+    safe = json.loads(json.dumps(data, default=lambda o: repr(o), ensure_ascii=False))
+    return f"event: {event}\ndata: {json.dumps(safe, ensure_ascii=False)}\n\n".encode("utf-8")
+
+
+@app.post("/v2/query", response_model=UnifiedQueryResponse)
+async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
+    """Unified RAG query: auto-routes to PaddedRAG or GraphRAG.
+
+    - Simple 1-hop queries → PaddedRAG (faster, ~150ms)
+    - Multi-hop / comparative → GraphRAG (+PPR, ~400ms)
+
+    Routing is performed by HyDE + Step-Back classification using gemini-2.5-flash.
+    """
+    if not unified_pipeline:
+        raise HTTPException(
+            status_code=503,
+            detail="Unified pipeline not initialized"
+        )
+
+    try:
+        response_payload = await _build_v2_query_payload(request, raw_request)
+        return UnifiedQueryResponse(**response_payload)
     except Exception as exc:
         await _metric_inc("unified_query_errors")
-        logger.exception(f"Unified query failed trace_id={trace_id}: {exc}")
+        logger.exception(f"Unified query failed: {exc}")
         raise HTTPException(status_code=500, detail="Unified query processing failed")
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# /v2/query/stream — fake-stream SSE.
+#
+# This is a FAKE-STREAM, not a token-stream. The /v2 pipeline (incl. all
+# post-guards: URL-faithfulness strip, Vietnamese-enforce, markdown-table
+# validate, contact-abstain, empty-retrieval / OOS) runs UNCHANGED via the
+# shared `_build_v2_query_payload` helper. Once we hold the post-guard
+# `answer` string, we chunk it into SSE delta frames for a "typing" UX.
+#
+# Correctness invariant: the concatenation of all `delta.text` events
+# MUST equal the post-guard `answer` field of the `done` event. No LLM
+# token escapes the guards because we only stream AFTER the guards ran.
+# Pinned by tests/routers/test_v2_stream.py::test_stream_deltas_concatenate_to_guarded_answer.
+# ───────────────────────────────────────────────────────────────────────────
+@app.post("/v2/query/stream")
+async def unified_query_stream(request: UnifiedQueryRequest, raw_request: Request):
+    """SSE-fake-stream variant of /v2/query. Same pipeline, same guards,
+    same payload — only the wire format is text/event-stream."""
+    if not unified_pipeline:
+        raise HTTPException(
+            status_code=503,
+            detail="Unified pipeline not initialized"
+        )
+
+    # PART 1 LATENCY: the stage frame MUST be emitted BEFORE the heavy pipeline
+    # await, otherwise the user still sees dead air for the full ~30s. So the
+    # `await _build_v2_query_payload(...)` happens INSIDE the generator, AFTER
+    # the first `stage` yield is flushed to the client. We only stream the
+    # post-guard `answer` word-by-word, so `sum(delta.text) == done.answer` is
+    # preserved. True per-token LLM streaming was REJECTED by the critic (it
+    # would leak ungrounded URLs / English before the guards run). Finer
+    # intra-pipeline stages are deferred.
+    async def _generator():
+        # 1) Immediate feedback — flushed before the pipeline runs.
+        yield _format_sse("stage", {"stage": "Đang phân tích câu hỏi…"})
+        # 2) Heavy pipeline (router + retrieval + gen + ALL post-guards).
+        response_payload = await _build_v2_query_payload(request, raw_request)
+        answer: str = response_payload.get("answer", "") or ""
+        meta = {
+            "route": response_payload.get("route"),
+            "sources": response_payload.get("sources", []),
+            "status_code": response_payload.get("status_code"),
+            "data_gap_hints": response_payload.get("data_gap_hints", []),
+            "trace_id": response_payload.get("trace_id"),
+        }
+        # 3) meta → guarded-answer deltas → done.
+        yield _format_sse("meta", meta)
+        for piece in _chunk_answer_for_stream(answer):
+            yield _format_sse("delta", {"text": piece})
+        yield _format_sse("done", {"answer": answer})
+
+    return StreamingResponse(
+        _generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ========================================================================

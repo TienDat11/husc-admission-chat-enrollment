@@ -236,6 +236,11 @@ async def test_cache_hit_makes_no_llm_calls():
 
     This proves the hot read is pure (no breaker, no retry, no per-hit
     refresh) — the spec's "hot_path_purity" requirement.
+
+    L3 update: route() now makes a SINGLE merged classify call (chat_json)
+    and NO `chat` calls (step-back/HyDE chain dropped — HyDE removed,
+    step_back folded into the merged classify). So on the cold path we
+    assert exactly 1 chat_json and 0 chat; on the warm hit, 0 of both.
     """
     call_log_json: list = []
     call_log_text: list = []
@@ -250,16 +255,17 @@ async def test_cache_hit_makes_no_llm_calls():
             "complexity": 1,
             "intent": "diem_chuan",
             "reasoning": "x",
-            "hyde_variants": ["v1"],
+            "step_back": "x",
         }
     )
     router = SmartQueryRouter(llm=llm)
 
     q = "học phí ngành CNTT 2026"
     await router.route(q)
-    # After the first call: chat and chat_json both fired once.
+    # After the first call: the single merged classify (chat_json) fired once;
+    # the step-back/HyDE `chat` chain is gone (L3) → zero `chat` calls.
     assert len(call_log_json) == 1
-    assert len(call_log_text) >= 1  # step-back + hyde
+    assert len(call_log_text) == 0  # L3: no step-back/HyDE chat calls
 
     # Reset the counters, then a repeat hit MUST NOT touch the LLM at all.
     call_log_json.clear()
@@ -289,21 +295,30 @@ async def test_g4_t3_micro_bench_repeats_skip_classify_cost():
 
     Reported in the test docstring output for the spec to pick up.
     """
-    # 10 queries, 5 of which are repeats of an earlier one → 5 unique.
+    # 10 queries, 5 of which are repeats of an earlier one → 5 unique
+    # UNIQUE LLM-CALLING queries. The "so sánh ..." line is served by the
+    # enum/comparison fast-path (route() does NOT await chat_json for that
+    # class of query — see test_router_fastpath.py), so it never enters
+    # call_log. The benchmark measures LLM-call savings, so its expected
+    # count must reflect the fast-path skipping the LLM entirely.
     queries = [
         "điểm chuẩn ngành CNTT 2026",
         "học phí ngành CNTT 2026",
         "điểm chuẩn ngành CNTT 2026",          # repeat of #0
-        "so sánh ngành CNTT và ngành Toán",
+        "so sánh ngành CNTT và ngành Toán",    # served by fast-path (no LLM)
         "học phí ngành CNTT 2026",              # repeat of #1
         "điểm chuẩn ngành Vật lý 2026",
-        "so sánh ngành CNTT và ngành Toán",     # repeat of #3
+        "so sánh ngành CNTT và ngành Toán",     # repeat of #3 (fast-path)
         "điểm chuẩn ngành CNTT 2026",          # repeat of #0
         "học phí ngành Vật lý 2026",
         "điểm chuẩn ngành CNTT 2026",          # repeat of #0
     ]
     unique = {q for q in queries}
-    expected_unique_calls = len(unique)  # 6
+    # Only non-fast-path queries ever reach the LLM. Subtract the fast-path
+    # ones so the structural assertion matches the new behavior.
+    fast_path_queries = {q for q in unique
+                         if q.startswith("so sánh ngành CNTT và ngành Toán")}
+    expected_unique_calls = len(unique) - len(fast_path_queries)  # 6 - 1 = 5
     expected_total_calls = len(queries)  # 10
     skipped = expected_total_calls - expected_unique_calls
 
