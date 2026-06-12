@@ -18,12 +18,15 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
+import httpx
 from loguru import logger
 from openai import (
     APIConnectionError,
+    APIError,
     APIStatusError,
     APITimeoutError,
     AsyncOpenAI,
+    InternalServerError,
     RateLimitError,
 )
 from tenacity import (
@@ -34,13 +37,37 @@ from tenacity import (
 )
 
 
+# --- Bounded retry/timeouts (S10 perf fix) ---
+# chat (non-json, streaming generation) gets the wider retry budget because
+# legitimate generation can hit transient 5xx; json_mode/classify gets a tight
+# budget because empty-body responses from ramclouds.me are persistent and
+# burning 4 attempts × 1-8s backoff drove router_classify p95=11.6s, max=60s.
+CHAT_MAX_ATTEMPTS = 4
+JSON_MODE_MAX_ATTEMPTS = 2
+
+# httpx.Timeout: bound the read side so a stalled response fails at ~30s
+# instead of hanging. 30s is safe for SSE streaming generation (gen p95 ~3.5s).
+LLM_READ_TIMEOUT_S = 30.0
+LLM_CONNECT_TIMEOUT_S = 10.0
+
+
 def _is_retryable_llm_error(exc: BaseException) -> bool:
-    """Retry only transient transport/rate-limit/server errors."""
-    if isinstance(exc, (APIConnectionError, APITimeoutError, RateLimitError)):
+    """Retry transient transport/rate-limit/server errors.
+
+    ramclouds.me intermittently returns `APIError: an internal error occurred`
+    (a generic upstream 5xx surfaced without a status_code) — observed ~1 in 5
+    gpt-5.4 calls. That is exactly the "LLM lỗi trả lời nửa chừng" symptom, so
+    we treat bare APIError / InternalServerError as retryable too.
+    """
+    if isinstance(exc, (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError)):
         return True
     if isinstance(exc, APIStatusError):
         status = getattr(exc, "status_code", None)
         return status in {408, 409, 425, 429, 500, 502, 503, 504}
+    if isinstance(exc, APIError):
+        # Generic APIError without a status_code (e.g. "an internal error occurred")
+        msg = str(getattr(exc, "message", "") or exc).lower()
+        return "internal error" in msg or "overloaded" in msg or "timeout" in msg
     return False
 
 
@@ -150,6 +177,23 @@ class UnifiedLLMClient:
         self._providers = _build_providers()
         self._force_model = force_model
 
+        # @spec(S10.B5) — persistent HTTP connection pool
+        # Bounded read timeout so a stalled gateway response fails at ~30s
+        # rather than hanging indefinitely. Read cap is shared with SSE
+        # generation but 30s ≫ gen p95 (~3.5s) so no risk of cut-off.
+        self._http_client = httpx.AsyncClient(
+            limits=httpx.Limits(
+                max_connections=20,
+                max_keepalive_connections=10,
+            ),
+            timeout=httpx.Timeout(
+                connect=LLM_CONNECT_TIMEOUT_S,
+                read=LLM_READ_TIMEOUT_S,
+                write=LLM_CONNECT_TIMEOUT_S,
+                pool=LLM_CONNECT_TIMEOUT_S,
+            ),
+        )
+
         if not self._providers:
             logger.warning(
                 "No LLM provider configured. Set RAMCLOUDS_API_KEY (or OPENAI_API_KEY) "
@@ -163,14 +207,55 @@ class UnifiedLLMClient:
         return AsyncOpenAI(
             api_key=provider.api_key,
             base_url=provider.base_url,
+            http_client=self._http_client,
         )
 
+    async def close(self) -> None:
+        """Cleanup HTTP pool — call on lifespan shutdown."""
+        await self._http_client.aclose()
+
     @retry(
-        stop=stop_after_attempt(2),
+        stop=stop_after_attempt(CHAT_MAX_ATTEMPTS),
         wait=wait_exponential(min=1, max=8),
         retry=retry_if_exception(_is_retryable_llm_error),
         reraise=True,
     )
+    async def _call_provider_chat(
+        self,
+        provider: ProviderConfig,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+    ) -> LLMResponse:
+        """Streaming/generation path — wide retry budget (4)."""
+        return await self._call_provider(
+            provider, messages, temperature, max_tokens, json_mode=False
+        )
+
+    @retry(
+        stop=stop_after_attempt(JSON_MODE_MAX_ATTEMPTS),
+        wait=wait_exponential(min=1, max=8),
+        retry=retry_if_exception(_is_retryable_llm_error),
+        reraise=True,
+    )
+    async def _call_provider_json(
+        self,
+        provider: ProviderConfig,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+    ) -> LLMResponse:
+        """json_mode/classify path — tight retry budget (2).
+
+        ramclouds.me intermittently returns an empty body for json_mode
+        ("Expecting value: line 1 column 1"). 4 attempts × 1-8s exp backoff
+        burned 30-60s on a single bad call, so we cap at 2 attempts and let
+        chat_json's own per-provider fallback / RuntimeError handle the rest.
+        """
+        return await self._call_provider(
+            provider, messages, temperature, max_tokens, json_mode=True
+        )
+
     async def _call_provider(
         self,
         provider: ProviderConfig,
@@ -190,6 +275,35 @@ class UnifiedLLMClient:
         }
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
+
+        # SSE streaming path: gpt-5.x / mimo on ramclouds stream faster + survive
+        # mid-answer cutoffs better (we accumulate deltas, so a late chunk drop
+        # still yields a usable partial). JSON mode ALSO streams now (user asked
+        # for HYDE on SSE) — we accumulate the full JSON string then the caller
+        # parses via as_json(). Toggle via RAMCLOUDS_STREAM env.
+        stream_enabled = os.getenv("RAMCLOUDS_STREAM", "true").lower() in {"1", "true", "yes"}
+        if stream_enabled:
+            kwargs["stream"] = True
+            chunks: List[str] = []
+            finish_reason = None
+            stream = await client.chat.completions.create(**kwargs)
+            async for ev in stream:
+                if not ev.choices:
+                    continue
+                choice = ev.choices[0]
+                delta = getattr(choice, "delta", None)
+                piece = getattr(delta, "content", None) if delta else None
+                if piece:
+                    chunks.append(piece)
+                if getattr(choice, "finish_reason", None):
+                    finish_reason = choice.finish_reason
+            content = "".join(chunks)
+            if finish_reason == "length":
+                logger.warning(
+                    f"LLM [{provider.name}/{model}] stream truncated (finish_reason=length, "
+                    f"max_tokens={max_tokens}) — answer may be cut mid-sentence"
+                )
+            return LLMResponse(content=content, model=model, provider=provider.name)
 
         response = await client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content or ""
@@ -223,8 +337,8 @@ class UnifiedLLMClient:
 
         for provider in self._providers:
             try:
-                result = await self._call_provider(
-                    provider, messages, temperature, max_tokens, json_mode=False
+                result = await self._call_provider_chat(
+                    provider, messages, temperature, max_tokens
                 )
                 logger.debug(f"LLM [{provider.name}/{result.model}]: OK")
                 return result
@@ -252,8 +366,8 @@ class UnifiedLLMClient:
 
         for provider in self._providers:
             try:
-                result = await self._call_provider(
-                    provider, messages, temperature, max_tokens, json_mode=True
+                result = await self._call_provider_json(
+                    provider, messages, temperature, max_tokens
                 )
                 return result.as_json()
             except APIStatusError as exc:
@@ -268,8 +382,8 @@ class UnifiedLLMClient:
 
             try:
                 # Fallback for providers/models that reject response_format=json_object
-                result2 = await self._call_provider(
-                    provider, messages, temperature, max_tokens, json_mode=False
+                result2 = await self._call_provider_chat(
+                    provider, messages, temperature, max_tokens
                 )
                 return result2.as_json()
             except APIStatusError as exc:
@@ -289,9 +403,17 @@ class UnifiedLLMClient:
 _default_client: Optional[UnifiedLLMClient] = None
 
 
-def get_llm_client() -> UnifiedLLMClient:
-    """Get or create the singleton UnifiedLLMClient."""
+def get_llm_client(force_model: Optional[str] = None) -> UnifiedLLMClient:
+    """Get or create the singleton UnifiedLLMClient.
+
+    Args:
+        force_model: Optional model override. If provided, creates a NEW client
+            (not the singleton) with the specified model. Use for role-specific
+            routing (NER, HYDE, GEN).
+    """
     global _default_client
+    if force_model:
+        return UnifiedLLMClient(force_model=force_model)
     if _default_client is None:
         _default_client = UnifiedLLMClient()
     return _default_client
