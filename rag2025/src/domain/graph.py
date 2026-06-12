@@ -73,6 +73,7 @@ class KnowledgeGraph:
             raise RuntimeError("networkx is required: pip install networkx")
         self._graph = graph
         self._ppr_cache: Dict[Tuple[Tuple[str, ...], float, int], Dict[str, float]] = {}
+        self._view_cache: Optional["nx.DiGraph"] = None
 
     @classmethod
     def empty(cls) -> "KnowledgeGraph":
@@ -116,6 +117,8 @@ class KnowledgeGraph:
 
     def _pagerank_view(self) -> "nx.DiGraph":
         """Collapse MultiDiGraph to DiGraph for PageRank (sum parallel edge weights)."""
+        if self._view_cache is not None:
+            return self._view_cache
         dg = nx.DiGraph()
         dg.add_nodes_from(self._graph.nodes(data=True))
         for u, v, attrs in self._graph.edges(data=True):
@@ -123,6 +126,7 @@ class KnowledgeGraph:
                 dg[u][v]["weight"] = dg[u][v].get("weight", 0.0) + attrs.get("weight", 1.0)
             else:
                 dg.add_edge(u, v, weight=attrs.get("weight", 1.0))
+        self._view_cache = dg
         return dg
 
     # ── PPR ─────────────────────────────────────────────────────────────────
@@ -283,6 +287,7 @@ class KnowledgeGraph:
 
     def clear_caches(self) -> None:
         self._ppr_cache.clear()
+        self._view_cache = None
 
     def stats(self) -> Dict:
         """Return graph statistics for monitoring."""
