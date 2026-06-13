@@ -36,6 +36,14 @@ class GuardrailService:
         "tuyển sinh", "điểm chuẩn", "học phí", "ngành", "tổ hợp", "xét tuyển",
         "husc", "đại học khoa học huế", "chỉ tiêu", "học bổng", "hồ sơ",
         "đăng ký", "đăng kí", "nhập học", "thủ tục", "nộp hồ sơ",
+        "điểm sàn", "điểm trúng tuyển", "điểm xét tuyển", "tổ hợp môn",
+        "mã ngành", "đăng ký xét tuyển", "nguyện vọng", "chương trình đào tạo",
+        "cổng thông tin tuyển sinh", "lệ phí", "miễn giảm", "xét tuyển thẳng",
+        "hạn nộp", "đánh giá năng lực", "ký túc xá", "ktx", "liên thông",
+        "vào trường", "thi vào", "học bạ",
+        "thi vô", "thi vo", "vô trường", "vo truong",
+        # Common no-diacritic / abbrev variants (cheap + unambiguous)
+        "nguyen vong", "vao truong", "thi vao", "dgnl", "đgnl", "ky tuc xa",
     ]
 
     # Markers of OTHER universities/institutions. If ANY of these appears in
@@ -67,6 +75,11 @@ class GuardrailService:
         "trường đại học khoa học",
         "truong dai hoc khoa hoc",
         "trường khoa học",
+        # Additional low-collision aliases (people / search engines
+        # sometimes shorten "Đại học Khoa học Huế" to "ĐHKH Huế" or
+        # "trường ĐHKH" in informal writing)
+        "đhkh huế", "dhkh hue", "đhkh", "dhkh",
+        "đhkhh", "trường đhkh", "truong dhkh",
     ]
 
     PII_KEYWORDS = [
@@ -392,6 +405,59 @@ class GuardrailService:
         re.IGNORECASE,
     )
 
+    # Admission-process language that is also a "ngành <X>" / "<X> học"
+    # head-noun extraction hazard — the major extractor must NOT
+    # treat these as majors. They appear in queries like:
+    #   "ngành miễn giảm học phí thế nào?" → "miễn giảm"
+    #   "ngành ký túc xá có không?"         → "ký túc xá"
+    #   "chương trình đào tạo ngành Hóa dược?" → "Hóa dược" (KEEP this!)
+    # Adding to _BARE_GENERIC_MAJORS would over-block (a real major
+    # "Văn" wouldn't be reachable from "ngành Văn"). Instead we use a
+    # narrower blocklist of folded multi-word tokens.
+    _ADMISSION_LANGUAGE_PHRASES = frozenset({
+        "mien giam", "ky tuc xa", "hoc phi", "le phi", "nguyen vong",
+        "thi vao", "vao truong", "xet tuyen thang", "danh gia nang luc",
+        "han nop", "tong hop mon", "ma nganh", "cong thong tin tuyen sinh",
+        "chuong trinh dao tao", "diem san", "diem trung tuyen",
+        "diem xet tuyen", "dang ky xet tuyen", "lien thong", "hoc ba",
+        "vien phi", "nganh nghe", "xet tuyen", "tuyen sinh", "nganh nghe",
+    })
+
+    # Single-syllable words that are REAL HUSC majors (Toán, Văn, Hóa, Lý,
+    # Sử, KT[Kiến trúc]) but ALSO appear as bare generic language. The
+    # major-scope extractor must only treat them as a NAMED major when
+    # framed as "ngành <X>" or "<X> học" (compound), NOT as a bare one-
+    # character token — otherwise "toán" in "học toán ở đâu?" gets
+    # classified as the Toán học major and falls into the denylist/allowlist
+    # path. Bare single-syllable tokens in non-compound context are
+    # ignored — they are NOT treated as a major phrase.
+    _BARE_GENERIC_MAJORS = frozenset({"toan", "van", "hoa", "ly", "su", "kt"})
+
+    @classmethod
+    def _is_admission_language_phrase(cls, phrase: str) -> bool:
+        """True iff ``phrase`` (after diacritic-fold) is one of the
+        multi-word admission-process language tokens. Used by the
+        major extractor / _major_out_of_scope to bail out before
+        classifying admission-process language as a major.
+        """
+        if not phrase:
+            return False
+        folded = cls._fold_diacritics(phrase).strip()
+        return folded in cls._ADMISSION_LANGUAGE_PHRASES
+
+    @classmethod
+    def _is_bare_generic_major_token(cls, phrase: str) -> bool:
+        """True iff ``phrase`` (after diacritic-fold) is exactly one of
+        the single-syllable generic-language-but-also-major words from
+        ``_BARE_GENERIC_MAJORS``. Used by the extractor to bail out
+        before a bare token like "toán" / "văn" is misclassified as
+        a major name.
+        """
+        if not phrase:
+            return False
+        folded = cls._fold_diacritics(phrase).strip()
+        return folded in cls._BARE_GENERIC_MAJORS
+
     @staticmethod
     def _is_likely_major_phrase(phrase: str) -> bool:
         if not phrase or len(phrase) < 3:
@@ -460,6 +526,15 @@ class GuardrailService:
         # keyword fast-path (or LLM) for an in-scope verdict.
         if self._is_process_verb_phrase(q):
             return None
+        # Bare single-syllable generic-major guard: real HUSC majors like
+        # "Toán" / "Văn" / "Hóa" / "Lý" / "Sử" / "KT" also appear as
+        # bare common-language words. A bare token ("học toán ở đâu?")
+        # must NOT be classified as a major name — it only counts when
+        # framed as "ngành Toán" or "<X> học" (compound). Compound
+        # phrases (length >= 2 tokens after fold) still flow through to
+        # the per-pattern logic below.
+        if self._is_bare_generic_major_token(q):
+            return None
         # Pattern 1: "ngành <X>" / "nganh <X>"
         m = re.search(r"\b(?:ngành|nganh)\s+([A-Za-zÀ-ỹĐđ\-\s]{3,})", q, re.IGNORECASE)
         if m:
@@ -481,7 +556,8 @@ class GuardrailService:
                 flags=re.IGNORECASE,
             ).strip()
             if self._is_likely_major_phrase(phrase) and not self._is_generic_question_phrase(phrase):
-                return phrase
+                if not self._is_bare_generic_major_token(phrase) and not self._is_admission_language_phrase(phrase):
+                    return phrase
         # Pattern 2: "<X> điểm chuẩn" / "<X> học phí" — head noun BEFORE a tail
         m = re.search(
             r"([A-Za-zÀ-ỹĐđ\-\s]{3,}?)\s+(?:" + self._MAJOR_TAIL_RX.pattern + r")",
@@ -504,7 +580,8 @@ class GuardrailService:
                 flags=re.IGNORECASE,
             ).strip()
             if self._is_likely_major_phrase(phrase) and not self._is_generic_question_phrase(phrase):
-                return phrase
+                if not self._is_bare_generic_major_token(phrase) and not self._is_admission_language_phrase(phrase):
+                    return phrase
         # Pattern 3: "<tail> ngành <X>" — common VI phrasing
         m = re.search(
             r"(?:" + self._MAJOR_TAIL_RX.pattern + r")\s+(?:ngành|nganh)\s+"
@@ -521,7 +598,8 @@ class GuardrailService:
                 flags=re.IGNORECASE,
             ).strip()
             if self._is_likely_major_phrase(phrase) and not self._is_generic_question_phrase(phrase):
-                return phrase
+                if not self._is_bare_generic_major_token(phrase) and not self._is_admission_language_phrase(phrase):
+                    return phrase
         # Pattern 4: bare "<X> điểm chuẩn" / "<X> học phí" where X starts at the
         # beginning of the query (catches "Khoa học dữ liệu điểm chuẩn?").
         m = re.match(
@@ -538,7 +616,8 @@ class GuardrailService:
                 flags=re.IGNORECASE,
             ).strip()
             if self._is_likely_major_phrase(phrase) and not self._is_generic_question_phrase(phrase):
-                return phrase
+                if not self._is_bare_generic_major_token(phrase) and not self._is_admission_language_phrase(phrase):
+                    return phrase
         return None
 
     @classmethod
@@ -556,25 +635,118 @@ class GuardrailService:
             return False
         if folded_phrase in allowed:
             return True
+        # Substring match: "hoa hoc" is a real HUSC major; "sinh hoc"
+        # / "sinh hoc ung dung" are also. We match if EITHER the folded
+        # phrase contains an allowed token (>= 3 chars to avoid generic
+        # single-syllable false positives) OR an allowed token fully
+        # contains the phrase. A guarded exception prevents short
+        # bare one-syllable tokens (see _BARE_GENERIC_MAJORS) from
+        # being matched as majors in the allowlist — those are
+        # disambiguated by the caller's own bare-token guard in
+        # _extract_major_phrase.
         for tok in allowed:
             if len(tok) >= 3 and (tok in folded_phrase or folded_phrase in tok):
+                # Reject when both are 1-2 char super-short tokens
+                # (avoid "kt" matching everything with "kt" substring)
+                if len(tok) < 4 and len(folded_phrase) < 4:
+                    continue
                 return True
         return False
 
+    # Generic admission-intent guard: if a query is a clearly admission-
+    # process question (đăng ký, nộp hồ sơ, xét tuyển, ký túc xá, miễn
+    # giảm, etc.) AND a denylist substring is hit only because of a
+    # generic-language false match (e.g. "học phí" → "phí" in denylist
+    # via "kế toán" substring? No — but "học phí FPT" hits no denylist
+    # entry, "miễn giảm học phí" contains "hoc phi" which is itself
+    # admitted via the new keyword), the layer MUST return False.
+    # The simplest robust rule: if a clear admission keyword is present,
+    # do NOT block. The OTHER-SCHOOL guard already blocks non-HUSC
+    # queries via a separate layer.
+    @classmethod
+    def _is_admission_intent_query(cls, query: str) -> bool:
+        if not query:
+            return False
+        folded = cls._fold_diacritics(query)
+        for kw in cls.ADMISSION_KEYWORDS:
+            if cls._fold_diacritics(kw) in folded:
+                return True
+        return False
+
+    # Denylist entries that are also legitimate admission-intent
+    # language — the major-scope layer MUST NOT block a query just
+    # because it contains one of these as a substring UNLESS a
+    # specific major phrase can be extracted. The current set covers:
+    #   - "kế toán" (Kế toán major) — appears inside "kế toán tiền học phí"
+    #     which IS a process question
+    #   - "dược" (Dược major) — appears inside "Hóa dược" (a HUSC major)
+    #     and "lệ phí" (admission fee)
+    #   - "phí" alone is NOT a denylist entry; the words are "học phí" /
+    #     "lệ phí" and they are admission keywords.
+    # Substring matching of denylist entries on the WHOLE query is a
+    # known footgun. The fix: when a denylist substring is hit, also
+    # try the extracted major phrase; if THAT phrase is in the
+    # allowlist, do NOT block.
     def _major_out_of_scope(self, query: str) -> bool:
         if not query:
             return False
         # "HUSC có những ngành nào?" / "Các ngành của HUSC?" — generic
         if self._GENERIC_NGANH_RX.search(query):
             return False
+        # Process / administrative admission questions that incidentally
+        # contain a denylist substring must NOT be blocked. Examples:
+        # "miễn giảm học phí thế nào?" (phí is generic, not a major);
+        # "chương trình đào tạo ngành Hóa dược?" (hóa → Hóa dược allow).
+        # The check: if the query is a process-style question (verb-
+        # dominated) AND no specific major is extracted, return False.
+        if self._is_process_verb_phrase(query) and not self._extract_major_phrase(query):
+            return False
+        # If the query is clearly an admission-intent question (one of
+        # the ADMISSION_KEYWORDS hits) AND no specific major phrase
+        # can be extracted, do NOT block. This stops generic
+        # admission-process queries like "ký túc xá có không?" from
+        # being mis-blocked by a denylist substring false positive.
+        # SAFETY: this ONLY short-circuits when no major phrase was
+        # extracted. "Ngành Kinh Tế điểm chuẩn?" extracts "Kinh Tế"
+        # so the admission-intent bypass is NOT taken — denylist
+        # still wins.
+        phrase_early = self._extract_major_phrase(query)
+        # SAFETY: the admission-intent bypass ONLY triggers when the
+        # extracted phrase is either None OR a known admission-language
+        # token (e.g. "ký túc xá", "miễn giảm"). A denylist phrase
+        # like "Kinh Tế" / "Luật" / "Y đa khoa" extracted as a major
+        # MUST NOT trigger the bypass — denylist must win.
+        if self._is_admission_intent_query(query):
+            if not phrase_early:
+                return False
+            if self._is_admission_language_phrase(phrase_early):
+                return False
         folded_q = self._fold_diacritics(query)
         if self._major_in_denylist(folded_q):
+            # If a denylist substring hits on the WHOLE query, check
+            # whether a specific major phrase can be extracted. If the
+            # extracted phrase is in the allowlist, do NOT block (this
+            # is the Hóa dược case). Otherwise block (this is the
+            # "Ngành Kinh Tế điểm chuẩn?" case — denylist substring
+            # matches and the extracted phrase "Kinh Tế" is itself in
+            # the denylist).
+            phrase = phrase_early
+            if phrase:
+                folded_phrase = self._fold_diacritics(phrase)
+                allowed = self._load_major_scope()
+                if self._major_in_allowlist(folded_phrase, allowed):
+                    return False
             return True
-        phrase = self._extract_major_phrase(query)
+        phrase = phrase_early
         if not phrase:
             return False
         folded_phrase = self._fold_diacritics(phrase)
         if self._major_in_denylist(folded_phrase):
+            # Even when the extracted phrase hits the denylist, we must
+            # re-check the HUSC alias logic. The precheck() outer
+            # already short-circuits "HUSC + denylist" but to be safe
+            # at this layer we just return True; the outer layer will
+            # then bypass it if the query is "HUSC <denylist>".
             return True
         allowed = self._load_major_scope()
         if not self._major_in_allowlist(folded_phrase, allowed):

@@ -51,7 +51,8 @@ CODES_PATH = _RAG_ROOT / "data" / "major_codes" / "2026.json"
 # minimal and conservative — only the highest-value aliases that catch
 # real user phrasing.
 ALIAS_TEMPLATES = {
-    "vật lý": ["vật lý", "vat ly", "vat ly hoc"],
+    "vật lý học": ["vật lý", "vat ly", "vat ly hoc"],
+    "vật lý học - công nghệ bán dẫn": ["vat ly hoc ban dan", "cong nghe ban dan sc", "bán dẫn sc", "ban dan sc"],
     "công nghệ bán dẫn": ["công nghệ bán dẫn", "cong nghe ban dan", "bán dẫn", "ban dan", "ctdt bán dẫn"],
     "công nghệ thông tin": ["cntt", "cong nghe thong tin", "công nghệ thông tin", "it"],
     "công nghệ thông tin - ctđt cử nhân việt-nhật": ["cntt việt nhật", "cntt viet nhat", "cntt vn"],
@@ -60,24 +61,27 @@ ALIAS_TEMPLATES = {
     "7460108": ["khdl", "khoa hoc du lieu", "khoa học dữ liệu", "data science", "khoa hoc du", "hoc du lieu"],
     "kỹ thuật phần mềm": ["ktpm", "ky thuat phan mem", "kỹ thuật phần mềm"],
     "công nghệ sinh học": ["sinh học", "cong nghe sinh hoc", "sinh hoc", "cnsh"],
-    "khoa học môi trường": ["khmt", "khoa hoc moi truong", "môi trường"],
+    "sinh học ứng dụng": ["sinh hoc ung dung", "shud"],
+    "khoa học môi trường": ["khoa hoc moi truong", "môi trường", "moi truong", "mt"],
     "hóa học": ["hoa hoc", "hóa học"],
     "hóa dược": ["hoa duoc", "hóa dược"],
-    "toán học": ["toan hoc", "toán", "toan"],
+    "vật lý": ["vat ly", "vật lý"],
+    "toán học": ["toan hoc", "toán học", "toan", "toán"],
     "toán ứng dụng": ["toan ung dung", "toán ứng dụng"],
-    "kiến trúc": ["kien truc", "kiến trúc"],
+    "toán-tin": ["toan tin", "toán tin"],
+    "kiến trúc": ["kien truc", "kiến trúc", "kt"],
     "địa kỹ thuật xây dựng": ["dia ky thuat xay dung", "địa kỹ thuật"],
     "kỹ thuật trắc địa - bản đồ": ["trac dia ban do", "trắc địa bản đồ"],
     "cnkt điện tử - viễn thông": ["điện tử viễn thông", "dien tu vien thong", "cnkt dtvt"],
     "cnkt hóa học": ["cnkt hoa hoc", "công nghệ kỹ thuật hóa học"],
     "triết học": ["triet hoc", "triết học"],
     "lịch sử": ["lich su", "lịch sử"],
-    "văn học": ["van hoc", "văn học", "văn"],
+    "văn học": ["van hoc", "văn học"],
     "quản lý văn hóa": ["quan ly van hoa", "qlvh"],
     "quản lý nhà nước": ["qlnn", "quan ly nha nuoc"],
     "xã hội học": ["xa hoi hoc", "xhh"],
     "đông phương học": ["dong phuong hoc", "đông phương học"],
-    "đông nam á học": ["dong nam a hoc", "đông nam á"],
+    "đông nam á học": ["dong nam a hoc", "đông nam á học"],
     "báo chí": ["bao chi", "báo chí", "journalism"],
     "truyền thông số": ["truyen thong so", "truyền thông số", "digital media"],
     "truyền thông đa phương tiện": ["truyen thong da phuong tien", "multimedia"],
@@ -89,6 +93,7 @@ ALIAS_TEMPLATES = {
     "quản lý tài nguyên và môi trường": ["qltnmt", "quan ly tai nguyen va moi truong"],
     "quản lý an toàn, sức khỏe và môi trường": ["qlasm", "an toàn sức khỏe môi trường"],
     "y sinh": ["y sinh", "biomedical"],
+    "vi mạch tích hợp": ["vi mach tich hop", "vi mach"],
     "7460108": ["khdl", "khoa hoc du lieu", "khoa học dữ liệu", "data science"],
 }
 
@@ -129,13 +134,41 @@ def _load_codes_only_majors() -> List[dict]:
     except Exception:
         return []
     tuition = {m.get("ma_nganh") for m in _load_tuition_majors()}
+    # Canonical friendly-name map for codes that exist in 2026.json but
+    # for which the tuition file has NO entry (the tuition file is the
+    # source of truth for names when present). When the tuition file is
+    # missing/empty for a code, the script used to fall back to writing
+    # ``ten == code`` which is the data-quality bug we're hardening
+    # against. This map mirrors the comment block in ``WHITELIST_2026``
+    # so future regens never reintroduce code-as-name.
+    _CODE_TO_NAME = {
+        "7420101": "Công nghệ sinh học",
+        "7420203": "Sinh học ứng dụng",
+        "7440101": "Vật lý",
+        "7440102SC": "Vật lý học - Công nghệ bán dẫn",
+        "7440113": "Hóa dược",
+        "7460101": "Toán học",
+        "7460108": "Khoa học dữ liệu",
+        "7460109": "Toán ứng dụng",
+        "7460112": "Toán-Tin",
+        "7480101": "Khoa học máy tính",
+        "7480104": "Hệ thống thông tin",
+        "7220213": "Đông Nam Á học",
+        "7310201": "Triết học",
+        "7310401": "Tâm lý học",
+        "7320104": "Truyền thông đa phương tiện",
+        "7320201": "Đông phương học",
+        "7510302IC": "Vi mạch tích hợp",
+        "7720601": "Y sinh",
+    }
     out: List[dict] = []
     for code in data.get("codes", []):
         if not isinstance(code, str) or not is_well_formed_major_code(code):
             continue
         if code in tuition:
             continue
-        out.append({"ma_nganh": code, "ten": code})  # fallback name = code
+        friendly = _CODE_TO_NAME.get(code, code)
+        out.append({"ma_nganh": code, "ten": friendly})
     return out
 
 

@@ -36,9 +36,10 @@
       "ma_nganh": "7440301",
       "ten": "Khoa học môi trường",
       "aliases": [
-        "khmt",
         "khoa hoc moi truong",
-        "môi trường"
+        "môi trường",
+        "moi truong",
+        "mt"
       ]
     },
     {
@@ -64,10 +65,9 @@
       "ma_nganh": "7480201VJ",
       "ten": "Công nghệ thông tin - CTĐT Cử nhân Việt-Nhật",
       "aliases": [
-        "cntt",
-        "cong nghe thong tin",
-        "công nghệ thông tin",
-        "it"
+        "cntt viet nhat",
+        "cntt vn",
+        "cong nghe thong tin viet nhat"
       ]
     },
     {
@@ -83,8 +83,8 @@
       "ma_nganh": "7510401",
       "ten": "CNKT hóa học",
       "aliases": [
-        "hoa hoc",
-        "hóa học"
+        "cnkt hoa hoc",
+        "công nghệ kỹ thuật hóa học"
       ]
     },
     {
@@ -100,7 +100,8 @@
       "ten": "Kiến trúc",
       "aliases": [
         "kien truc",
-        "kiến trúc"
+        "kiến trúc",
+        "kt"
       ]
     },
     {
@@ -140,8 +141,7 @@
       "ten": "Văn học",
       "aliases": [
         "van hoc",
-        "văn học",
-        "văn"
+        "văn học"
       ]
     },
     {
@@ -221,37 +221,55 @@
     },
     {
       "ma_nganh": "7420101",
-      "ten": "7420101",
-      "aliases": []
+      "ten": "Công nghệ sinh học",
+      "aliases": [
+        "cong nghe sinh hoc cn",
+        "sinh học ứng dụng"
+      ]
     },
     {
       "ma_nganh": "7420203",
-      "ten": "7420203",
-      "aliases": []
+      "ten": "Sinh học ứng dụng",
+      "aliases": [
+        "sinh hoc ung dung",
+        "shud"
+      ]
     },
     {
       "ma_nganh": "7440101",
-      "ten": "7440101",
-      "aliases": []
+      "ten": "Vật lý",
+      "aliases": [
+        "vat ly cn"
+      ]
     },
     {
       "ma_nganh": "7440102SC",
-      "ten": "7440102SC",
-      "aliases": []
+      "ten": "Vật lý học - Công nghệ bán dẫn",
+      "aliases": [
+        "vat ly hoc ban dan",
+        "cong nghe ban dan sc",
+        "bán dẫn sc"
+      ]
     },
     {
       "ma_nganh": "7440113",
-      "ten": "7440113",
-      "aliases": []
+      "ten": "Hóa dược",
+      "aliases": [
+        "hoa duoc",
+        "hóa dược"
+      ]
     },
     {
       "ma_nganh": "7460101",
-      "ten": "7460101",
-      "aliases": []
+      "ten": "Toán học",
+      "aliases": [
+        "toan hoc",
+        "toán học"
+      ]
     },
     {
       "ma_nganh": "7460108",
-      "ten": "7460108",
+      "ten": "Khoa học dữ liệu",
       "aliases": [
         "khdl",
         "khoa hoc du lieu",
@@ -261,58 +279,92 @@
     },
     {
       "ma_nganh": "7460109",
-      "ten": "7460109",
-      "aliases": []
+      "ten": "Toán ứng dụng",
+      "aliases": [
+        "toan ung dung",
+        "toán ứng dụng"
+      ]
     },
     {
       "ma_nganh": "7460112",
-      "ten": "7460112",
-      "aliases": []
+      "ten": "Toán-Tin",
+      "aliases": [
+        "toan tin",
+        "toán tin"
+      ]
     },
     {
       "ma_nganh": "7480101",
-      "ten": "7480101",
-      "aliases": []
+      "ten": "Khoa học máy tính",
+      "aliases": [
+        "khmt",
+        "khoa hoc may tinh",
+        "computer science"
+      ]
     },
     {
       "ma_nganh": "7480104",
-      "ten": "7480104",
-      "aliases": []
+      "ten": "Hệ thống thông tin",
+      "aliases": [
+        "httt",
+        "he thong thong tin",
+        "information systems"
+      ]
     },
     {
       "ma_nganh": "7220213",
-      "ten": "7220213",
-      "aliases": []
+      "ten": "Đông Nam Á học",
+      "aliases": [
+        "dong nam a hoc",
+        "đông nam á học"
+      ]
     },
     {
       "ma_nganh": "7310201",
-      "ten": "7310201",
-      "aliases": []
+      "ten": "Triết học",
+      "aliases": [
+        "triet hoc cn"
+      ]
     },
     {
       "ma_nganh": "7310401",
-      "ten": "7310401",
-      "aliases": []
+      "ten": "Tâm lý học",
+      "aliases": [
+        "tam ly hoc",
+        "tâm lý học"
+      ]
     },
     {
       "ma_nganh": "7320104",
-      "ten": "7320104",
-      "aliases": []
+      "ten": "Truyền thông đa phương tiện",
+      "aliases": [
+        "truyen thong da phuong tien",
+        "multimedia"
+      ]
     },
     {
       "ma_nganh": "7320201",
-      "ten": "7320201",
-      "aliases": []
+      "ten": "Đông phương học",
+      "aliases": [
+        "dong phuong hoc cn"
+      ]
     },
     {
       "ma_nganh": "7510302IC",
-      "ten": "7510302IC",
-      "aliases": []
+      "ten": "Vi mạch tích hợp",
+      "aliases": [
+        "vi mach tich hop",
+        "vi mach",
+        "ic"
+      ]
     },
     {
       "ma_nganh": "7720601",
-      "ten": "7720601",
-      "aliases": []
+      "ten": "Y sinh",
+      "aliases": [
+        "y sinh",
+        "biomedical"
+      ]
     }
   ]
 }
