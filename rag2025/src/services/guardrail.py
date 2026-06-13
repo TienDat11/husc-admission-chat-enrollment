@@ -23,9 +23,46 @@ class GuardrailDecision:
 
 
 class GuardrailService:
+    # ADMISSION_KEYWORDS drives the deterministic fast-path. It is intentionally
+    # generic so legitimate HUSC questions short-circuit without an LLM call.
+    # The fast-path is disabled when the query names a DIFFERENT school and
+    # does NOT mention HUSC — those cases fall through to the LLM (which is
+    # now anchored to HUSC-only) so we don't blanket-allow other-university
+    # queries just because they contain words like "điểm chuẩn" or "học phí".
     ADMISSION_KEYWORDS = [
         "tuyển sinh", "điểm chuẩn", "học phí", "ngành", "tổ hợp", "xét tuyển",
         "husc", "đại học khoa học huế", "chỉ tiêu", "học bổng", "hồ sơ",
+    ]
+
+    # Markers of OTHER universities/institutions. If ANY of these appears in
+    # the query AND no HUSC alias is present, we MUST NOT take the keyword
+    # fast-path — the LLM needs to see it and (with the hardened prompt) block.
+    # "đại học huế" / "đh huế" is the PARENT of HUSC; treated as OTHER only
+    # when NOT co-mentioned with a HUSC alias (handled in _mentions_other_school).
+    OTHER_SCHOOL_MARKERS = [
+        "bách khoa", "bach khoa",
+        "fpt",
+        "y hà nội", "y ha noi", "y dược", "y duoc",
+        "ngoại thương", "ngoai thuong",
+        "kinh tế quốc dân", "kinh te quoc dan",
+        "tôn đức thắng", "ton duc thang",
+        "rmit",
+        "uel",
+        "ueh",
+        "đh huế", "dh hue",
+    ]
+
+    # Aliases for HUSC. If any of these appears in the query, the
+    # "other-school" guard is bypassed — the query is treated as HUSC-related.
+    HUSC_ALIASES = [
+        "husc",
+        "đại học khoa học huế",
+        "dai hoc khoa hoc hue",
+        "khoa học huế",
+        "khoa hoc hue",
+        "trường đại học khoa học",
+        "truong dai hoc khoa hoc",
+        "trường khoa học",
     ]
 
     PII_KEYWORDS = [
@@ -48,6 +85,21 @@ class GuardrailService:
     def _looks_admission_related(self, query: str) -> bool:
         q = query.lower()
         return any(k in q for k in self.ADMISSION_KEYWORDS)
+
+    def _mentions_husc(self, query: str) -> bool:
+        """Return True iff the query references HUSC (or any of its aliases)."""
+        q = query.lower()
+        return any(alias in q for alias in self.HUSC_ALIASES)
+
+    def _mentions_other_school(self, query: str) -> bool:
+        """Return True iff the query names a DIFFERENT university AND does NOT
+        mention HUSC. The keyword fast-path must NOT short-circuit such queries
+        — the LLM (with the hardened prompt) is the only safe way to block them.
+        """
+        q = query.lower()
+        if self._mentions_husc(q):
+            return False
+        return any(marker in q for marker in self.OTHER_SCHOOL_MARKERS)
 
     def _redirect_answer(self) -> str:
         return (
@@ -81,16 +133,21 @@ class GuardrailService:
                 pii_detected=True,
             )
 
-        if self._looks_admission_related(query):
+        if self._looks_admission_related(query) and not self._mentions_other_school(query):
             return GuardrailDecision(True, "SUCCESS", "in_scope_keyword", "")
 
         if self._client is None:
             return GuardrailDecision(False, "NOT_IN_HUSC_SCOPE", "out_of_scope_heuristic", self._redirect_answer())
 
         prompt = (
-            "Bạn là bộ lọc truy vấn cho chatbot tuyển sinh HUSC. "
-            "Phân loại câu hỏi thuộc phạm vi tuyển sinh HUSC hay không. "
-            "Trả về JSON: {\"is_in_scope\": boolean, \"reason\": string}."
+            "Bạn là bộ lọc truy vấn cho chatbot tuyển sinh của Trường Đại học Khoa học (HUSC) — Đại học Huế. "
+            "Bot CHỈ trả lời các câu hỏi TUYỂN SINH của HUSC (ngành, điểm chuẩn, học phí, tổ hợp xét tuyển, hồ sơ, học bổng, chỉ tiêu, chương trình đào tạo, so sánh ngành...). "
+            "Câu hỏi về trường KHÁC (Bách Khoa, FPT, Y Hà Nội, Ngoại thương, Kinh tế Quốc dân, Tôn Đức Thắng, RMIT, UEH, UEL, Y Dược Huế, ĐH Huế đứng riêng không kèm HUSC...) là NGOÀI PHẠM VI. "
+            "NGOẠI LỆ: nếu câu hỏi SO SÁNH trường khác với HUSC, hoặc hỏi về quan hệ/khác biệt giữa trường khác với HUSC, thì VẪN TRONG PHẠM VI (HUSC là chủ thể so sánh). "
+            "HUSC có tên đầy đủ: Trường Đại học Khoa học — Đại học Huế (cũng gọi 'Đại học Khoa học Huế', 'Khoa học Huế', 'Trường Khoa học'). Mọi ngành HUSC (kể cả ngành mới 2026) đều hợp lệ. "
+            "Trả về JSON: {\"is_in_scope\": bool, \"reason\": str}. "
+            "Ví dụ in_scope: 'Học phí ngành CNTT HUSC?'; 'HUSC so với Bách Khoa ngành CNTT cái nào tốt hơn?'; 'Vật lý học - Công nghệ bán dẫn HUSC có gì hay?'; 'Đại học Huế khác HUSC như thế nào?'. "
+            "Ví dụ out_of_scope: 'Điểm chuẩn ĐH Bách Khoa Hà Nội 2026?'; 'Học phí ĐH FPT?'; 'Trường FPT có những ngành gì?'; 'ĐH Y Hà Nội xét tuyển thế nào?'; 'Điểm chuẩn Đại học Huế Y Dược?'."
         )
 
         try:
