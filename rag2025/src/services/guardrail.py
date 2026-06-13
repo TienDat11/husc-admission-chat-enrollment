@@ -35,6 +35,7 @@ class GuardrailService:
     ADMISSION_KEYWORDS = [
         "tuyển sinh", "điểm chuẩn", "học phí", "ngành", "tổ hợp", "xét tuyển",
         "husc", "đại học khoa học huế", "chỉ tiêu", "học bổng", "hồ sơ",
+        "đăng ký", "đăng kí", "nhập học", "thủ tục", "nộp hồ sơ",
     ]
 
     # Markers of OTHER universities/institutions. If ANY of these appears in
@@ -371,8 +372,7 @@ class GuardrailService:
         r"(?:điểm chuẩn|diem chuan|học phí|hoc phi|"
         r"xét tuyển|xet tuyen|tổ hợp|to hop|chỉ tiêu|chi tieu|"
         r"tuyển sinh|tuyen sinh|học bổng|hoc bong|chương trình|chuong trinh|"
-        r"ngành|nganh|mã ngành|ma nganh|có gì|co gi|thế nào|the nao|"
-        r"ra sao|thông tin|thong tin)",
+        r"ngành|nganh|mã ngành|ma nganh|thông tin|thong tin)",
         re.IGNORECASE,
     )
 
@@ -404,6 +404,35 @@ class GuardrailService:
         tokens = [t for t in re.split(r"[\s,;:/()\-]+", folded) if t]
         return any(len(t) >= 3 for t in tokens)
 
+    # Process-verbs that signal a procedure / admission-process question,
+    # NOT a question about a specific major. Used by _extract_major_phrase
+    # to bail out before wrongly classifying the verb-phrase as a major.
+    _PROCESS_VERB_PATTERNS = (
+        r"\b(?:đăng\s*k[ýy]|dang\s*ky|dang\s*ki)\b",
+        r"\b(?:đăng\s*k[íi]|dang\s*ki)\b",
+        r"\bnh[ậa]p\s*h[ọo]c\b",
+        r"\bth[ủu]\s*t[ụu]c\b",
+        r"\bn[ộo]p\s*h[ồo]\s*s[ơo]\b",
+        r"\bx[eé]t\s*tuy[ểe]n\b",
+        r"\b(?:l[àa]m\s*sao|c[aá]ch)\b",
+        r"\b(?:th[ủu]e|thue)\b",
+    )
+    _PROCESS_VERB_RX = re.compile(
+        r"(?:" + "|".join(_PROCESS_VERB_PATTERNS) + r")",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _is_process_verb_phrase(cls, query: str) -> bool:
+        """Return True if the query is dominated by process-verbs
+        (đăng ký, nhập học, thủ tục, nộp hồ sơ, làm sao, cách, etc.).
+        Such queries are admission-process questions, NOT major-scope
+        questions, and must never be misclassified as a major.
+        """
+        if not query:
+            return False
+        return cls._PROCESS_VERB_RX.search(query) is not None
+
     def _is_generic_question_phrase(self, phrase: str) -> bool:
         folded = self._fold_diacritics(phrase)
         if folded in self._MAJOR_PHRASE_BLOCKLIST:
@@ -422,6 +451,15 @@ class GuardrailService:
         if not query:
             return None
         q = query.strip()
+        # Process-verb guard: queries dominated by admission-process verbs
+        # (đăng ký, nhập học, thủ tục, nộp hồ sơ, xét tuyển, làm sao, cách)
+        # are NOT major-scope queries, even if a major-scope tail word
+        # like "xét tuyển" / "tuyển sinh" is present. Bail out early so
+        # Pattern 2/4 below does NOT back-track and grab the verb phrase
+        # as a fake major name. The query then falls through to the
+        # keyword fast-path (or LLM) for an in-scope verdict.
+        if self._is_process_verb_phrase(q):
+            return None
         # Pattern 1: "ngành <X>" / "nganh <X>"
         m = re.search(r"\b(?:ngành|nganh)\s+([A-Za-zÀ-ỹĐđ\-\s]{3,})", q, re.IGNORECASE)
         if m:
