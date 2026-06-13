@@ -231,6 +231,11 @@ app.add_middleware(
 from routers.meta import router as meta_router
 app.include_router(meta_router)
 
+# Mount the /v2 deterministic recommender router (PHASE-A4). Pure-arithmetic;
+# NO LLM, NO network, single-digit ms — see routers/recommender.py.
+from routers.recommender import router as recommender_router
+app.include_router(recommender_router)
+
 
 # ========== API Models ==========
 

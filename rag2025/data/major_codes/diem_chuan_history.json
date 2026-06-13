@@ -1,0 +1,702 @@
+{
+  "_meta": {
+    "schema": "phase_a_v1",
+    "generated_at": "2026-06-13T09:50:09Z",
+    "sources": [
+      {
+        "file": "diem_chuan_2025_full.html",
+        "year": 2025,
+        "method": "thi_thpt",
+        "emitted": 52,
+        "skipped": 0
+      },
+      {
+        "file": "diem_chuan_2024_thi.html",
+        "year": 2024,
+        "method": "thi_thpt",
+        "emitted": 0,
+        "skipped": 1
+      },
+      {
+        "file": "diem_chuan_2024_hb.html",
+        "year": 2024,
+        "method": "hoc_ba",
+        "emitted": 0,
+        "skipped": 1
+      }
+    ],
+    "whitelist_size": 35,
+    "skipped_count": 20,
+    "note": "2024 HTML files contain only an <img> of the table (no parseable HTML rows). 2025 is the only year with tabular data; the recommender falls back to a single-year view (still honest, basis+disclaimer surface it).",
+    "skipped": [
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7220104",
+        "name": "Hán - Nôm",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7220104",
+        "name": "Hán - Nôm",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7229001",
+        "name": "Triết học",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7229001",
+        "name": "Triết học",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7229042",
+        "name": "Quản lý văn hóa",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7229042",
+        "name": "Quản lý văn hóa",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7310608",
+        "name": "Đông phương học",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7310608",
+        "name": "Đông phương học",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7480107TD",
+        "name": "Quản trị và phân tích dữ liệu",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7480107TD",
+        "name": "Quản trị và phân tích dữ liệu",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7580101",
+        "name": "Kiến trúc",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7580101",
+        "name": "Kiến trúc",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7760101",
+        "name": "Công tác xã hội",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7760101",
+        "name": "Công tác xã hội",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7850101",
+        "name": "Quản lý tài nguyên và môi trường",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7850101",
+        "name": "Quản lý tài nguyên và môi trường",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7850105",
+        "name": "Quản lý an toàn, sức khỏe và môi trường",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "not_in_2026_whitelist",
+        "code": "7850105",
+        "name": "Quản lý an toàn, sức khỏe và môi trường",
+        "year": 2025,
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "no_tabular_data",
+        "detail": "2024 file contains only an <img> of the table; not parseable as HTML",
+        "method": "thi_thpt"
+      },
+      {
+        "reason": "no_tabular_data",
+        "detail": "2024 file contains only an <img> of the table; not parseable as HTML",
+        "method": "hoc_ba"
+      }
+    ]
+  },
+  "entries": [
+    {
+      "major_code": "7229010",
+      "major_name": "Lịch sử",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "C03"
+      ],
+      "diem_chuan": 23.5,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 3
+    },
+    {
+      "major_code": "7229010",
+      "major_name": "Lịch sử",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "C03"
+      ],
+      "diem_chuan": 22.0,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 3
+    },
+    {
+      "major_code": "7229030",
+      "major_name": "Văn học",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "diem_chuan": 23.5,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 4
+    },
+    {
+      "major_code": "7229030",
+      "major_name": "Văn học",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "diem_chuan": 22.0,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 4
+    },
+    {
+      "major_code": "7310205",
+      "major_name": "Quản lý nhà nước",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "A00",
+        "X78",
+        "D66",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "diem_chuan": 18.16,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 6
+    },
+    {
+      "major_code": "7310205",
+      "major_name": "Quản lý nhà nước",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "A00",
+        "X78",
+        "D66",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "diem_chuan": 15.5,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 6
+    },
+    {
+      "major_code": "7310301",
+      "major_name": "Xã hội học",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "diem_chuan": 18.16,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 7
+    },
+    {
+      "major_code": "7310301",
+      "major_name": "Xã hội học",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "diem_chuan": 15.5,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 7
+    },
+    {
+      "major_code": "7320101",
+      "major_name": "Báo chí",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "C00",
+        "C03",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "diem_chuan": 21.37,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 9
+    },
+    {
+      "major_code": "7320101",
+      "major_name": "Báo chí",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "C00",
+        "C03",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "diem_chuan": 19.0,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 9
+    },
+    {
+      "major_code": "7320111",
+      "major_name": "Truyền thông số",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "C00",
+        "C03",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "diem_chuan": 22.5,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 10
+    },
+    {
+      "major_code": "7320111",
+      "major_name": "Truyền thông số",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "C00",
+        "C03",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "diem_chuan": 20.0,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 10
+    },
+    {
+      "major_code": "7420201",
+      "major_name": "Công nghệ sinh học",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "B00",
+        "A02",
+        "B08",
+        "B03"
+      ],
+      "diem_chuan": 19.13,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 11
+    },
+    {
+      "major_code": "7420201",
+      "major_name": "Công nghệ sinh học",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "B00",
+        "A02",
+        "B08",
+        "B03"
+      ],
+      "diem_chuan": 17.0,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 11
+    },
+    {
+      "major_code": "7440102",
+      "major_name": "Vật lý học",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "A00",
+        "C01",
+        "A01",
+        "X06"
+      ],
+      "diem_chuan": 18.3,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 12
+    },
+    {
+      "major_code": "7440102",
+      "major_name": "Vật lý học",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "A00",
+        "C01",
+        "A01",
+        "X06"
+      ],
+      "diem_chuan": 16.0,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 12
+    },
+    {
+      "major_code": "7440112",
+      "major_name": "Hóa học",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "A00",
+        "B00",
+        "D07",
+        "C02"
+      ],
+      "diem_chuan": 18.3,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 13
+    },
+    {
+      "major_code": "7440112",
+      "major_name": "Hóa học",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "A00",
+        "B00",
+        "D07",
+        "C02"
+      ],
+      "diem_chuan": 16.0,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 13
+    },
+    {
+      "major_code": "7440301",
+      "major_name": "Khoa học môi trường",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "A00",
+        "B00",
+        "D10",
+        "X01",
+        "C14"
+      ],
+      "diem_chuan": 18.0,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 14
+    },
+    {
+      "major_code": "7440301",
+      "major_name": "Khoa học môi trường",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "A00",
+        "B00",
+        "D10",
+        "X01",
+        "C14"
+      ],
+      "diem_chuan": 15.0,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 14
+    },
+    {
+      "major_code": "7480103",
+      "major_name": "Kỹ thuật phần mềm",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "A00",
+        "A01",
+        "D01",
+        "X26"
+      ],
+      "diem_chuan": 19.69,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 15
+    },
+    {
+      "major_code": "7480103",
+      "major_name": "Kỹ thuật phần mềm",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "A00",
+        "A01",
+        "D01",
+        "X26"
+      ],
+      "diem_chuan": 17.5,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 15
+    },
+    {
+      "major_code": "7480201",
+      "major_name": "Công nghệ thông tin",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "A00",
+        "A01",
+        "D01",
+        "X26"
+      ],
+      "diem_chuan": 19.69,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 17
+    },
+    {
+      "major_code": "7480201",
+      "major_name": "Công nghệ thông tin",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "A00",
+        "A01",
+        "D01",
+        "X26"
+      ],
+      "diem_chuan": 17.5,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 17
+    },
+    {
+      "major_code": "7480201VJ",
+      "major_name": "Công nghệ thông tin - CTĐT Cử nhân Việt-Nhật",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "A00",
+        "A01",
+        "D01",
+        "X26"
+      ],
+      "diem_chuan": 19.97,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 18
+    },
+    {
+      "major_code": "7480201VJ",
+      "major_name": "Công nghệ thông tin - CTĐT Cử nhân Việt-Nhật",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "A00",
+        "A01",
+        "D01",
+        "X26"
+      ],
+      "diem_chuan": 17.75,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 18
+    },
+    {
+      "major_code": "7510302",
+      "major_name": "CNKT điện tử - viễn thông",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "A00",
+        "A01",
+        "C01",
+        "X06"
+      ],
+      "diem_chuan": 19.69,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 19
+    },
+    {
+      "major_code": "7510302",
+      "major_name": "CNKT điện tử - viễn thông",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "A00",
+        "A01",
+        "C01",
+        "X06"
+      ],
+      "diem_chuan": 17.5,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 19
+    },
+    {
+      "major_code": "7510401",
+      "major_name": "CNKT hóa học",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "A00",
+        "B00",
+        "D07",
+        "C02"
+      ],
+      "diem_chuan": 19.13,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 20
+    },
+    {
+      "major_code": "7510401",
+      "major_name": "CNKT hóa học",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "A00",
+        "B00",
+        "D07",
+        "C02"
+      ],
+      "diem_chuan": 17.0,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 20
+    },
+    {
+      "major_code": "7520503",
+      "major_name": "Kỹ thuật trắc địa - bản đồ",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "D01",
+        "X25",
+        "D84",
+        "A04",
+        "C01"
+      ],
+      "diem_chuan": 18.16,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 21
+    },
+    {
+      "major_code": "7520503",
+      "major_name": "Kỹ thuật trắc địa - bản đồ",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "D01",
+        "X25",
+        "D84",
+        "A04",
+        "C01"
+      ],
+      "diem_chuan": 15.5,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 21
+    },
+    {
+      "major_code": "7580211",
+      "major_name": "Địa kỹ thuật xây dựng",
+      "year": 2025,
+      "method": "hoc_ba",
+      "to_hop": [
+        "D01",
+        "X25",
+        "D84",
+        "A04",
+        "C02"
+      ],
+      "diem_chuan": 18.16,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 23
+    },
+    {
+      "major_code": "7580211",
+      "major_name": "Địa kỹ thuật xây dựng",
+      "year": 2025,
+      "method": "thi_thpt",
+      "to_hop": [
+        "D01",
+        "X25",
+        "D84",
+        "A04",
+        "C02"
+      ],
+      "diem_chuan": 15.5,
+      "_source_file": "diem_chuan_2025_full.html",
+      "_row_index": 23
+    }
+  ]
+}
