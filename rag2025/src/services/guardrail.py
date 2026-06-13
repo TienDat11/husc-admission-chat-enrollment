@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
-from typing import List, Optional
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import List, Optional, Set, Tuple
 
 from groq import AsyncGroq
 from loguru import logger
@@ -75,12 +78,244 @@ class GuardrailService:
         "citizen_id": re.compile(r"\b\d{12}\b"),
     }
 
+    # ------------------------------------------------------------------
+    # Major-scope guardrail (S19 — block admission questions about majors
+    # HUSC does NOT offer, deterministically, before retrieval / before
+    # the LLM call).
+    #
+    # Design: hybrid positive allowlist + small negative denylist.
+    # The POSITIVE allowlist is loaded DYNAMICALLY from
+    # ``data/major_codes/husc_majors_current.json`` (overwritable by a
+    # crawler), with mtime-based reload. The NEGATIVE denylist is a
+    # small hardcoded set of field keywords HUSC has NEVER taught. We
+    # block only when (a) a denylist field is named, OR (b) a "ngành
+    # <X>" / "<X> điểm chuẩn" pattern names X that is not in the
+    # allowlist AND X looks like a real major name (≥1 field word).
+    # We DO NOT block generic admission questions that name no specific
+    # major — those fall through to the existing keyword / LLM path.
+    # ------------------------------------------------------------------
+
+    # Hard-coded denylist — HUSC has NEVER offered these fields.
+    # Cross-checked against husc_tuition_2026_official.json +
+    # WHITELIST_2026 in major_code_validator.py:
+    #   REMOVED from this list because HUSC ACTUALLY offers them:
+    #     - "toán" / "toán học" / "toán ứng dụng" — kept allowlist
+    #     - "hóa học" — kept allowlist
+    #     - "hóa dược" — kept allowlist (HUSC offers Hóa dược 7440113)
+    #     - "sinh học" / "công nghệ sinh học" — kept allowlist
+    #     - "môi trường" / "khoa học môi trường" — kept allowlist
+    #     - "cntt" / "công nghệ thông tin" / "phần mềm" — kept allowlist
+    #     - "xây dựng" (Địa kỹ thuật xây dựng) — kept allowlist
+    #     - "kiến trúc" — kept allowlist
+    #     - "triết học" / "lịch sử" / "văn học" — kept allowlist
+    #     - "báo chí" / "truyền thông" — kept allowlist
+    #     - "tâm lý" / "tâm lý học" — kept allowlist
+    #     - "xã hội học" / "công tác xã hội" — kept allowlist
+    #   KEPT in denylist (HUSC has never offered these):
+    #     - Kinh tế, Luật, Y, Y khoa, Y đa khoa, Dược (as a major — HUSC
+    #       only has "Hóa dược" 7440113, a chemistry sub-discipline, not
+    #       the pharmacy degree), Răng hàm mặt, Sư phạm, Điều dưỡng,
+    #       Bách khoa (as a major), Tài chính ngân hàng, Kế toán, Quản
+    #       trị kinh doanh, Marketing, Logistics, Ngôn ngữ Anh / Trung /
+    #       Nhật (as standalone majors — HUSC teaches these only as
+    #       modules / optional credits, not as full majors), Du lịch,
+    #       Quản trị khách sạn, Nhà hàng khách sạn, Quản trị nhân lực.
+    MAJOR_DENYLIST = [
+        # Economics / Business
+        "kinh tế", "kinh te", "kinh tế học", "tài chính", "tài chính ngân hàng",
+        "kế toán", "ke toan", "kiểm toán", "quản trị kinh doanh", "qtkt",
+        "marketing", "thương mại", "thuong mai", "logistics", "logistic",
+        "quản trị nhân lực", "quản trị nhân sự", "quản trị khách sạn",
+        "nhà hàng khách sạn", "du lịch", "du lich", "quản trị dịch vụ du lịch",
+        "quản trị sự kiện",
+        # Law
+        "luật", "luat", "luật học", "luật kinh tế", "luật dân sự",
+        # Medicine / Pharmacy (HUSC only has Hóa dược — chemistry subfield)
+        "y khoa", "y da khoa", "đa khoa", "y đa khoa", "bác sĩ", "bac si",
+        "răng hàm mặt", "rang ham mat", "nha khoa", "điều dưỡng", "dieu duong",
+        "hộ sinh", "ho sinh", "dược", "duoc", "dược học", "duoc hoc",
+        "kỹ thuật y học", "ky thuat y hoc", "y tế công cộng", "yte cong cong",
+        # Education
+        "sư phạm", "su pham", "giáo dục", "giao duc", "giáo viên", "giao vien",
+        # Engineering-as-school (HUSC has individual engineering majors but
+        # is NOT the polytechnic "ĐH Bách Khoa" itself). We do NOT include
+        # bare "bach khoa" here — that's the school name handled by
+        # _mentions_other_school, not a major HUSC doesn't offer.
+        "đại học bách khoa", "dh bach khoa", "dai hoc bach khoa",
+        "trường bách khoa", "truong bach khoa", "bách khoa hà nội", "bach khoa ha noi",
+        # Foreign-language standalone majors (HUSC teaches languages only as
+        # modules, not as full majors)
+        "ngôn ngữ anh", "ngon ngu anh", "tiếng anh", "tieng anh",
+        "ngôn ngữ trung", "ngon ngu trung", "tiếng trung", "tieng trung",
+        "ngôn ngữ nhật", "ngon ngu nhat", "tiếng nhật", "tieng nhat",
+        "ngôn ngữ hàn", "ngon ngu han", "tiếng hàn", "tieng han",
+        "ngôn ngữ pháp", "ngon ngu phap", "tiếng pháp", "tieng phap",
+        "ngôn ngữ nga", "ngon ngu nga", "tiếng nga", "tieng nga",
+        "ngôn ngữ đức", "ngon ngu duc", "tiếng đức", "tieng duc",
+        "ngôn ngữ trung quốc", "tieng trung quoc",
+    ]
+
+    # Major-scope file (crawler-updatable).
+    MAJOR_SCOPE_FILE = (
+        Path(__file__).resolve().parents[2]
+        / "data"
+        / "major_codes"
+        / "husc_majors_current.json"
+    )
+    # Fallback if the dynamic file is missing/corrupt: parse the canonical
+    # tuition JSON (which is the source of truth for the 2026 majors) so
+    # guardrail still works offline.
+    _MAJOR_FALLBACK_FILES = (
+        Path(__file__).resolve().parents[2]
+        / "data"
+        / "major_codes"
+        / "husc_tuition_2026_official.json",
+    )
+
+    # Cache (mtime -> (allowed_set, alias_to_canonical))
+    _SCOPE_MTIME: Optional[float] = None
+    _SCOPE_ALLOWED: Set[str] = set()
+    _SCOPE_PATH: Optional[Path] = None
+
     def __init__(self, settings: RAGSettings):
         self._settings = settings
         self._enabled = settings.GUARDRAIL_ENABLED
         self._groq_key = os.getenv("GROQ_API_KEY")
         self._client = AsyncGroq(api_key=self._groq_key) if self._groq_key else None
         self._model = settings.GUARDRAIL_MODEL
+        # Reset module-level cache so a fresh service gets the latest file.
+        self._reset_major_scope_cache()
+
+    @classmethod
+    def _reset_major_scope_cache(cls) -> None:
+        cls._SCOPE_MTIME = None
+        cls._SCOPE_ALLOWED = set()
+        cls._SCOPE_PATH = None
+
+    # ----- Diacritic folding + major-scope loader -----
+
+    @staticmethod
+    def _fold_diacritics(text: str) -> str:
+        """Lowercase + strip Vietnamese diacritics for fuzzy matching."""
+        if not isinstance(text, str):
+            return ""
+        nfkd = unicodedata.normalize("NFKD", text)
+        ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
+        return ascii_only.lower().strip()
+
+    @classmethod
+    def _seed_minimal_allowed(cls) -> Set[str]:
+        """Hard-coded minimum allowlist used as a last-resort seed when both
+        the dynamic file and the canonical tuition JSON are unavailable.
+        Mirrors the WHITELIST_2026 frozenset in major_code_validator.py.
+        """
+        return {
+            "vat ly", "vat ly hoc", "vat ly ky thuat", "ban dan", "cong nghe ban dan",
+            "cong nghe sinh hoc", "sinh hoc", "sinh hoc ung dung",
+            "hoa hoc", "hoa duoc", "khoa hoc moi truong",
+            "ky thuat phan mem", "cong nghe thong tin", "cntt",
+            "khoa hoc may tinh", "he thong thong tin",
+            "khoa hoc du lieu", "khdl", "khmt",
+            "cnkt dien tu vien thong", "dien tu vien thong",
+            "cnkt hoa hoc", "trac dia ban do",
+            "kien truc", "dia ky thuat xay dung",
+            "toan hoc", "toan", "toan ung dung", "toan tin",
+            "y sinh", "han nom", "triet hoc", "lich su", "van hoc",
+            "quan ly van hoa", "quan ly nha nuoc", "xa hoi hoc",
+            "dong phuong hoc", "dong nam a hoc",
+            "bao chi", "truyen thong so", "truyen thong da phuong tien",
+            "tam ly hoc", "cong tac xa hoi",
+            "quan ly tai nguyen va moi truong",
+            "quan ly an toan suc khoe va moi truong",
+        }
+
+    @classmethod
+    def _parse_scope_file(cls, path: Path) -> Set[str]:
+        """Parse a husc_majors_current.json-style file and return the allowed
+        token set (folded). NEVER raises — returns empty set on any error.
+        """
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return set()
+        if not isinstance(data, dict):
+            return set()
+        majors = data.get("majors", [])
+        if not isinstance(majors, list):
+            return set()
+        allowed: Set[str] = set()
+        for entry in majors:
+            if not isinstance(entry, dict):
+                continue
+            tokens: List[str] = []
+            ten = entry.get("ten")
+            if isinstance(ten, str) and ten.strip():
+                tokens.append(ten)
+            aliases = entry.get("aliases", [])
+            if isinstance(aliases, list):
+                for a in aliases:
+                    if isinstance(a, str) and a.strip():
+                        tokens.append(a)
+            for tok in tokens:
+                folded = cls._fold_diacritics(tok)
+                if folded and len(folded) >= 2:
+                    allowed.add(folded)
+        return allowed
+
+    @classmethod
+    def _load_major_scope(cls) -> Set[str]:
+        """Load the dynamic allowlist from disk, cached by file mtime.
+
+        Resolution order:
+          1. ``husc_majors_current.json`` (crawler-writable) — reloaded when
+             mtime changes so a 2027 new major added by the crawler is
+             picked up automatically.
+          2. Canonical ``husc_tuition_2026_official.json`` (offline seed).
+          3. Embedded hard-coded seed (last-resort).
+        NEVER raises.
+        """
+        primary = cls.MAJOR_SCOPE_FILE
+        try:
+            if primary.exists():
+                mtime = primary.stat().st_mtime
+                if (
+                    cls._SCOPE_MTIME == mtime
+                    and cls._SCOPE_PATH == primary
+                    and cls._SCOPE_ALLOWED
+                ):
+                    return cls._SCOPE_ALLOWED
+                allowed = cls._parse_scope_file(primary)
+                if allowed:
+                    cls._SCOPE_MTIME = mtime
+                    cls._SCOPE_PATH = primary
+                    cls._SCOPE_ALLOWED = allowed
+                    return allowed
+        except Exception:
+            pass
+
+        # Fallback chain
+        for fb in cls._MAJOR_FALLBACK_FILES:
+            try:
+                if fb.exists():
+                    allowed = cls._parse_scope_file(fb)
+                    if allowed:
+                        cls._SCOPE_ALLOWED = allowed
+                        cls._SCOPE_PATH = fb
+                        cls._SCOPE_MTIME = fb.stat().st_mtime
+                        return allowed
+            except Exception:
+                continue
+
+        cls._SCOPE_ALLOWED = cls._seed_minimal_allowed()
+        cls._SCOPE_PATH = None
+        cls._SCOPE_MTIME = 0.0
+        return cls._SCOPE_ALLOWED
+
+    @classmethod
+    def clear_major_scope_cache_for_testing(cls) -> None:
+        """Test helper: force a reload on the next _load_major_scope() call."""
+        cls._reset_major_scope_cache()
 
     def _looks_admission_related(self, query: str) -> bool:
         q = query.lower()
@@ -113,11 +348,200 @@ class GuardrailService:
             "email, số điện thoại hoặc số tài khoản đầy đủ. Vui lòng che bớt thông tin trước khi hỏi."
         )
 
+    def _major_not_offered_answer(self) -> str:
+        return (
+            "HUSC (Trường Đại học Khoa học — Đại học Huế) hiện KHÔNG đào tạo ngành/ lĩnh vực này. "
+            "HUSC tập trung vào nhóm ngành Khoa học tự nhiên, Công nghệ thông tin, Kỹ thuật công nghệ, "
+            "Khoa học môi trường — Trái đất, và một số ngành Khoa học xã hội & Nhân văn "
+            "(Toán, Vật lý, Hóa học, Sinh học, CNTT, Công nghệ bán dẫn, Khoa học dữ liệu, Kiến trúc, "
+            "Địa kỹ thuật xây dựng, Hán-Nôm, Triết học, Báo chí, ...). "
+            "Bạn có thể xem danh sách ngành HUSC đang đào tạo tại "
+            "https://tuyensinh.husc.edu.vn/nganhdaotao-dh.php, hoặc hỏi mình về các ngành khác mà HUSC có."
+        )
+
     def _contains_sensitive_pii(self, query: str) -> bool:
         q = query.lower()
         if any(k in q for k in self.PII_KEYWORDS):
             return True
         return any(pattern.search(query) is not None for pattern in self.PII_PATTERNS.values())
+
+    # ----- Major-scope check (S19) -----
+
+    _MAJOR_TAIL_RX = re.compile(
+        r"(?:điểm chuẩn|diem chuan|học phí|hoc phi|"
+        r"xét tuyển|xet tuyen|tổ hợp|to hop|chỉ tiêu|chi tieu|"
+        r"tuyển sinh|tuyen sinh|học bổng|hoc bong|chương trình|chuong trinh|"
+        r"ngành|nganh|mã ngành|ma nganh|có gì|co gi|thế nào|the nao|"
+        r"ra sao|thông tin|thong tin)",
+        re.IGNORECASE,
+    )
+
+    # Common non-major words that, after diacritic-fold, could look like a
+    # "head noun" before a tail. These should NOT be treated as majors.
+    _MAJOR_PHRASE_BLOCKLIST = {
+        "thoi gian", "thời gian", "thời hạn", "han", "hạn",
+        "truong", "trường", "khoa", "nha", "nhà",
+        "hoc", "học", "bao nhieu", "nhu the nao", "the nao",
+        "cach", "cách", "khi nao", "khi nào", "o dau", "ở đâu",
+        "hoc phi", "học phí", "diem chuan", "điểm chuẩn",
+    }
+
+    # Generic "ngành nào/ngành gì/ngành gi" → always generic, never a major.
+    _GENERIC_NGANH_RX = re.compile(
+        r"\b(?:ng[aà]nh|nganh)\s+(?:n[aà]o|g[iì]|gi)\b",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _is_likely_major_phrase(phrase: str) -> bool:
+        if not phrase or len(phrase) < 3:
+            return False
+        folded = GuardrailService._fold_diacritics(phrase)
+        if not folded:
+            return False
+        if not any(ch.isalpha() for ch in folded):
+            return False
+        tokens = [t for t in re.split(r"[\s,;:/()\-]+", folded) if t]
+        return any(len(t) >= 3 for t in tokens)
+
+    def _is_generic_question_phrase(self, phrase: str) -> bool:
+        folded = self._fold_diacritics(phrase)
+        if folded in self._MAJOR_PHRASE_BLOCKLIST:
+            return True
+        # If the phrase is a generic interrogative tail (ba nhiêu, gì, nào,
+        # nào, nhu the nao, o dau, etc.) it's not a major name.
+        generic_tail = re.search(
+            r"\b(b[aá]o nhi[eê]u|g[iì]|n[aà]o|th[eế] n[aà]o|ra sao|"
+            r"nh[uư] th[eế] n[aà]o|[oở] đ[aâ]u|khi n[aà]o)\b",
+            self._fold_diacritics(phrase),
+            re.IGNORECASE,
+        )
+        return generic_tail is not None
+
+    def _extract_major_phrase(self, query: str) -> Optional[str]:
+        if not query:
+            return None
+        q = query.strip()
+        # Pattern 1: "ngành <X>" / "nganh <X>"
+        m = re.search(r"\b(?:ngành|nganh)\s+([A-Za-zÀ-ỹĐđ\-\s]{3,})", q, re.IGNORECASE)
+        if m:
+            phrase = m.group(1).strip(" ,.;:?!")
+            # Trim at any known tail keyword that would have started a new clause
+            phrase = self._MAJOR_TAIL_RX.split(phrase, maxsplit=1)[0].strip()
+            # Trim trailing year / "là gì"
+            phrase = re.sub(
+                r"\s+(?:n[aă]m\s+\d{4}|\d{4}|l[aà]\s+g[iì])\s*$",
+                "",
+                phrase,
+                flags=re.IGNORECASE,
+            ).strip()
+            # Trim a bare trailing "năm" (year prefix in "ngành Luật năm 2026?")
+            phrase = re.sub(
+                r"\s+n[aă]m\s*$",
+                "",
+                phrase,
+                flags=re.IGNORECASE,
+            ).strip()
+            if self._is_likely_major_phrase(phrase) and not self._is_generic_question_phrase(phrase):
+                return phrase
+        # Pattern 2: "<X> điểm chuẩn" / "<X> học phí" — head noun BEFORE a tail
+        m = re.search(
+            r"([A-Za-zÀ-ỹĐđ\-\s]{3,}?)\s+(?:" + self._MAJOR_TAIL_RX.pattern + r")",
+            q,
+            re.IGNORECASE,
+        )
+        if m:
+            phrase = m.group(1).strip(" ,.;:?!")
+            phrase = re.sub(
+                r"^(?:ngành|nganh|chuyên ngành|chuyen nganh|nghề|nghe|học|hoc|"
+                r"trường|truong|khoa|đào tạo|dao tao|chương trình|chuong trinh)\s+",
+                "",
+                phrase,
+                flags=re.IGNORECASE,
+            ).strip()
+            phrase = re.sub(
+                r"\s+(?:n[aă]m\s+\d{4}|\d{4})\s*$",
+                "",
+                phrase,
+                flags=re.IGNORECASE,
+            ).strip()
+            if self._is_likely_major_phrase(phrase) and not self._is_generic_question_phrase(phrase):
+                return phrase
+        # Pattern 3: "<tail> ngành <X>" — common VI phrasing
+        m = re.search(
+            r"(?:" + self._MAJOR_TAIL_RX.pattern + r")\s+(?:ngành|nganh)\s+"
+            r"([A-Za-zÀ-ỹĐđ\-\s]{2,})",
+            q,
+            re.IGNORECASE,
+        )
+        if m:
+            phrase = m.group(1).strip(" ,.;:?!")
+            phrase = re.sub(
+                r"\s+(?:n[aă]m\s+\d{4}|\d{4})\s*$",
+                "",
+                phrase,
+                flags=re.IGNORECASE,
+            ).strip()
+            if self._is_likely_major_phrase(phrase) and not self._is_generic_question_phrase(phrase):
+                return phrase
+        # Pattern 4: bare "<X> điểm chuẩn" / "<X> học phí" where X starts at the
+        # beginning of the query (catches "Khoa học dữ liệu điểm chuẩn?").
+        m = re.match(
+            r"\s*([A-Za-zÀ-ỹĐđ\-\s]{4,}?)\s+(?:" + self._MAJOR_TAIL_RX.pattern + r")",
+            q,
+            re.IGNORECASE,
+        )
+        if m:
+            phrase = m.group(1).strip(" ,.;:?!")
+            phrase = re.sub(
+                r"\s+(?:n[aă]m\s+\d{4}|\d{4})\s*$",
+                "",
+                phrase,
+                flags=re.IGNORECASE,
+            ).strip()
+            if self._is_likely_major_phrase(phrase) and not self._is_generic_question_phrase(phrase):
+                return phrase
+        return None
+
+    @classmethod
+    def _major_in_denylist(cls, folded_phrase: str) -> bool:
+        if not folded_phrase:
+            return False
+        for bad in cls.MAJOR_DENYLIST:
+            if bad in folded_phrase:
+                return True
+        return False
+
+    @classmethod
+    def _major_in_allowlist(cls, folded_phrase: str, allowed: Set[str]) -> bool:
+        if not folded_phrase or not allowed:
+            return False
+        if folded_phrase in allowed:
+            return True
+        for tok in allowed:
+            if len(tok) >= 3 and (tok in folded_phrase or folded_phrase in tok):
+                return True
+        return False
+
+    def _major_out_of_scope(self, query: str) -> bool:
+        if not query:
+            return False
+        # "HUSC có những ngành nào?" / "Các ngành của HUSC?" — generic
+        if self._GENERIC_NGANH_RX.search(query):
+            return False
+        folded_q = self._fold_diacritics(query)
+        if self._major_in_denylist(folded_q):
+            return True
+        phrase = self._extract_major_phrase(query)
+        if not phrase:
+            return False
+        folded_phrase = self._fold_diacritics(phrase)
+        if self._major_in_denylist(folded_phrase):
+            return True
+        allowed = self._load_major_scope()
+        if not self._major_in_allowlist(folded_phrase, allowed):
+            return True
+        return False
 
     async def precheck(self, query: str) -> GuardrailDecision:
         if not self._enabled:
@@ -132,6 +556,48 @@ class GuardrailService:
                 ["Ẩn bớt thông tin định danh trước khi gửi câu hỏi", "Chỉ giữ lại phần nội dung liên quan tuyển sinh"],
                 pii_detected=True,
             )
+
+        # Major-scope check (S19): block admission questions about majors
+        # HUSC does NOT offer, deterministically, BEFORE the keyword
+        # fast-path and BEFORE any LLM call. Conservative: when the
+        # query names no specific major, this returns False and the
+        # normal flow proceeds unchanged.
+        #
+        # Two cases:
+        #  (a) Query has no HUSC alias → block on any major-scope miss
+        #      (this also catches the HUSC-vs-other case where the user
+        #      asks "HUSC so với Bách Khoa ngành CNTT" because CNTT IS a
+        #      real HUSC major, so no false positive there).
+        #  (b) Query HAS a HUSC alias AND names a denylist major (e.g.
+        #      "Ngành Luật HUSC") → still block, because the major-scope
+        #      is a STRONGER signal than the school-scope. HUSC simply
+        #      doesn't teach Luật, period.
+        #  (c) Query HAS a HUSC alias AND names a real HUSC major
+        #      (e.g. "Ngành CNTT HUSC") → fall through to the keyword
+        #      path. The other-school guard handles the comparison case.
+        if self._major_out_of_scope(query):
+            if self._mentions_husc(query):
+                # If the HUSC alias is present, only block when the named
+                # major is in the denylist (case b). Otherwise let the
+                # normal flow decide (case c).
+                if not self._major_in_denylist(self._fold_diacritics(query)):
+                    pass
+                else:
+                    return GuardrailDecision(
+                        False,
+                        "NOT_IN_HUSC_SCOPE",
+                        "major_not_offered",
+                        self._major_not_offered_answer(),
+                        ["HUSC không đào tạo ngành/lĩnh vực này", "Xem danh sách ngành HUSC tại tuyensinh.husc.edu.vn/nganhdaotao-dh.php"],
+                    )
+            else:
+                return GuardrailDecision(
+                    False,
+                    "NOT_IN_HUSC_SCOPE",
+                    "major_not_offered",
+                    self._major_not_offered_answer(),
+                    ["HUSC không đào tạo ngành/lĩnh vực này", "Xem danh sách ngành HUSC tại tuyensinh.husc.edu.vn/nganhdaotao-dh.php"],
+                )
 
         if self._looks_admission_related(query) and not self._mentions_other_school(query):
             return GuardrailDecision(True, "SUCCESS", "in_scope_keyword", "")

@@ -1,0 +1,318 @@
+{
+  "_meta": {
+    "source": "scripts/refresh_major_scope.py — auto-stamped, crawler-overwritable",
+    "updated_at": "2026-06-13T03:27:17Z",
+    "note": "crawler overwrites this; guardrail reads it via mtime-reload."
+  },
+  "majors": [
+    {
+      "ma_nganh": "7440102",
+      "ten": "Vật lý học",
+      "aliases": [
+        "vật lý",
+        "vat ly",
+        "vat ly hoc"
+      ]
+    },
+    {
+      "ma_nganh": "7420201",
+      "ten": "Công nghệ sinh học",
+      "aliases": [
+        "sinh học",
+        "cong nghe sinh hoc",
+        "sinh hoc",
+        "cnsh"
+      ]
+    },
+    {
+      "ma_nganh": "7440112",
+      "ten": "Hóa học",
+      "aliases": [
+        "hoa hoc",
+        "hóa học"
+      ]
+    },
+    {
+      "ma_nganh": "7440301",
+      "ten": "Khoa học môi trường",
+      "aliases": [
+        "khmt",
+        "khoa hoc moi truong",
+        "môi trường"
+      ]
+    },
+    {
+      "ma_nganh": "7480103",
+      "ten": "Kỹ thuật phần mềm",
+      "aliases": [
+        "ktpm",
+        "ky thuat phan mem",
+        "kỹ thuật phần mềm"
+      ]
+    },
+    {
+      "ma_nganh": "7480201",
+      "ten": "Công nghệ thông tin",
+      "aliases": [
+        "cntt",
+        "cong nghe thong tin",
+        "công nghệ thông tin",
+        "it"
+      ]
+    },
+    {
+      "ma_nganh": "7480201VJ",
+      "ten": "Công nghệ thông tin - CTĐT Cử nhân Việt-Nhật",
+      "aliases": [
+        "cntt",
+        "cong nghe thong tin",
+        "công nghệ thông tin",
+        "it"
+      ]
+    },
+    {
+      "ma_nganh": "7510302",
+      "ten": "CNKT điện tử - viễn thông",
+      "aliases": [
+        "điện tử viễn thông",
+        "dien tu vien thong",
+        "cnkt dtvt"
+      ]
+    },
+    {
+      "ma_nganh": "7510401",
+      "ten": "CNKT hóa học",
+      "aliases": [
+        "hoa hoc",
+        "hóa học"
+      ]
+    },
+    {
+      "ma_nganh": "7520503",
+      "ten": "Kỹ thuật trắc địa - bản đồ",
+      "aliases": [
+        "trac dia ban do",
+        "trắc địa bản đồ"
+      ]
+    },
+    {
+      "ma_nganh": "7580101",
+      "ten": "Kiến trúc",
+      "aliases": [
+        "kien truc",
+        "kiến trúc"
+      ]
+    },
+    {
+      "ma_nganh": "7580211",
+      "ten": "Địa kỹ thuật xây dựng",
+      "aliases": [
+        "dia ky thuat xay dung",
+        "địa kỹ thuật"
+      ]
+    },
+    {
+      "ma_nganh": "7220104",
+      "ten": "Hán - Nôm",
+      "aliases": [
+        "han nom",
+        "hán nôm"
+      ]
+    },
+    {
+      "ma_nganh": "7229001",
+      "ten": "Triết học",
+      "aliases": [
+        "triet hoc",
+        "triết học"
+      ]
+    },
+    {
+      "ma_nganh": "7229010",
+      "ten": "Lịch sử",
+      "aliases": [
+        "lich su",
+        "lịch sử"
+      ]
+    },
+    {
+      "ma_nganh": "7229030",
+      "ten": "Văn học",
+      "aliases": [
+        "van hoc",
+        "văn học",
+        "văn"
+      ]
+    },
+    {
+      "ma_nganh": "7229042",
+      "ten": "Quản lý văn hóa",
+      "aliases": [
+        "quan ly van hoa",
+        "qlvh"
+      ]
+    },
+    {
+      "ma_nganh": "7310205",
+      "ten": "Quản lý nhà nước",
+      "aliases": [
+        "qlnn",
+        "quan ly nha nuoc"
+      ]
+    },
+    {
+      "ma_nganh": "7310301",
+      "ten": "Xã hội học",
+      "aliases": [
+        "xa hoi hoc",
+        "xhh"
+      ]
+    },
+    {
+      "ma_nganh": "7310608",
+      "ten": "Đông phương học",
+      "aliases": [
+        "dong phuong hoc",
+        "đông phương học"
+      ]
+    },
+    {
+      "ma_nganh": "7320101",
+      "ten": "Báo chí",
+      "aliases": [
+        "bao chi",
+        "báo chí",
+        "journalism"
+      ]
+    },
+    {
+      "ma_nganh": "7320111",
+      "ten": "Truyền thông số",
+      "aliases": [
+        "truyen thong so",
+        "truyền thông số",
+        "digital media"
+      ]
+    },
+    {
+      "ma_nganh": "7760101",
+      "ten": "Công tác xã hội",
+      "aliases": [
+        "cong tac xa hoi",
+        "ctxh",
+        "social work"
+      ]
+    },
+    {
+      "ma_nganh": "7850101",
+      "ten": "Quản lý tài nguyên và môi trường",
+      "aliases": [
+        "qltnmt",
+        "quan ly tai nguyen va moi truong"
+      ]
+    },
+    {
+      "ma_nganh": "7850105",
+      "ten": "Quản lý an toàn, sức khỏe và môi trường",
+      "aliases": [
+        "qlasm",
+        "an toàn sức khỏe môi trường"
+      ]
+    },
+    {
+      "ma_nganh": "7420101",
+      "ten": "7420101",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7420203",
+      "ten": "7420203",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7440101",
+      "ten": "7440101",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7440102SC",
+      "ten": "7440102SC",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7440113",
+      "ten": "7440113",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7460101",
+      "ten": "7460101",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7460108",
+      "ten": "7460108",
+      "aliases": [
+        "khdl",
+        "khoa hoc du lieu",
+        "khoa học dữ liệu",
+        "data science"
+      ]
+    },
+    {
+      "ma_nganh": "7460109",
+      "ten": "7460109",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7460112",
+      "ten": "7460112",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7480101",
+      "ten": "7480101",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7480104",
+      "ten": "7480104",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7220213",
+      "ten": "7220213",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7310201",
+      "ten": "7310201",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7310401",
+      "ten": "7310401",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7320104",
+      "ten": "7320104",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7320201",
+      "ten": "7320201",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7510302IC",
+      "ten": "7510302IC",
+      "aliases": []
+    },
+    {
+      "ma_nganh": "7720601",
+      "ten": "7720601",
+      "aliases": []
+    }
+  ]
+}
