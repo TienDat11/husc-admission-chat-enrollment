@@ -28,6 +28,48 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
+# Bounded multi-turn history support (S-multi-turn, opt-in, zero new LLM
+# round-trips). The history is rendered as a small Vietnamese prefix that
+# we PREPEND to the existing single generation user-message — never a new
+# LLM call. The cap mirrors the FE slice (last 4 messages = 2 user + 2
+# assistant). Clients that omit the field keep the original prompt byte-
+# for-byte identical (the prefix is empty when history is None / []).
+# ---------------------------------------------------------------------------
+MAX_HISTORY_MSGS_GEN = 4
+
+_HISTORY_PREFIX_TEMPLATE = (
+    "LỊCH SỬ HỘI THOẠI (chỉ tham khảo ngữ cảnh, trả lời câu hỏi hiện tại):\n"
+    "{history}\n---\n\n"
+)
+
+
+def _format_history_prefix(history: Optional[List[Dict[str, str]]]) -> str:
+    """Render bounded chat history as a prefix string for the generation
+    user-message. Returns an empty string when history is empty/None so the
+    original prompt is byte-identical (zero-overhead for single-turn callers).
+    """
+    if not history:
+        return ""
+    rendered: List[str] = []
+    for turn in history[-MAX_HISTORY_MSGS_GEN:]:
+        if not isinstance(turn, dict):
+            continue
+        role = (turn.get("role") or "").strip().lower()
+        content = (turn.get("content") or "").strip()
+        if not content:
+            continue
+        if role == "user":
+            rendered.append(f"Người dùng: {content}")
+        elif role == "assistant":
+            rendered.append(f"Trợ lý: {content}")
+        else:
+            rendered.append(f"{role or 'unknown'}: {content}")
+    if not rendered:
+        return ""
+    return _HISTORY_PREFIX_TEMPLATE.format(history="\n".join(rendered))
+
+
+# ---------------------------------------------------------------------------
 # S16.5 / ADR-D / AMF-3 — module-level URL-faithfulness constants + helper.
 # Exposed at module scope (not as a class method) so tests can import and
 # exercise them directly without standing up an `LLMGenerator` instance.
@@ -524,6 +566,7 @@ class LLMGenerator:
         chunks: List[Dict[str, Any]],
         confidence: float,
         is_program_list_query: bool = False,  # Flag for program count/list queries
+        history: Optional[List[Dict[str, str]]] = None,  # Bounded multi-turn (max 4 msgs)
     ) -> Dict[str, Any]:
         """
         Generate answer with context from chunks using anti-redundancy prompt
@@ -560,10 +603,16 @@ class LLMGenerator:
         # DEBUG: Log prompt size only (avoid logging raw context content)
         logger.debug(f"Full prompt length: {len(full_prompt)} chars")
 
-        # Token limit for different query types — env-driven (gpt-5.4 + SSE
-        # tolerates larger budgets; raised so full answers aren't cut mid-sentence).
+        # Token limit for different query types — env-driven.
+        # Measured (results/eval_harness/86q_records_s16.jsonl): NORMAL answers
+        # max ~1860 chars (~620 est tokens), p99 ~485 tokens. We use 1200 as the
+        # normal default — ~2x headroom over measured max — so finish_reason=="length"
+        # must never fire for a real normal answer while still bounding runaway
+        # generation. ENUM (program-list) answers can be much longer (a full
+        # 28-major list source is ~4200 chars / ~1400 tokens), so the ENUM cap
+        # stays high at 4000. Both are operator-overridable via env.
         max_tokens_enum = int(os.getenv("MAX_GEN_TOKENS_ENUM", "4000"))
-        max_tokens_std = int(os.getenv("MAX_GEN_TOKENS", "3000"))
+        max_tokens_std = int(os.getenv("MAX_GEN_TOKENS", "1200"))
         max_tokens = max_tokens_enum if is_program_list_query else max_tokens_std
 
         # Priority: UnifiedLLMClient → direct Groq → direct GLM-4.5
@@ -574,7 +623,9 @@ class LLMGenerator:
             # Primary path: Unified provider chain (mimo-v2.5-pro → groq → compat)
             if getattr(self.unified_client, "_providers", []):
                 logger.info(f"Generation: Using {self.gen_model} (primary) via UnifiedLLMClient")
+                history_prefix = _format_history_prefix(history)
                 gen_user_msg = (
+                    f"{history_prefix}"
                     f"CONTEXT:\n{context}\n\n---\n\nCÂU HỎI: {query}\n\n"
                     "Hãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."
                 )
@@ -628,11 +679,17 @@ class LLMGenerator:
             # Secondary: direct Groq path
             elif self.groq_client:
                 logger.info("Generation: Using direct Groq (Llama 3.3)")
+                history_prefix = _format_history_prefix(history)
+                groq_user_content = (
+                    f"{history_prefix}"
+                    f"CONTEXT:\n{context}\n\n---\n\nCÂU HỎI: {query}\n\n"
+                    "Hãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."
+                )
                 response = await self.groq_client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[
                         {"role": "system", "content": self.generation_system_prompt},
-                        {"role": "user", "content": f"CONTEXT:\n{context}\n\n---\n\nCÂU HỎI: {query}\n\nHãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."}
+                        {"role": "user", "content": groq_user_content}
                     ],
                     temperature=0.1,
                     max_tokens=max_tokens,
@@ -756,11 +813,18 @@ class LLMGenerator:
         # genuine case. Sits BEFORE the URL guard so a substituted
         # abstain string is also URL-cleaned.
         # ------------------------------------------------------------------
+        # UW1: also exempt the season-aware graceful fallback / GAP_DISCLAIMER
+        # template ("chưa được công bố chính thức"). It is NOT a hallucination
+        # — it carries no fabricated facts, only the year + official URL, so
+        # the empty-retrieval guard must not overwrite it. The substantive-
+        # hallucination case (chunks=[] + a "real" answer with neither the
+        # clarify markers NOR the season/gap marker) still gets replaced.
         if (
             not chunks
             and answer
             and answer.strip() != self._ABSTAIN_STRING
             and not self._CLARIFY_MARKERS.search(answer)
+            and "chưa được công bố" not in answer
         ):
             logger.info(
                 "Empty-retrieval guard fired: substantive answer produced "

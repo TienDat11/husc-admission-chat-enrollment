@@ -955,6 +955,14 @@ class UnifiedQueryRequest(BaseModel):
         default=None,
         description="Force routing: 'padded_rag' or 'graph_rag' (overrides auto-router)"
     )
+    # Multi-turn conversation context (bounded). Backward-compatible: clients
+    # that omit this field keep the original single-turn behavior unchanged.
+    # The cap (4 messages = 2 user + 2 assistant) is enforced at the FE slice
+    # site; the BE tolerates a small overage by re-slicing in llm_generator.
+    history: Optional[List[Dict[str, str]]] = Field(
+        default=None,
+        description="Optional bounded chat history, e.g. [{'role':'user','content':'...'}, ...] (max ~4 msgs)",
+    )
 
 
 class UnifiedQueryResponse(BaseModel):
@@ -1036,6 +1044,7 @@ async def _synthesize_v2_answer(
     rag_result: Any,
     query: str,
     generator: Any,
+    history: Optional[List[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
     """Build the (answer, sources, confidence, provider) dict for the
     /v2 endpoint.
@@ -1090,6 +1099,7 @@ async def _synthesize_v2_answer(
         chunks=chunks,
         confidence=float(getattr(rag_result, "confidence", 0.0) or 0.0),
         is_program_list_query=is_program_list,
+        history=history,
     )
     # Ensure the contract keys the /v2 response builder reads are present.
     return {
@@ -1150,7 +1160,7 @@ async def _build_v2_query_payload(
             # rejects OOS BEFORE embedding/retrieval run — a cheap reject we
             # keep). Hot-path round-trips for a normal query: router(1) +
             # generation(1); guardrail adds 0 on the keyword fast-path.
-            precheck = await guardrail_service.precheck(request.query)
+            precheck = await guardrail_service.precheck(request.query, history=request.history)
             if precheck and not precheck.is_in_scope:
                 await _metric_inc("query_guardrail_blocks")
                 if precheck.pii_detected:
@@ -1307,6 +1317,7 @@ async def _build_v2_query_payload(
             rag_result=rag_result,
             query=request.query,
             generator=llm_generator_service,
+            history=request.history,
         )
         answer = synthesis["answer"]
         sources = synthesis["sources"]

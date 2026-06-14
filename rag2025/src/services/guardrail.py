@@ -7,12 +7,54 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from groq import AsyncGroq
 from loguru import logger
 
 from config.settings import RAGSettings
+
+
+# Bounded multi-turn history cap. FE slices last 4 (2 user + 2 assistant);
+# this helper enforces the SAME cap on the BE as a defense-in-depth measure
+# so a malicious/legacy client cannot inject an unbounded history into the
+# guardrail LLM message. Mirrors the cap in ChatLayout.tsx.
+MAX_HISTORY_MSGS = 4
+
+
+def _format_history_for_llm(history: List[Dict[str, str]]) -> str:
+    """Render bounded chat history as plain text for the classifier LLM.
+
+    Only the LLM-classifier user-message is allowed to see prior turns; the
+    deterministic regex/folded paths in ``precheck`` MUST see the raw
+    ``query`` alone (history injection there corrupts major matching and
+    re-opens the denylist DoS holes).
+
+    The format is a deterministic two-line block per turn:
+        Người dùng: <content>
+        Trợ lý: <content>
+    The total message count is hard-capped at ``MAX_HISTORY_MSGS`` to keep
+    the prompt bounded even when an upstream caller forgets to slice.
+    """
+    if not history:
+        return ""
+    rendered: List[str] = []
+    for turn in history[-MAX_HISTORY_MSGS:]:
+        if not isinstance(turn, dict):
+            continue
+        role = (turn.get("role") or "").strip().lower()
+        content = (turn.get("content") or "").strip()
+        if not content:
+            continue
+        if role == "user":
+            rendered.append(f"Người dùng: {content}")
+        elif role == "assistant":
+            rendered.append(f"Trợ lý: {content}")
+        else:
+            # Unknown role — render generically rather than drop, so the
+            # classifier still has full context.
+            rendered.append(f"{role or 'unknown'}: {content}")
+    return "\n".join(rendered)
 
 
 @dataclass
@@ -753,7 +795,7 @@ class GuardrailService:
             return True
         return False
 
-    async def precheck(self, query: str) -> GuardrailDecision:
+    async def precheck(self, query: str, history: Optional[List[Dict[str, str]]] = None) -> GuardrailDecision:
         if not self._enabled:
             return GuardrailDecision(True, "SUCCESS", "guardrail_disabled", "")
 
@@ -827,11 +869,24 @@ class GuardrailService:
         )
 
         try:
+            # Build the classifier user-message. ONLY the LLM-classifier path
+            # gets the bounded prior-turn context — never the regex/folded
+            # paths above, because folding prior turns corrupts major matching
+            # and would re-introduce the DoS / false-block holes the
+            # denylist/keyword fast-paths were hardened against.
+            if history:
+                history_text = _format_history_for_llm(history)
+                user_content = (
+                    f"Ngữ cảnh trước:\n{history_text}\n\n"
+                    f"Câu hỏi hiện tại:\n{query}"
+                )
+            else:
+                user_content = query
             resp = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[
                     {"role": "system", "content": prompt},
-                    {"role": "user", "content": query},
+                    {"role": "user", "content": user_content},
                 ],
                 temperature=0.0,
                 max_tokens=120,

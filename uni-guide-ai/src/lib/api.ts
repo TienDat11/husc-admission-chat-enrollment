@@ -9,15 +9,23 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 /**
  * /v2/query request body shape (per BE UnifiedQueryRequest):
- *   { query: string, top_k?: number, force_route?: "padded_rag" | "graph_rag" }
+ *   { query: string, top_k?: number, force_route?: "padded_rag" | "graph_rag", history?: ChatTurn[] }
  * The legacy `force_rag_only` flag is dropped in favor of `force_route`.
+ * `history` is OPTIONAL — clients that omit it keep the original single-turn
+ * behavior unchanged. The cap is enforced at the slice site in ChatLayout.
  */
 export interface QueryRequest {
   query: string;
   top_k?: number;
   force_route?: 'padded_rag' | 'graph_rag';
+  history?: ChatTurn[];
 }
 
 /**
@@ -82,7 +90,7 @@ export interface HealthResponse {
  * The /v2 payload is `{query, top_k?, force_route?}` — `force_rag_only` is
  * NOT used on /v2; we send only `{query}` and let the BE route by its own rules.
  */
-export async function sendChatMessage(query: string): Promise<QueryResponse> {
+export async function sendChatMessage(query: string, history?: ChatTurn[]): Promise<QueryResponse> {
   try {
     const response = await fetch(`${API_BASE_URL}/v2/query`, {
       method: 'POST',
@@ -91,6 +99,7 @@ export async function sendChatMessage(query: string): Promise<QueryResponse> {
       },
       body: JSON.stringify({
         query,
+        ...(history && history.length > 0 ? { history } : {}),
       }),
     });
 
@@ -254,11 +263,15 @@ async function* parseSseStream(
 export async function queryStream(
   query: string,
   handlers: StreamHandlers,
+  history?: ChatTurn[],
 ): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/v2/query/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({
+      query,
+      ...(history && history.length > 0 ? { history } : {}),
+    }),
   });
   if (!response.ok || !response.body) {
     throw new Error(

@@ -33,6 +33,17 @@ export function ChatLayout() {
     // Show typing indicator
     setIsTyping(true);
 
+    // Multi-turn context slice (last 4 messages = 2 user + 2 assistant
+    // prior turns). Computed BEFORE the stream call so both the streaming
+    // path and the non-stream fallback below use the same bounded window.
+    // We exclude the just-appended `userMessage` because the BE treats the
+    // current `content` as the live question; sending it as part of
+    // history would double-count.
+    const historyWindow = messages.slice(-4).map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
     // SLICE-B.LATENCY: stream-optimistic assistant message. We append an
     // empty assistant bubble that we mutate in-place as `delta` frames
     // arrive, so the user sees text appear progressively. On `done`, the
@@ -114,7 +125,9 @@ export function ChatLayout() {
       let sources: Source[] = [];
 
       try {
-        await queryStream(content, {
+        await queryStream(
+          content,
+          {
           onMeta: (meta) => {
             statusCode = meta.status_code || 'SUCCESS';
             dataGapHints = meta.data_gap_hints || [];
@@ -146,7 +159,9 @@ export function ChatLayout() {
           onDone: (fullAnswer) => {
             finalAnswer = fullAnswer;
           },
-        });
+        },
+          historyWindow,
+        );
         // After stream ends, we don't have a final sources / statusReason /
         // confidence payload from the SSE wire (the BE only sends route +
         // sources in the meta event). Derive sources from the meta we
@@ -188,7 +203,7 @@ export function ChatLayout() {
       }
 
       // Fallback: non-streaming /v2/query (original behavior).
-      const response = await sendChatMessage(content);
+      const response = await sendChatMessage(content, historyWindow);
       const rawSources = response.sources || [];
       sources = mapSources(rawSources, response.confidence ?? 0.5);
       statusCode = response.status_code || 'SUCCESS';

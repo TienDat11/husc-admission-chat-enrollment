@@ -209,7 +209,7 @@ describe('ChatLayout — full send-message flow', () => {
     await user.type(textarea, 'Test Enter{enter}');
 
     await waitFor(() => {
-      expect(mockSendChatMessage).toHaveBeenCalledWith('Test Enter');
+      expect(mockSendChatMessage).toHaveBeenCalledWith('Test Enter', expect.anything());
     });
   });
 
