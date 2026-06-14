@@ -320,3 +320,90 @@ export async function queryStream(
 export function getApiBaseUrl(): string {
   return API_BASE_URL;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// /v2/recommend + /v2/whatif — deterministic, pure-arithmetic, single-digit ms.
+// Both endpoints take student score (0–30), optional tổ hợp, optional priority
+// bonus. The FE uses these for the "Gợi ý ngành" demo panel; they are stable,
+// test-covered on the BE, and never invoke the LLM. Mirror the existing fetch
+// + error pattern from sendChatMessage() above.
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface RecommendRequest {
+  score: number;
+  to_hop?: string;
+  uu_tien?: number;
+}
+
+export type RecommendLabel = 'an_toan' | 'can_nhac' | 'mao_hiem';
+
+export interface RecommendItem {
+  major_code: string;
+  major_name: string;
+  latest_diem_chuan: number;
+  latest_year: number;
+  delta: number;
+  label: RecommendLabel;
+  explanation: string;
+  to_hop?: string[];
+}
+
+export interface RecommendResponse {
+  score: number;
+  uu_tien: number;
+  to_hop?: string;
+  count: number;
+  recommendations: RecommendItem[];
+  basis: string;
+  disclaimer: string;
+}
+
+export interface WhatIfRequest {
+  score: number;
+  major_code: string;
+  to_hop?: string;
+  uu_tien?: number;
+}
+
+export interface WhatIfResponse {
+  score: number;
+  major_code: string;
+  p_pass: string;
+  band: string;
+  basis: string;
+  disclaimer: string;
+  latest_diem_chuan?: number;
+  latest_year?: number;
+  delta?: number;
+  n_years: number;
+}
+
+export async function getRecommendations(req: RecommendRequest): Promise<RecommendResponse> {
+  const response = await fetch(`${API_BASE_URL}/v2/recommend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.detail || `API error: ${response.status} ${response.statusText}`,
+    );
+  }
+  return (await response.json()) as RecommendResponse;
+}
+
+export async function getWhatIf(req: WhatIfRequest): Promise<WhatIfResponse> {
+  const response = await fetch(`${API_BASE_URL}/v2/whatif`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.detail || `API error: ${response.status} ${response.statusText}`,
+    );
+  }
+  return (await response.json()) as WhatIfResponse;
+}

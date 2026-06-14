@@ -302,3 +302,31 @@ toc_dump.txt
 
 # Claude agent worktrees (runtime, local-only)
 .claude/worktrees/
+
+# --- Local agent / runtime artifacts (not code) ---
+.claude/sessions/
+.claude/state/
+**/.claude/
+.serena/
+.playwright-mcp/
+.git_untrack_list.txt
+
+# Logs and server scratch output
+rag2025/logs/
+server_*.err
+server_*.out
+*.err.log
+
+# Backup / scratch files
+*.bak
+*.bak_*
+rag2025/_gr_hotfix.py
+rag2025/_gr_review.py
+rag2025/analyze_partial.py
+
+# Stray screenshot / e2e artifacts
+e2e_screenshot_test.png
+docs/e2e-screenshots/
+
+# Accidental nested copy
+rag2025/rag2025/
