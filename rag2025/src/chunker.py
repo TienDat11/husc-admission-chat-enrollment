@@ -128,6 +128,9 @@ class Chunker:
         doc_id = doc.get("doc_id") or doc.get("id", "unknown")
 
         for i, chunk_text in enumerate(text_chunks):
+            next_id = ""
+            if i < len(text_chunks) - 1:
+                next_id = f"{doc_id}_chunk_{i + 1}"
             chunk = RAGChunk(
                 id=f"{doc_id}_chunk_{i}",
                 doc_id=doc_id,
@@ -138,15 +141,10 @@ class Chunker:
                 metadata=self._filter_metadata(doc.get("metadata", {}), profile),
                 breadcrumbs=self._extract_breadcrumbs(doc, chunk_text),
                 sparse_terms=self._extract_sparse_terms(chunk_text),
+                prev_chunk_id=f"{doc_id}_chunk_{i - 1}" if i > 0 else "",
+                next_chunk_id=next_id,
             )
             chunks.append(chunk)
-
-        # Link prev/next chunks
-        for i, chunk in enumerate(chunks):
-            if i > 0:
-                chunk.prev_chunk_id = chunks[i - 1].id
-            if i < len(chunks) - 1:
-                chunk.next_chunk_id = chunks[i + 1].id
 
         logger.info(f"Doc {doc_id} chunked into {len(chunks)} chunks with profile {profile_name}")
         return chunks
@@ -414,8 +412,11 @@ class Chunker:
         # Tokenize
         tokens = re.findall(r"\b\w+\b", text.lower())
 
-        # Filter stopwords and short tokens
-        terms = [t for t in tokens if t not in stopwords and len(t) > 2]
+        # Filter stopwords, short tokens, and pure numeric tokens
+        terms = [
+            t for t in tokens
+            if t not in stopwords and len(t) > 2 and any(c.isalpha() for c in t)
+        ]
 
         return terms
 

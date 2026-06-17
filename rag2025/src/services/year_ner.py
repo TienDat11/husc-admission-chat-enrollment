@@ -13,12 +13,21 @@ we keep the lower bound at 1990 for safety.
 """
 from __future__ import annotations
 import re
+from datetime import datetime
 from typing import TypedDict
 
 
 # Year range guard — outside this we treat as a non-year number.
 YEAR_LO = 1990
-YEAR_HI = 2039
+# Dynamic upper bound: always current admission cycle + 6 years, with a floor
+# of today's calendar year so the window can never slip behind the present.
+_FLOOR_YEAR = datetime.now().year
+YEAR_HI = max(_FLOOR_YEAR, datetime.now().year + 6)
+
+
+def _now() -> datetime:
+    """Testable clock — monkeypatch this to simulate future dates."""
+    return datetime.now()
 
 
 class RelativePhrase(TypedDict):
@@ -47,13 +56,17 @@ def extract_years(text: str) -> list[int]:
     Filters out 4-digit numbers outside the year window (e.g. major codes
     like 7480201 don't match anyway because they're 7 digits, but defensive
     bounds keep us safe against edge inputs).
+
+    The upper bound is recomputed from the current date so the extractor
+    always accepts admission years several years into the future.
     """
     if not isinstance(text, str) or not text:
         return []
+    year_hi = max(_now().year, _now().year + 6)
     out: list[int] = []
     for m in _YEAR_RX.finditer(text):
         n = int(m.group(1))
-        if YEAR_LO <= n <= YEAR_HI:
+        if YEAR_LO <= n <= year_hi:
             out.append(n)
     return out
 

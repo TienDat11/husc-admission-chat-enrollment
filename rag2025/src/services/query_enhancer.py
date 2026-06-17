@@ -11,12 +11,14 @@ Hypothetical Document Embeddings (HYDE):
 import os
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, Optional, List
 from openai import AsyncOpenAI
 import google.generativeai as genai
 from groq import AsyncGroq
 from tenacity import retry, stop_after_attempt, wait_exponential
 from loguru import logger
+
+from config.settings import settings
 
 
 class HYDEQueryEnhancer:
@@ -37,27 +39,17 @@ class HYDEQueryEnhancer:
         else:
             logger.warning(f"HYDE prompt not found at {prompt_path}, using fallback")
             self.hyde_system_prompt = self._get_fallback_prompt()
-        # Priority: Groq (Llama 3.1) → GLM-4 → Gemini (fallback only)
+
+        # Use UnifiedLLMClient with RAMCLOUDS_HYDE_MODEL (role-specific model).
+        # Always read from settings; env-only reads caused config drift.
+        hyde_model = settings.RAMCLOUDS_HYDE_MODEL
+        from services.llm_client import UnifiedLLMClient
+        self._hyde_client = UnifiedLLMClient(force_model=hyde_model)
+        logger.info(f"HYDE: using model={hyde_model} via UnifiedLLMClient")
+
+        # Legacy fallback clients (kept for hard-failure scenarios)
         self.groq_key = os.getenv("GROQ_API_KEY")
-        self.glm4_key = os.getenv("OPENAI_API_KEY")  # Z.AI endpoint
-        self.gemini_key = os.getenv("GEMINI_API_KEY")  # Fallback only
-
-        # Configure clients
-        if self.gemini_key:
-            genai.configure(api_key=self.gemini_key)
-            self.gemini_model = genai.GenerativeModel('gemini-2.0-flash-exp')
-
-        if self.glm4_key:
-            self.glm4_client = AsyncOpenAI(
-                api_key=self.glm4_key,
-                base_url="https://open.bigmodel.cn/api/paas/v4"  # Z.AI/GLM-4 endpoint
-            )
-
-        if self.groq_key:
-            self.groq_client = AsyncGroq(api_key=self.groq_key)
-        if self.gemini_key:
-            genai.configure(api_key=self.gemini_key)
-            self.gemini_model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        self.gemini_key = os.getenv("GEMINI_API_KEY")
 
     def _get_fallback_prompt(self) -> str:
         """Fallback HYDE prompt if file not found"""
@@ -95,62 +87,23 @@ Câu hỏi cần xử lý:"""
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     async def generate_query_variants(self, query: str) -> Dict[str, Any]:
         """
-        Generate 3-5 query variants using LLM with JSON output
-
-        Priority: Groq (Llama 3.1) → GLM-4 → Gemini
+        Generate 3-5 query variants using LLM with JSON output.
+        Uses UnifiedLLMClient with RAMCLOUDS_HYDE_MODEL, with built-in fallback chain.
         """
-        prompt = f"{self.hyde_system_prompt}\n\n{query}"
+        try:
+            resp = await self._hyde_client.chat_json(
+                user_message=query,
+                system_message=self.hyde_system_prompt,
+                temperature=0.3,
+                max_tokens=500,
+            )
+            logger.info(f"HYDE: Using UnifiedLLMClient (model={getattr(self._hyde_client, '_force_model', 'default')})")
+            return self._parse_json_response(json.dumps(resp, ensure_ascii=False), query)
+        except Exception as e:
+            logger.warning(f"UnifiedLLMClient HYDE failed: {e}, using fallback")
 
-        # Try Groq (Llama 3.1) first
-        if self.groq_key:
-            try:
-                response = await self.groq_client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=[
-                        {"role": "system", "content": self.hyde_system_prompt},
-                        {"role": "user", "content": query}
-                    ],
-                    temperature=0.3,
-                    max_tokens=500
-                )
-                logger.info("HYDE: Using Groq (Llama 3.1)")
-                return self._parse_json_response(response.choices[0].message.content, query)
-            except Exception as e:
-                logger.warning(f"Groq failed: {e}, trying GLM-4...")
-
-        # Fallback to GLM-4
-        if self.glm4_key:
-            try:
-                response = await self.glm4_client.chat.completions.create(
-                    model="glm-4-plus",
-                    messages=[
-                        {"role": "system", "content": self.hyde_system_prompt},
-                        {"role": "user", "content": query}
-                    ],
-                    temperature=0.3,
-                    max_tokens=500
-                )
-                logger.info("HYDE: Using GLM-4")
-                return self._parse_json_response(response.choices[0].message.content, query)
-            except Exception as e:
-                logger.warning(f"GLM-4 failed: {e}, trying Gemini...")
-
-        # Fallback to Gemini (last resort)
-        if self.gemini_key:
-            try:
-                response = await self.gemini_model.generate_content_async(
-                    prompt,
-                    generation_config=genai.GenerationConfig(
-                        temperature=0.3,
-                        max_output_tokens=500
-                    )
-                )
-                logger.info("HYDE: Using Gemini (fallback)")
-                return self._parse_json_response(response.text, query)
-            except Exception as e:
-                logger.warning(f"Gemini failed: {e}")
-
-        raise Exception("All LLM providers failed")
+        # Fallback: intelligent rule-based variants
+        return self._create_fallback_response(query)
 
     def _parse_json_response(self, response_text: str, original_query: str = "") -> Dict[str, Any]:
         """Parse LLM response to JSON, handling markdown code blocks"""
@@ -213,20 +166,20 @@ Câu hỏi cần xử lý:"""
         if intent == "học phí":
             variants = [
                 f"Học phí Đại học Khoa học Huế {query}",
-                "Mức thu học phí tín chỉ Đại học Khoa học Huế năm 2025",
-                "Đơn giá tín chỉ HUSC năm học 2025-2026",
+                f"Mức thu học phí tín chỉ Đại học Khoa học Huế năm {CURRENT_ADMISSION_YEAR}",
+                f"Đơn giá tín chỉ HUSC năm học {CURRENT_ADMISSION_YEAR-1}-{CURRENT_ADMISSION_YEAR}",
                 "Chi phí học tập Đại học Khoa học Huế"
             ]
         elif intent == "điểm chuẩn":
             variants = [
                 f"Điểm chuẩn Đại học Khoa học Huế {query}",
-                "Điểm chuẩn các ngành HUSC năm 2025",
+                f"Điểm chuẩn các ngành HUSC năm {CURRENT_ADMISSION_YEAR}",
                 "Điểm xét tuyển Đại học Khoa học Huế"
             ]
         elif intent == "ngành học":
             variants = [
                 f"Ngành đào tạo Đại học Khoa học Huế {query}",
-                "Danh sách ngành tuyển sinh HUSC 2025",
+                f"Danh sách ngành tuyển sinh HUSC {CURRENT_ADMISSION_YEAR}",
                 "Chỉ tiêu tuyển sinh Đại học Khoa học Huế"
             ]
 
@@ -319,5 +272,28 @@ Câu hỏi cần xử lý:"""
         }
 
 
-# Global instance
-query_enhancer = HYDEQueryEnhancer()
+# Lazy singleton — avoids import-time network/client construction.
+_query_enhancer_instance: Optional[HYDEQueryEnhancer] = None
+
+
+def get_query_enhancer() -> HYDEQueryEnhancer:
+    """Get or create the lazy HYDEQueryEnhancer singleton."""
+    global _query_enhancer_instance
+    if _query_enhancer_instance is None:
+        _query_enhancer_instance = HYDEQueryEnhancer()
+    return _query_enhancer_instance
+
+
+# Backward-compat module-level shim for callers that imported
+# `from services.query_enhancer import query_enhancer` before the refactor.
+# main.py (outside the allowed FIX lane files) still uses that symbol; this
+# property resolves lazily on first access so we don't need to edit main.py.
+class _LazyModuleAttr:
+    def __repr__(self) -> str:
+        return "<lazy query_enhancer>"
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_query_enhancer(), name)
+
+
+query_enhancer = _LazyModuleAttr()

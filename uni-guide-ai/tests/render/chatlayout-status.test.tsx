@@ -150,8 +150,8 @@ describe('ChatLayout status banner — unknown status_code', () => {
 // (6) Source mapping — string[] legacy vs object[] v2 (ChatLayout.tsx:38-56)
 // ============================================================================
 describe('ChatLayout source mapping — string[] (legacy) and object[] (v2)', () => {
-  function mapSources(rawSources: any[], confidence = 0.5) {
-    return rawSources.map((source: any, index: number) => {
+  function mapSources(rawSources: (string | Record<string, unknown>)[], confidence = 0.5) {
+    return rawSources.map((source, index) => {
       if (typeof source === 'string') {
         return {
           id: `source-${index}`,
@@ -160,11 +160,11 @@ describe('ChatLayout source mapping — string[] (legacy) and object[] (v2)', ()
         };
       }
       return {
-        id: source.id || `source-${index}`,
-        title: source.title || 'Unknown source',
-        url: source.url || undefined,
-        snippet: source.snippet || undefined,
-        data_year: source.data_year || undefined,
+        id: (source.id as string | undefined) || `source-${index}`,
+        title: (source.title as string | undefined) || 'Unknown source',
+        url: source.url as string | undefined,
+        snippet: source.snippet as string | undefined,
+        data_year: source.data_year as string | undefined,
         confidence,
       };
     });

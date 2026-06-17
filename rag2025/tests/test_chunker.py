@@ -134,10 +134,10 @@ def test_chunk_long_document(config_path, sample_long_doc):
         assert chunk.chunk_id == i
         assert chunk.doc_id == "long_001"
 
-    # Check prev/next linking
-    assert chunks[0].prev_chunk_id is None
+    # Check prev/next linking (use sentinel '' because the RAGChunk model uses empty string)
+    assert chunks[0].prev_chunk_id == ""
     assert chunks[0].next_chunk_id == chunks[1].id
-    assert chunks[-1].next_chunk_id is None
+    assert chunks[-1].next_chunk_id == ""
 
 
 def test_metadata_preservation(config_path, sample_faq_doc):

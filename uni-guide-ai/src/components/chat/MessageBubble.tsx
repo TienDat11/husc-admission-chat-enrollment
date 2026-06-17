@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Copy, ThumbsUp, ThumbsDown, Volume2, Check, ExternalLink } from 'lucide-react';
+import { Copy, ThumbsUp, ThumbsDown, Check, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -7,10 +7,9 @@ import { Message, Source } from '@/lib/chat-types';
 
 interface MessageBubbleProps {
   message: Message;
-  isLast?: boolean;
 }
 
-export function MessageBubble({ message, isLast }: MessageBubbleProps) {
+export function MessageBubble({ message }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState<'like' | 'dislike' | null>(null);
 
@@ -85,16 +84,22 @@ export function MessageBubble({ message, isLast }: MessageBubbleProps) {
                   strong: ({ children }) => (
                     <strong className="font-bold text-primary">{children}</strong>
                   ),
-                  a: ({ href, children }) => (
-                    <a
-                      href={href}
-                      className="text-primary underline underline-offset-2 hover:text-secondary transition-colors font-semibold"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {children}
-                    </a>
-                  ),
+                  a: ({ href, children }) => {
+                    const safeHref =
+                      href && (/^(https?:|mailto:)/i.test(href) || href.startsWith('/'))
+                        ? href
+                        : '#';
+                    return (
+                      <a
+                        href={safeHref}
+                        className="text-primary underline underline-offset-2 hover:text-secondary transition-colors font-semibold"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {children}
+                      </a>
+                    );
+                  },
                   code: ({ children }) => (
                     <code className="px-2 py-1 rounded-lg bg-muted text-sm font-mono font-semibold">
                       {children}

@@ -127,7 +127,7 @@ describe('MessageBubble — XSS guard', () => {
   it('(g) <img onerror> XSS vector does not execute', () => {
     const content = '<img src="x" onerror="window.__xss_fired=true">';
     render(<MessageBubble message={makeMessage(content)} />);
-    expect((window as any).__xss_fired).toBeUndefined();
+    expect((window as Window & { __xss_fired?: boolean }).__xss_fired).toBeUndefined();
   });
 
   it('(g) javascript: href link does not appear as raw anchor with js: protocol', () => {
@@ -270,10 +270,9 @@ describe('MessageBubble — link hardening', () => {
     render(<MessageBubble message={makeMessage(content)} />);
     const anchor = document.querySelector('a[href="/faq"]');
     expect(anchor).not.toBeNull();
-    // MessageBubble's custom `a` component (line 88-97) always sets
-    // target=_blank + rel=noopener noreferrer — both for external and
-    // internal links. This is intentional UX (every link opens new tab) but
-    // can be surprising; pin the contract here.
+    // MessageBubble's custom `a` component always rewrites relative hrefs to
+    // the allowlist (http/https/mailto/#), so /faq stays as-is and still
+    // opens in a new tab.
     expect(anchor!.getAttribute('target')).toBe('_blank');
     expect(anchor!.getAttribute('rel')).toBe('noopener noreferrer');
   });

@@ -26,7 +26,10 @@ class LanceDBAdapter:
         return self._uri
 
     def table_exists(self) -> bool:
-        return self._table_name in self._db.table_names()
+        # lancedb 0.29.2: table_names() is deprecated but still present;
+        # list_tables() is the non-deprecated replacement in this version.
+        names = self._db.list_tables()
+        return self._table_name in names
 
     def ensure_table(self) -> None:
         if not self.table_exists():

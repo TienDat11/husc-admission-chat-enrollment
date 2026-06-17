@@ -336,6 +336,7 @@ class LanceDBRetriever:
                     continue
                 row["_distance"] = row.get("_distance", 999.0) + 100.0  # Push far down
                 row["_temporal_demoted"] = True
+                kept_rows.append(row)  # Keep demoted superseded rows in legacy soft path
                 continue
 
             # Determine chunk's data year

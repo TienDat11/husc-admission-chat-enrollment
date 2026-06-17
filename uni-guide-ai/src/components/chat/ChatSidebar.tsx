@@ -9,6 +9,7 @@ interface ChatSidebarProps {
   onNewChat: () => void;
   activeConversationId: string | null;
   onSelectConversation: (id: string) => void;
+  onDeleteConversation?: (id: string) => void;
   isLoadingConversations?: boolean;
 }
 
@@ -30,13 +31,14 @@ const emojiMap: Record<string, string> = {
   contact: '📞',
 };
 
-export function ChatSidebar({ 
-  isOpen, 
-  onClose, 
-  onNewChat, 
-  activeConversationId, 
+export function ChatSidebar({
+  isOpen,
+  onClose,
+  onNewChat,
+  activeConversationId,
   onSelectConversation,
-  isLoadingConversations = false 
+  onDeleteConversation,
+  isLoadingConversations = false
 }: ChatSidebarProps) {
   return (
     <>
@@ -138,35 +140,11 @@ export function ChatSidebar({
                     conversation={conversation}
                     isActive={activeConversationId === conversation.id}
                     onSelect={() => onSelectConversation(conversation.id)}
+                    onDelete={onDeleteConversation}
                     index={index}
                   />
                 ))
               )}
-            </div>
-          </div>
-
-          {/* Quick Stats - Locket card style */}
-          <div className="space-y-3">
-            <h3 className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase tracking-wider px-2">
-              ⭐ Thống kê
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <motion.div 
-                whileHover={{ scale: 1.02, y: -2 }}
-                className="p-4 rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/10 border-3 border-primary/30 shadow-[0_3px_0_hsl(var(--primary)/0.3)]"
-              >
-                <div className="text-2xl font-bold text-primary">234</div>
-                <div className="text-xs text-muted-foreground font-bold">Hôm nay 🔥</div>
-              </motion.div>
-              <motion.div 
-                whileHover={{ scale: 1.02, y: -2 }}
-                className="p-4 rounded-2xl bg-gradient-to-br from-accent/10 to-success/10 border-3 border-accent/30 shadow-[0_3px_0_hsl(var(--accent)/0.3)]"
-              >
-                <div className="text-2xl font-bold text-accent flex items-center gap-1">
-                  4.8 ⭐
-                </div>
-                <div className="text-xs text-muted-foreground font-bold">Đánh giá</div>
-              </motion.div>
             </div>
           </div>
         </div>
@@ -179,11 +157,13 @@ function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  onDelete,
   index,
 }: {
   conversation: Conversation;
   isActive: boolean;
   onSelect: () => void;
+  onDelete?: (id: string) => void;
   index: number;
 }) {
   const timeAgo = getTimeAgo(conversation.timestamp);
@@ -209,19 +189,22 @@ function ConversationItem({
         <div className="font-bold text-sm truncate">{conversation.title}</div>
         <div className={`text-xs truncate ${isActive ? 'text-white/80' : 'text-muted-foreground'}`}>{timeAgo}</div>
       </div>
-      <motion.button
-        whileHover={{ scale: 1.2 }}
-        whileTap={{ scale: 0.8 }}
-        onClick={(e) => {
-          e.stopPropagation();
-        }}
-        className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition-all ${
-          isActive ? 'hover:bg-white/20 text-white' : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'
-        }`}
-        aria-label="Xóa cuộc trò chuyện"
-      >
-        <Trash2 className="w-4 h-4" />
-      </motion.button>
+      {onDelete && (
+        <motion.button
+          whileHover={{ scale: 1.2 }}
+          whileTap={{ scale: 0.8 }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(conversation.id);
+          }}
+          className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition-all ${
+            isActive ? 'hover:bg-white/20 text-white' : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'
+          }`}
+          aria-label="Xóa cuộc trò chuyện"
+        >
+          <Trash2 className="w-4 h-4" />
+        </motion.button>
+      )}
     </motion.button>
   );
 }

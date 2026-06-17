@@ -237,7 +237,7 @@ def _install_slow_leg_fakes(
         "data_year": "2026",
     }]
 
-    async def _fake_generate_answer(*, query, chunks, confidence, is_program_list_query):
+    async def _fake_generate_answer(*, query, chunks, confidence, is_program_list_query, history=None):
         return {
             "answer": "Ngành CNTT 400 chỉ tiêu.",
             "sources": sources,

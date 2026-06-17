@@ -46,6 +46,26 @@ def _compute_lag_days(latest_iso: str) -> Optional[int]:
     return max(0, delta.days)
 
 
+def data_year_is_stale(
+    max_data_year: Optional[int],
+    current_admission_year: int,
+) -> bool:
+    """Year-aware staleness signal, complementary to the 90-day age check.
+
+    Returns True only when the index demonstrably lacks data for the current
+    admission year — i.e. the newest ``data_year`` present is strictly older
+    than ``current_admission_year``. This catches the case where data is
+    calendar-fresh (recently crawled) yet belongs to a prior admission cycle,
+    which the age-based check is blind to.
+
+    Pure function — no I/O, no hardcoded year. ``None`` (unknown max year)
+    is treated as not-stale so a missing signal never raises a false alarm.
+    """
+    if max_data_year is None:
+        return False
+    return max_data_year < current_admission_year
+
+
 def check_freshness(
     *,
     audit_path: Path | None = None,

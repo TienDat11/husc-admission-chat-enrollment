@@ -20,7 +20,7 @@ import userEvent from '@testing-library/user-event';
 const mockSendChatMessage = vi.fn();
 
 vi.mock('@/lib/api', () => ({
-  sendChatMessage: (...args: any[]) => mockSendChatMessage(...args),
+  sendChatMessage: (...args: unknown[]) => mockSendChatMessage(...args),
   checkHealth: vi.fn(),
   getApiBaseUrl: () => 'http://localhost:8000',
 }));
@@ -215,9 +215,9 @@ describe('ChatLayout — full send-message flow', () => {
 
   it('(e) optimistic user message appears immediately upon send (no await on BE)', async () => {
     const user = userEvent.setup();
-    let resolveResponse: (value: any) => void;
+    let resolveResponse: (value: Record<string, unknown>) => void;
     mockSendChatMessage.mockImplementationOnce(
-      () => new Promise<any>((resolve) => { resolveResponse = resolve; })
+      () => new Promise<Record<string, unknown>>((resolve) => { resolveResponse = resolve; })
     );
 
     renderChatLayout();

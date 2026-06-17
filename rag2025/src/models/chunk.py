@@ -11,6 +11,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
+from services.temporal_authority import get_current_admission_year
+
+
 
 ChunkMethod = Literal["rule_v2", "haiku_v1", "claude_v1", "ensemble"]
 
@@ -61,10 +64,9 @@ class ChunkMetadataV3(BaseModel):
             or d.get("source_url")
             or "https://tuyensinh.husc.edu.vn/unknown"
         )
-        # HIGH-3: fallback year from env (CURRENT_ADMISSION_YEAR), defaults 2026.
-        # Previously hardcoded 2025 → silently mislabeled 2026 reingest content.
-        import os
-        env_year = int(os.getenv("CURRENT_ADMISSION_YEAR", "2026"))
+        # HIGH-3: fallback year via temporal_authority (single source of truth).
+        # Previously hardcoded 2025 → silently mislabeled reingest content.
+        env_year = get_current_admission_year()
         year_raw = (
             legacy.get("data_year")
             or legacy.get("year")

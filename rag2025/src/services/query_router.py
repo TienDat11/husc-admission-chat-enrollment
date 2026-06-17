@@ -118,6 +118,23 @@ _VAGUE_PLACEHOLDER_PATTERNS = re.compile(
 # can't supply a meta payload (auto-answer path).
 import os
 
+
+def _safe_parse_complexity(value, default: int = 1) -> int:
+    """Parse a complexity value defensively.
+
+    The classifier schema says `complexity` is 1-5 integer, but real LLM
+    outputs can return strings like 'high'. Try int(), fall back to the
+    default on ValueError/TypeError, and log a debug message.
+    """
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        logger.debug(f"Invalid complexity value {value!r}; falling back to {default}")
+        return default
+
+
 _HOTLINE_FALLBACK = "0234.3823290"  # Phòng Đào tạo (HUSC)
 
 
@@ -708,7 +725,7 @@ class SmartQueryRouter:
             route_str = "graph"
         else:
             route_str = raw_route if raw_route in ("padded", "hybrid", "graph") else "padded"
-        complexity = int(classification.get("complexity", 1))
+        complexity = _safe_parse_complexity(classification.get("complexity", 1))
 
         # step_back: from model output, but `_should_stepback` gate wins.
         # When the gate says False (year+major or short single-fact lookup),
@@ -808,7 +825,11 @@ _router: Optional[SmartQueryRouter] = None
 
 
 def get_router() -> SmartQueryRouter:
-    """Get or create the singleton SmartQueryRouter."""
+    """Get or create the singleton SmartQueryRouter lazily.
+
+    The singleton is constructed on first call rather than at import time
+    so importing `query_router` does not immediately bind an LLM client.
+    """
     global _router
     if _router is None:
         _router = SmartQueryRouter()

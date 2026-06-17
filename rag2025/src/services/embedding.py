@@ -5,19 +5,26 @@ Supports multiple embedding families:
 - Qwen3
 - Harrier
 - BGE
+
+@spec(S10.B2) — Lazy loading: model loaded on first encode call, not at import/init.
 """
+import threading
 from pathlib import Path
 from typing import List
 
 import numpy as np
 from loguru import logger
-from sentence_transformers import SentenceTransformer
 
 from config.settings import RAGSettings
 
 
 class EmbeddingService:
-    """Embedding service for Qwen3/Harrier/BGE models."""
+    """Embedding service for Qwen3/Harrier/BGE models.
+    @spec(S10.B2)
+
+    Model is loaded lazily on first encode call to keep startup < 5s.
+    Thread-safe via threading.Lock (works with run_in_threadpool callers).
+    """
 
     def __init__(self, settings: RAGSettings):
         self.settings = settings
@@ -27,21 +34,35 @@ class EmbeddingService:
         self.normalize = settings.EMBEDDING_NORMALIZE
         self.provider = settings.EMBEDDING_PROVIDER
 
+        # @spec(S10.B2): lazy — model loaded on first use, not at init
+        self._model = None
+        self._lock = threading.Lock()
+
         logger.info(
-            f"Loading embedding model: {self.model_name} "
+            f"EmbeddingService configured (lazy): {self.model_name} "
             f"(provider={self.provider}, dim={self.expected_dim})"
         )
 
-        self.model = SentenceTransformer(
-            self.model_name,
-            device="cpu",
-            model_kwargs={"torch_dtype": "auto"}
-        )
+    def _ensure_loaded(self) -> None:
+        """Load model on first call. Thread-safe double-check locking."""
+        if self._model is not None:
+            return
+        with self._lock:
+            if self._model is not None:  # double-check after acquiring lock
+                return
+            logger.info(f"Lazy-loading embedding model: {self.model_name}")
+            from sentence_transformers import SentenceTransformer
 
-        self._validate_model_dimension()
+            self._model = SentenceTransformer(
+                self.model_name,
+                device="cpu",
+                model_kwargs={"torch_dtype": "auto"},
+            )
+            self._validate_model_dimension()
+            logger.info(f"Embedding model loaded: {self.model_name}")
 
     def _validate_model_dimension(self) -> None:
-        test_embedding = self.model.encode(
+        test_embedding = self._model.encode(
             "test",
             normalize_embeddings=False,
         )
@@ -51,11 +72,17 @@ class EmbeddingService:
                 f"Model dimension mismatch: expected {self.expected_dim}, got {actual_dim}"
             )
 
+    @property
+    def is_loaded(self) -> bool:
+        """Whether the embedding model has been loaded."""
+        return self._model is not None
+
     def encode_batch(self, texts: List[str], show_progress: bool = False) -> np.ndarray:
+        self._ensure_loaded()
         if not texts:
             return np.empty((0, self.expected_dim), dtype=np.float32)
 
-        embeddings = self.model.encode(
+        embeddings = self._model.encode(
             texts,
             batch_size=self.batch_size,
             normalize_embeddings=self.normalize,
@@ -93,6 +120,7 @@ class EmbeddingService:
         - Harrier: prompt_name="web_search_query"
         - BGE/others: no prompt_name
         """
+        self._ensure_loaded()
         prompt_name = self._query_prompt_name()
 
         encode_kwargs = {
@@ -102,7 +130,7 @@ class EmbeddingService:
         if prompt_name:
             encode_kwargs["prompt_name"] = prompt_name
 
-        embedding = self.model.encode(
+        embedding = self._model.encode(
             query,
             **encode_kwargs,
         ).astype(np.float32)
@@ -118,10 +146,11 @@ class EmbeddingService:
         """
         Encode documents without instruction prompts.
         """
+        self._ensure_loaded()
         if not documents:
             return np.empty((0, self.expected_dim), dtype=np.float32)
 
-        embeddings = self.model.encode(
+        embeddings = self._model.encode(
             documents,
             batch_size=self.batch_size,
             normalize_embeddings=self.normalize,

@@ -19,7 +19,7 @@ profiles:
 
   policy:
     description: "Legal/policy documents (hierarchical structure)"
-    chunk_size: 420
+    chunk_size: 450
     overlap: 100
     preserve_sections: true
     section_regex: "^(PHẦN|CHƯƠNG|MỤC|Điều|Khoản|Điểm)"

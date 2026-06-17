@@ -7,7 +7,30 @@
  * - GET /health - Health check
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+import type { GraphStats, RouterInfo, SourceChip } from './api-types';
+
+/**
+ * Base URL for the RAG backend API.
+ *
+ * REQUIRED ENV VAR: VITE_API_BASE_URL
+ *   - In development builds (`import.meta.env.DEV`) it falls back to the local
+ *     FastAPI server on `http://localhost:8000` so `npm run dev` works out
+ *     of the box.
+ *   - In production builds (`import.meta.env.PROD`) a missing value falls back
+ *     to a same-origin relative base (`""`). This lets a reverse proxy route
+ *     requests from the same origin to `/api/*` without baking a hard URL into
+ *     the static bundle, and avoids silently shipping localhost.
+ */
+export function getApiBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  if (configured) return configured;
+  if (import.meta.env.PROD) {
+    return '';
+  }
+  return 'http://localhost:8000';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 export interface ChatTurn {
   role: 'user' | 'assistant';
@@ -37,12 +60,12 @@ export interface QueryResponse {
   // v2-native fields
   query?: string;
   route?: string;
-  router_info?: any;
-  graph_stats?: any;
+  router_info?: RouterInfo;
+  graph_stats?: GraphStats;
   latency_ms?: number;
   // answer + retrieval
   answer?: string;
-  sources?: any[]; // enriched object[] on /v2 (was string[] on legacy /query)
+  sources?: SourceChip[]; // enriched object[] on /v2 (was string[] on legacy /query)
   confidence?: number;
   groundedness_score?: number;
   trace_id?: string;
@@ -52,26 +75,6 @@ export interface QueryResponse {
   data_gap_hints?: string[];
   internal_status_code?: string | null;
   pii_detected?: boolean;
-  // legacy /query aliases — kept optional for backward compatibility
-  original_query?: string;
-  enhanced_query?: string;
-  query_type?: string;
-  top_k_used?: number;
-  chunks_used?: number;
-  provider?: string;
-  chunks?: any[];
-  // camelCase aliases for internal use
-  originalQuery?: string;
-  enhancedQuery?: string;
-  queryType?: string;
-  statusCode?: string;
-  statusReason?: string;
-  dataGapHints?: string[];
-  internalStatusCode?: string;
-  topKUsed?: number;
-  chunksUsed?: number;
-  piiDetected?: boolean;
-  groundednessScore?: number;
 }
 
 export interface HealthResponse {
@@ -171,7 +174,7 @@ export async function warmup(): Promise<void> {
 
 export interface StreamMeta {
   route?: string;
-  sources?: any[];
+  sources?: SourceChip[];
   status_code?: string;
   data_gap_hints?: string[];
   trace_id?: string;
@@ -326,12 +329,6 @@ export async function queryStream(
   // Stream ended without a `done` frame — still surface what we have.
   handlers.onDone?.(fullAnswer);
   return fullAnswer;
-}
-/**
- * Get API base URL
- */
-export function getApiBaseUrl(): string {
-  return API_BASE_URL;
 }
 
 // ─────────────────────────────────────────────────────────────────────────

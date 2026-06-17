@@ -1,0 +1,236 @@
+{
+  "config": {
+    "max_gen_tokens": 800,
+    "max_gen_tokens_enum": 8000,
+    "model": "gemini-3.5-flash-low",
+    "base_url": "https://ramclouds.me/v1",
+    "api_key_redacted": "sk-d...yFEe"
+  },
+  "results": {
+    "[ENUM] Liet ke 28 nganh": {
+      "branch": "ENUM",
+      "budget": 8000,
+      "finish_reason": "stop",
+      "chars": 2021,
+      "est_tokens": 673,
+      "elapsed_s": 6.2,
+      "prompt_tokens": 7741,
+      "completion_tokens": 1158,
+      "total_tokens": 11512,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": false,
+      "text": "Dưới đây là danh sách chi tiết 28 ngành đào tạo của Trường Đại học Khoa học - Đại học Huế năm 2026:\n\n| STT | Mã ngành | Tên ngành | Tổ hợp xét tuyển |\n| :--- | :--- | :--- | :--- |\n| 1 | **7310101** | Kinh tế (Kinh tế phát triển) | A00, A01, D01, D07 |\n| 2 | **7310201** | Quản trị Kinh doanh | A00, A01, C01, D01 |\n| 3 | **7310301** | Kế toán | A00, C01, D01, D07 |\n| 4 | **7340101** | Quản trị nhân lực | A00, C00, D01, C20 |\n| 5 | **7340201** | Tài chính - Ngân hàng | A00, A01, C01, D01 |\n| 6 | **7340301** | Kiểm toán | A00, A01, C01, D01 |\n| 7 | **7380101** | Luật | A00, C00, D01, D66 |\n| 8 | **7380107** | Luật Kinh tế | A00, C00, D01, D66 |\n| 9 | **7460101** | Toán học | A00, A01, B00, D07 |\n| 10 | **7460102** | Toán ứng dụng | A00, A01, B00, D07 |\n| 11 | **7460117** | Toán Cơ | A00, A01, B00, D07 |\n| 12 | **7460201** | Vật lý | A00, A01, B00, D07 |\n| 13 | **7460202** | Vật lý kỹ thuật | A00, A01, B00, D07 |\n| 14 | **7460301** | Hóa học | A00, B00, D07, A06 |\n| 15 | **7460302** | Hóa dược | A00, B00, D07, A06 |\n| 16 | **7460401** | Sinh học | A00, B00, D08, A02 |\n| 17 | **7460402** | Công nghệ Sinh học | A00, B00, D08, A02 |\n| 18 | **7480101** | Khoa học Máy tính | A00, A01, B00, D07 |\n| 19 | **7480102** | Mạng máy tính & Truyền thông dữ liệu | A00, A01, B00, D07 |\n| 20 | **7480103** | Kỹ thuật Phần mềm | A00, A01, B00, D07 |\n| 21 | **7480104** | Hệ thống Thông tin | A00, A01, B00, D07 |\n| 22 | **7480106** | Khoa học Dữ liệu | A00, A01, B00, D07 |\n| 23 | **7480201** | Công nghệ Thông tin (CNTT định hướng ứng dụng) | A00, A01, B00, D07 |\n| 24 | **7520201** | Kỹ thuật Điện | A00, A01, B00, D07 |\n| 25 | **7520207** | Kỹ thuật Điện tử - Viễn thông | A00, A01, B00, D07 |\n| 26 | **7540101** | Công nghệ Thực phẩm | A00, B00, D07, A06 |\n| 27 | **7580101** | Kiến trúc | A00, V00, V01, V02 |\n| 28 | **7220201** | Ngôn ngữ Anh | D01, D14, D66, D78 |\n\n*Thông tin thêm:* Tổng chỉ tiêu tuyển sinh năm 2026 khoảng **2.400** chỉ tiêu. Học phí dao động từ **13.5 - 18.5 triệu VNĐ/năm** tùy theo từng ngành."
+    },
+    "[LONG] So sanh CNTT vs KTPM": {
+      "branch": "STD",
+      "budget": 800,
+      "finish_reason": "stop",
+      "chars": 943,
+      "est_tokens": 314,
+      "elapsed_s": 4.29,
+      "prompt_tokens": 7041,
+      "completion_tokens": 383,
+      "total_tokens": 8519,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": false,
+      "text": "Dưới đây là bảng so sánh chi tiết giữa ngành Khoa học Máy tính và Kỹ thuật phần mềm tại HUSC dựa trên dữ liệu tuyển sinh:\n\n| Tiêu chí | Khoa học Máy tính (Mã ngành: 7480101) | Kỹ thuật phần mềm (Mã ngành: 7480103) |\n| :--- | :--- | :--- |\n| **Điểm chuẩn 2025** | 24.50 (tổ hợp A00), 22.80 (tổ hợp D07) | 23.75 (tổ hợp A00), 22.10 (tổ hợp D07) |\n| **Học phí** | 18.500.000 VNĐ/năm | 18.500.000 VNĐ/năm |\n| **Tổ hợp xét tuyển** | A00, A01, B00, D07 | A00, A01, B00, D07 |\n| **Cơ hội việc làm** | AI Engineer, Data Scientist, Research Scientist, Giảng viên | Backend/Frontend/Mobile Developer, DevOps, Tech Lead |\n| **Lương khởi điểm** | 18 - 35 triệu VNĐ/tháng | 15 - 30 triệu VNĐ/tháng |\n\n**Khác biệt định hướng:** Khoa học Máy tính tập trung vào nền tảng toán - lý chuyên sâu và nghiên cứu. Trong khi đó, Kỹ thuật phần mềm hướng đến ứng dụng thực tế, phát triển phần mềm thực chiến và cho phép sinh viên thực tập tại doanh nghiệp từ năm thứ 3."
+    },
+    "[LONG] Bang hoc phi": {
+      "branch": "STD",
+      "budget": 800,
+      "finish_reason": "stop",
+      "chars": 1673,
+      "est_tokens": 557,
+      "elapsed_s": 6.58,
+      "prompt_tokens": 7053,
+      "completion_tokens": 647,
+      "total_tokens": 9552,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": true,
+      "text": "Dưới đây là thông tin học phí năm học 2026-2027 của Trường Đại học Khoa học - Đại học Huế (HUSC) được nhóm theo từng khối ngành:\n\n### Khối Khoa học Tự nhiên\n*   **Các ngành:** Toán, Toán ứng dụng (Toán UD), Toán cơ học (Toán Cơ), Vật lý, Vật lý kỹ thuật (VLKT), Hóa học (Hóa), Hóa dược, Sinh học (Sinh), Công nghệ sinh học (CNSH).\n*   **Học phí:** \n    *   Toán, Toán UD, Toán Cơ, Vật lý, Hóa, Sinh: **13.5 triệu VNĐ/năm học**.\n    *   VLKT, Hóa dược, CNSH: **15.0 triệu VNĐ/năm học**.\n\n### Khối Công nghệ thông tin (CNTT)\n*   **Các ngành:** Khoa học máy tính (KHMT), Mạng máy tính và truyền thông (MMTT), Kỹ thuật phần mềm (KTPM), Hệ thống thông tin (HTTT), Khoa học dữ liệu (KHDL), Công nghệ thông tin (CNTT).\n*   **Học phí:** **18.5 triệu VNĐ/năm học**.\n\n### Khối Kỹ thuật\n*   **Các ngành:** Kỹ thuật Điện (KT Điện), Kỹ thuật Điện tử - Viễn thông (KT Điện tử-VT).\n*   **Học phí:** **16.0 triệu VNĐ/năm học**.\n\n### Khối Kinh tế\n*   **Các ngành:** Kinh tế, Quản trị kinh doanh (QTKD), Kế toán, Quản lý tài nguyên và lao động (QLTNLĐ), Tài chính - Ngân hàng (Tài chính-NH), Kiểm toán.\n*   **Học phí:** **14.5 triệu VNĐ/năm học**.\n\n### Khối Luật\n*   **Các ngành:** Luật, Luật Kinh tế (Luật KT).\n*   **Học phí:** **14.0 triệu VNĐ/năm học**.\n\n### Khối Nông-Lâm-Thủy sản\n*   **Ngành:** Công nghệ thực phẩm (CNTP).\n*   **Học phí:** **15.0 triệu VNĐ/năm học**.\n\n### Khối Xây dựng/Kiến trúc\n*   **Ngành:** Kiến trúc.\n*   **Học phí:** **17.0 triệu VNĐ/năm học**.\n\n### Khối Ngoại ngữ\n*   **Ngành:** Ngôn ngữ Anh.\n*   **Học phí:** **16.5 triệu VNĐ/năm học**.\n\n*Lưu ý: Mức học phí trên áp dụng cho năm học 2026-2027 và có thể điều chỉnh từ 5-10% mỗi năm theo Nghị định 81/2021/NĐ-CP.*"
+    },
+    "[LONG] Quy trinh hoc ba": {
+      "branch": "STD",
+      "budget": 800,
+      "finish_reason": "stop",
+      "chars": 896,
+      "est_tokens": 298,
+      "elapsed_s": 2.94,
+      "prompt_tokens": 7095,
+      "completion_tokens": 379,
+      "total_tokens": 8635,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": false,
+      "text": "Quy trình xét tuyển học bạ tại HUSC năm 2026 gồm 6 bước chi tiết sau:\n\n*   **Bước 1 (15/2 - 30/4/2026):** Đăng ký trực tuyến tại [tuyensinh.husc.edu.vn](https://tuyensinh.husc.edu.vn) (tạo tài khoản, điền thông tin, chọn ngành và tổ hợp).\n*   **Bước 2 (1/3 - 10/5/2026):** Nộp hồ sơ gồm: Học bạ THPT photo công chứng; Bằng tốt nghiệp THPT photo (nếu tốt nghiệp 2025 trở về trước); CCCD photo; Phiếu đăng ký theo mẫu HUSC. *Hồ sơ bổ sung (nếu có):* Giấy chứng nhận ưu tiên, giải HSG cấp tỉnh/quốc gia, đơn xin xét đặc cách.\n*   **Bước 3 (15/5 - 30/5/2026):** HUSC xét duyệt hồ sơ theo tổng điểm 3 môn tổ hợp cả năm lớp 12.\n*   **Bước 4 (5/6 - 15/6/2026):** Công bố danh sách trúng tuyển đợt 1 qua website và email.\n*   **Bước 5 (20/6 - 30/6/2026):** Xác nhận nhập học trực tuyến và nộp giấy tờ gốc đối chiếu.\n*   **Bước 6 (1/7 - 15/7/2026):** Nhập học, đóng học phí học kỳ 1 và nhận thẻ sinh viên."
+    },
+    "[SHORT] Diem chuan CNTT": {
+      "branch": "STD",
+      "budget": 800,
+      "finish_reason": "stop",
+      "chars": 375,
+      "est_tokens": 125,
+      "elapsed_s": 4.01,
+      "prompt_tokens": 6721,
+      "completion_tokens": 131,
+      "total_tokens": 7548,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": false,
+      "text": "Chào bạn, điểm chuẩn ngành **Khoa học Máy tính** (mã ngành: **7480101**) của Trường Đại học Khoa học - Đại học Huế (HUSC) năm 2025 cụ thể theo từng tổ hợp xét tuyển như sau:\n\n*   Tổ hợp **A00**: **24.50** điểm\n*   Tổ hợp **D07**: **22.80** điểm\n\nNếu bạn cần tư vấn thêm về các phương thức xét tuyển hoặc thông tin tuyển sinh khác của HUSC, hãy đặt câu hỏi để được hỗ trợ nhé!"
+    },
+    "[SHORT] Hoc phi Van hoc": {
+      "branch": "STD",
+      "budget": 800,
+      "finish_reason": "stop",
+      "chars": 321,
+      "est_tokens": 107,
+      "elapsed_s": 7.95,
+      "prompt_tokens": 6698,
+      "completion_tokens": 102,
+      "total_tokens": 7367,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": false,
+      "text": "Chào bạn! Theo thông tin tuyển sinh của nhà trường, học phí ngành **Ngôn ngữ Anh** (thuộc khối Ngoại ngữ) tại Trường Đại học Khoa học - Đại học Huế (HUSC) năm **2026** là **16.500.000 VNĐ/năm học**. \n\nNếu bạn cần tìm hiểu thêm thông tin về tổ hợp xét tuyển hoặc chỉ tiêu của ngành này, hãy đặt câu hỏi để mình hỗ trợ nhé!"
+    },
+    "[SHORT] Tohop KHDL": {
+      "branch": "STD",
+      "budget": 800,
+      "finish_reason": "stop",
+      "chars": 214,
+      "est_tokens": 71,
+      "elapsed_s": 4.67,
+      "prompt_tokens": 6730,
+      "completion_tokens": 92,
+      "total_tokens": 7452,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": true,
+      "text": "Ngành **Khoa học Dữ liệu** (mã ngành: **7480106**) tại HUSC xét tuyển bằng các tổ hợp môn sau:\n\n*   **A00**: Toán - Lý - Hóa\n*   **A01**: Toán - Lý - Anh\n*   **B00**: Toán - Hóa - Sinh\n*   **D07**: Toán - Hóa - Anh"
+    },
+    "[SHORT] Chi tieu": {
+      "branch": "STD",
+      "budget": 800,
+      "finish_reason": "stop",
+      "chars": 323,
+      "est_tokens": 107,
+      "elapsed_s": 5.12,
+      "prompt_tokens": 6708,
+      "completion_tokens": 106,
+      "total_tokens": 7429,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": false,
+      "text": "Theo thông tin dự kiến, chỉ tiêu tuyển sinh đại học chính quy của Trường Đại học Khoa học - Đại học Huế (HUSC) năm **2026** là **khoảng 2.400 sinh viên** cho tất cả **28 ngành** đào tạo. \n\nTrong đó, riêng ngành Công nghệ thông tin (CNTT - khối 748) chiếm **khoảng 35%** tổng chỉ tiêu (tương đương khoảng **840 sinh viên**)."
+    },
+    "[SHORT] Hoc phi CNTT": {
+      "branch": "STD",
+      "budget": 800,
+      "finish_reason": "stop",
+      "chars": 358,
+      "est_tokens": 119,
+      "elapsed_s": 3.47,
+      "prompt_tokens": 6710,
+      "completion_tokens": 112,
+      "total_tokens": 7351,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": false,
+      "text": "Chào bạn, theo thông tin tuyển sinh, học phí ngành **Khoa học Máy tính** tại Trường Đại học Khoa học - Đại học Huế (HUSC) năm **2026** là **18.500.000 VNĐ/năm học**. \n\nMức học phí này được áp dụng chung cho các ngành Công nghệ thông tin (CNTT) thuộc khối 748 của trường. Nếu bạn cần tìm hiểu thêm thông tin tuyển sinh nào khác, hãy kết nối ngay với mình nhé!"
+    },
+    "[SHORT] Diem chuan KTPM": {
+      "branch": "STD",
+      "budget": 800,
+      "finish_reason": "stop",
+      "chars": 329,
+      "est_tokens": 109,
+      "elapsed_s": 5.01,
+      "prompt_tokens": 6718,
+      "completion_tokens": 136,
+      "total_tokens": 7367,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": true,
+      "text": "Điểm chuẩn ngành **Kỹ thuật Phần mềm** (Mã ngành: **7480103**) của Trường Đại học Khoa học - Đại học Huế (HUSC) năm 2025 cụ thể theo từng tổ hợp xét tuyển như sau:\n\n| Tổ hợp xét tuyển | Điểm chuẩn năm 2025 |\n| :--- | :--- |\n| **A00** | **23.75** |\n| **D07** | **22.10** |\n\n*Lưu ý: Điểm chuẩn cho năm 2026 hiện chưa được công bố.*"
+    },
+    "[LONG] Tong quan 5 nganh hot": {
+      "branch": "STD",
+      "budget": 800,
+      "finish_reason": "stop",
+      "chars": 610,
+      "est_tokens": 203,
+      "elapsed_s": 5.63,
+      "prompt_tokens": 8175,
+      "completion_tokens": 268,
+      "total_tokens": 9866,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": false,
+      "text": "Dưới đây là thông tin tổng quan về 5 ngành tại HUSC dựa trên tài liệu tuyển sinh hiện có:\n\n| Ngành | Học phí 2026 (triệu VNĐ/năm) | Điểm chuẩn 2025 |\n|---|---|---|\n| **Công nghệ Thông tin** | 18.5 | Khoảng 17.0 - 25.0 |\n| **Kế toán** | 14.5 | Khoảng 17.0 - 25.0 |\n| **Luật** | 14.0 | Khoảng 17.0 - 25.0 |\n| **Ngôn ngữ Anh** | 16.5 | Khoảng 17.0 - 25.0 |\n| **Kiến trúc** | 17.0 | Khoảng 17.0 - 25.0 |\n\n*Lưu ý:* Tài liệu hiện tại chưa cung cấp chi tiết điểm chuẩn 2025 riêng cho từng ngành (chỉ có khoảng chung từ 17.0 đến 25.0), cũng như chưa có thông tin về cơ hội việc làm và gợi ý đối tượng thí sinh phù hợp."
+    },
+    "[ENUM] Liet ke nganh khoi CNTT": {
+      "branch": "ENUM",
+      "budget": 8000,
+      "finish_reason": "stop",
+      "chars": 692,
+      "est_tokens": 230,
+      "elapsed_s": 4.03,
+      "prompt_tokens": 7745,
+      "completion_tokens": 318,
+      "total_tokens": 9110,
+      "truncated_finish_reason": false,
+      "truncated_heuristic": false,
+      "text": "Chào bạn, dưới đây là danh sách chi tiết các ngành thuộc khối Công nghệ Thông tin và Máy tính mà HUSC đào tạo năm 2026:\n\n| STT | Mã ngành | Tên ngành | Tổ hợp xét tuyển |\n| :--- | :--- | :--- | :--- |\n| 1 | **7480101** | Khoa học Máy tính | A00, A01, B00, D07 |\n| 2 | **7480102** | Mạng máy tính & Truyền thông dữ liệu | A00, A01, B00, D07 |\n| 3 | **7480103** | Kỹ thuật Phần mềm | A00, A01, B00, D07 |\n| 4 | **7480104** | Hệ thống Thông tin | A00, A01, B00, D07 |\n| 5 | **7480106** | Khoa học Dữ liệu | A00, A01, B00, D07 |\n| 6 | **7480201** | Công nghệ Thông tin (CNTT định hướng ứng dụng) | A00, A01, B00, D07 |\n\nBạn có cần tìm hiểu thêm về học phí hoặc điểm chuẩn của các ngành này không?"
+    }
+  },
+  "diff_800_vs_1200": {
+    "[LONG] So sanh CNTT vs KTPM": {
+      "at_1200": {
+        "finish_reason": "stop",
+        "chars": 883,
+        "est_tokens": 294,
+        "truncated": false,
+        "text": "Dưới đây là bảng so sánh chi tiết giữa ngành Khoa học Máy tính và Kỹ thuật phần mềm tại HUSC:\n\n| Tiêu chí | Khoa học Máy tính (Mã ngành: 7480101) | Kỹ thuật phần mềm (Mã ngành: 7480103) |\n| :--- | :--- | :--- |\n| **Điểm chuẩn 2025** | 24.50 (tổ hợp A00), 22.80 (tổ hợp D07) | 23.75 (tổ hợp A00), 22.10 (tổ hợp D07) |\n| **Học phí** | 18.500.000 VNĐ/năm | 18.500.000 VNĐ/năm |\n| **Tổ hợp xét tuyển** | A00, A01, B00, D07 | A00, A01, B00, D07 |\n| **Cơ hội việc làm** | AI Engineer, Data Scientist, Research Scientist, Giảng viên | Backend/Frontend/Mobile Developer, DevOps, Tech Lead |\n| **Lương khởi điểm** | 18 - 35 triệu VNĐ/tháng | 15 - 30 triệu VNĐ/tháng |\n\n*Khác biệt định hướng:* Khoa học Máy tính thiên về nghiên cứu và nền tảng toán - lý sâu. Kỹ thuật phần mềm chú trọng ứng dụng thực tế, phát triển phần mềm thực chiến và cho phép sinh viên thực tập doanh nghiệp từ năm thứ 3."
+      },
+      "at_800": {
+        "finish_reason": "stop",
+        "chars": 943,
+        "est_tokens": 314,
+        "truncated": false,
+        "text": "Dưới đây là bảng so sánh chi tiết giữa ngành Khoa học Máy tính và Kỹ thuật phần mềm tại HUSC dựa trên dữ liệu tuyển sinh:\n\n| Tiêu chí | Khoa học Máy tính (Mã ngành: 7480101) | Kỹ thuật phần mềm (Mã ngành: 7480103) |\n| :--- | :--- | :--- |\n| **Điểm chuẩn 2025** | 24.50 (tổ hợp A00), 22.80 (tổ hợp D07) | 23.75 (tổ hợp A00), 22.10 (tổ hợp D07) |\n| **Học phí** | 18.500.000 VNĐ/năm | 18.500.000 VNĐ/năm |\n| **Tổ hợp xét tuyển** | A00, A01, B00, D07 | A00, A01, B00, D07 |\n| **Cơ hội việc làm** | AI Engineer, Data Scientist, Research Scientist, Giảng viên | Backend/Frontend/Mobile Developer, DevOps, Tech Lead |\n| **Lương khởi điểm** | 18 - 35 triệu VNĐ/tháng | 15 - 30 triệu VNĐ/tháng |\n\n**Khác biệt định hướng:** Khoa học Máy tính tập trung vào nền tảng toán - lý chuyên sâu và nghiên cứu. Trong khi đó, Kỹ thuật phần mềm hướng đến ứng dụng thực tế, phát triển phần mềm thực chiến và cho phép sinh viên thực tập tại doanh nghiệp từ năm thứ 3."
+      }
+    },
+    "[LONG] Quy trinh hoc ba": {
+      "at_1200": {
+        "finish_reason": "stop",
+        "chars": 1048,
+        "est_tokens": 349,
+        "truncated": false,
+        "text": "Quy trình xét tuyển học bạ tại HUSC năm 2026 diễn ra theo 6 bước chi tiết sau:\n\n*   **Bước 1 (15/2 - 30/4/2026):** Đăng ký trực tuyến tại [tuyensinh.husc.edu.vn](https://tuyensinh.husc.edu.vn) để tạo tài khoản, điền thông tin cá nhân, chọn ngành và tổ hợp xét tuyển.\n*   **Bước 2 (1/3 - 10/5/2026):** Nộp hồ sơ gồm: \n    *   (a) Học bạ THPT photo công chứng;\n    *   (b) Bằng tốt nghiệp THPT photo (đối với thí sinh tốt nghiệp năm 2025 trở về trước);\n    *   (c) CCCD photo;\n    *   (d) Phiếu đăng ký theo mẫu HUSC (in từ hệ thống).\n    *   *Hồ sơ bổ sung (nếu có):* Giấy chứng nhận ưu tiên, giải HSG cấp tỉnh/quốc gia, đơn xin xét đặc cách.\n*   **Bước 3 (15/5 - 30/5/2026):** HUSC xét duyệt hồ sơ (Điểm xét tuyển = Tổng điểm 3 môn tổ hợp cả năm lớp 12).\n*   **Bước 4 (5/6 - 15/6/2026):** Công bố danh sách trúng tuyển đợt 1 trên website và qua email.\n*   **Bước 5 (20/6 - 30/6/2026):** Xác nhận nhập học trực tuyến và nộp giấy tờ gốc để đối chiếu.\n*   **Bước 6 (1/7 - 15/7/2026):** Nhập học chính thức, đóng học phí học kỳ 1 và nhận thẻ sinh viên."
+      },
+      "at_800": {
+        "finish_reason": "stop",
+        "chars": 896,
+        "est_tokens": 298,
+        "truncated": false,
+        "text": "Quy trình xét tuyển học bạ tại HUSC năm 2026 gồm 6 bước chi tiết sau:\n\n*   **Bước 1 (15/2 - 30/4/2026):** Đăng ký trực tuyến tại [tuyensinh.husc.edu.vn](https://tuyensinh.husc.edu.vn) (tạo tài khoản, điền thông tin, chọn ngành và tổ hợp).\n*   **Bước 2 (1/3 - 10/5/2026):** Nộp hồ sơ gồm: Học bạ THPT photo công chứng; Bằng tốt nghiệp THPT photo (nếu tốt nghiệp 2025 trở về trước); CCCD photo; Phiếu đăng ký theo mẫu HUSC. *Hồ sơ bổ sung (nếu có):* Giấy chứng nhận ưu tiên, giải HSG cấp tỉnh/quốc gia, đơn xin xét đặc cách.\n*   **Bước 3 (15/5 - 30/5/2026):** HUSC xét duyệt hồ sơ theo tổng điểm 3 môn tổ hợp cả năm lớp 12.\n*   **Bước 4 (5/6 - 15/6/2026):** Công bố danh sách trúng tuyển đợt 1 qua website và email.\n*   **Bước 5 (20/6 - 30/6/2026):** Xác nhận nhập học trực tuyến và nộp giấy tờ gốc đối chiếu.\n*   **Bước 6 (1/7 - 15/7/2026):** Nhập học, đóng học phí học kỳ 1 và nhận thẻ sinh viên."
+      }
+    },
+    "[LONG] Tong quan 5 nganh hot": {
+      "at_1200": {
+        "finish_reason": "stop",
+        "chars": 748,
+        "est_tokens": 249,
+        "truncated": false,
+        "text": "Dưới đây là thông tin tổng quan về 5 ngành học tại HUSC dựa trên tài liệu hiện có:\n\n| Ngành | Học phí 2026 (triệu VNĐ/năm) | Điểm chuẩn 2025 |\n| :--- | :--- | :--- |\n| **Công nghệ Thông tin** | 18.5 | Nằm trong khoảng 17.0 - 25.0 |\n| **Kế toán** | 14.5 | Nằm trong khoảng 17.0 - 25.0 |\n| **Luật** | 14.0 | Nằm trong khoảng 17.0 - 25.0 |\n| **Ngôn ngữ Anh** | 16.5 | Nằm trong khoảng 17.0 - 25.0 |\n| **Kiến trúc** | 17.0 | Nằm trong khoảng 17.0 - 25.0 |\n\n*Lưu ý:* Tài liệu hiện tại chưa cung cấp thông tin chi tiết về điểm chuẩn 2025 riêng cho từng ngành (chỉ có khoảng điểm chung toàn trường từ 17.0 đến 25.0), cũng như chưa có dữ liệu về cơ hội việc làm và gợi ý đối tượng phù hợp. Bạn vui lòng liên hệ phòng tuyển sinh để được hỗ trợ chi tiết hơn."
+      },
+      "at_800": {
+        "finish_reason": "stop",
+        "chars": 610,
+        "est_tokens": 203,
+        "truncated": false,
+        "text": "Dưới đây là thông tin tổng quan về 5 ngành tại HUSC dựa trên tài liệu tuyển sinh hiện có:\n\n| Ngành | Học phí 2026 (triệu VNĐ/năm) | Điểm chuẩn 2025 |\n|---|---|---|\n| **Công nghệ Thông tin** | 18.5 | Khoảng 17.0 - 25.0 |\n| **Kế toán** | 14.5 | Khoảng 17.0 - 25.0 |\n| **Luật** | 14.0 | Khoảng 17.0 - 25.0 |\n| **Ngôn ngữ Anh** | 16.5 | Khoảng 17.0 - 25.0 |\n| **Kiến trúc** | 17.0 | Khoảng 17.0 - 25.0 |\n\n*Lưu ý:* Tài liệu hiện tại chưa cung cấp chi tiết điểm chuẩn 2025 riêng cho từng ngành (chỉ có khoảng chung từ 17.0 đến 25.0), cũng như chưa có thông tin về cơ hội việc làm và gợi ý đối tượng thí sinh phù hợp."
+      }
+    }
+  },
+  "verdict": {
+    "normal_truncated_count": 0,
+    "normal_truncated_labels": [],
+    "enum_uses_enum_budget": true,
+    "max_normal_est_tokens": 557,
+    "recommendation": "800 SAFE — max normal answer ≈557 est-tokens, 243 headroom. No truncation observed."
+  }
+}

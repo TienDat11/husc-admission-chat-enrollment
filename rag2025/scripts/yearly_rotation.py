@@ -19,6 +19,11 @@ from typing import Any, Awaitable, Callable, Optional
 
 from loguru import logger
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from services.temporal_authority import get_current_admission_year
+
 
 # C14 — admission notifications mention the upcoming year explicitly.
 # Match years strictly in [2027, 2039] — aligned with rotate()'s validator.
@@ -51,7 +56,7 @@ def detect_new_year_signal(
         text: Crawler payload (HTML or excerpt).
         max_known_id: Highest notification id ever ingested.
         seen_id: Newly observed notification id.
-        current_year: Anchor — defaults to env CURRENT_ADMISSION_YEAR or 2026.
+        current_year: Anchor — defaults to temporal_authority.get_current_admission_year().
 
     Returns:
         The detected year (int) when a new cycle is observed; None otherwise.
@@ -64,9 +69,7 @@ def detect_new_year_signal(
         rotate(). The semantic-context guard reduces false positives but is
         not a substitute for human-in-the-loop confirmation.
     """
-    anchor = current_year if current_year is not None else int(
-        os.getenv("CURRENT_ADMISSION_YEAR", "2026")
-    )
+    anchor = current_year if current_year is not None else get_current_admission_year()
 
     if isinstance(text, str) and text:
         # Require admissions-context keyword to be present alongside the
@@ -171,7 +174,7 @@ def main() -> int:
         "--current-year",
         type=int,
         default=None,
-        help="Override anchor year for --detect-only (default: env CURRENT_ADMISSION_YEAR or 2026)",
+        help="Override anchor year for --detect-only (default: temporal_authority.get_current_admission_year())",
     )
     args = parser.parse_args()
 

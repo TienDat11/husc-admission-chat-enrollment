@@ -189,10 +189,114 @@ logger.add(
 )
 
 # Initialize FastAPI app
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown."""
+    # ---- startup ----
+    global query_enhancer_service, lancedb_retriever_service, llm_generator_service, embedding_service, unified_pipeline, reranker_service, query_cache, guardrail_service, hybrid_search_service
+
+    logger.info("=" * 60)
+    logger.info("Starting RAG API 2025 v3.0 - Unified PaddedRAG + GraphRAG")
+    logger.info("=" * 60)
+
+    try:
+        # Legacy HYDE enhancer
+        logger.info("Initializing HYDE Query Enhancer...")
+        query_enhancer_service = query_enhancer
+
+        logger.info("Initializing Embedding Service...")
+        embedding_service = EmbeddingService(settings)
+
+        logger.info("Initializing LanceDB Retriever...")
+        import concurrent.futures
+
+        def init_lancedb():
+            try:
+                return get_retriever()
+            except Exception as e:
+                logger.error(f"LanceDB initialization failed: {e}")
+                return None
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(init_lancedb)
+            try:
+                lancedb_retriever_service = future.result(timeout=10.0)
+                if lancedb_retriever_service:
+                    logger.info("LanceDB Retriever initialized successfully")
+                else:
+                    logger.warning("LanceDB not available – degraded mode")
+            except concurrent.futures.TimeoutError:
+                logger.warning("LanceDB initialization timeout – degraded mode")
+                lancedb_retriever_service = None
+
+        logger.info("Initializing LLM Generator...")
+        llm_generator_service = get_llm_generator()
+
+        logger.info("Initializing Reranker Service...")
+        reranker_service = RerankerService(settings)
+
+        logger.info("Initializing Query Cache...")
+        query_cache = QueryCache(ttl_seconds=settings.CACHE_TTL)
+
+        logger.info("Initializing Guardrail Service...")
+        guardrail_service = GuardrailService(settings)
+
+        # Initialize Unified GraphRAG Pipeline
+        logger.info("Initializing Unified RAG Pipeline (PaddedRAG + GraphRAG)...")
+        try:
+            from services.graphrag_retriever import UnifiedRAGPipeline
+            unified_pipeline = UnifiedRAGPipeline.from_disk(
+                alpha=settings.GRAPHRAG_ALPHA,
+                beta=1.0 - settings.GRAPHRAG_ALPHA,
+            )
+            graph_stats = unified_pipeline._graphrag.graph_stats
+            logger.info(
+                f"GraphRAG Pipeline ready: "
+                f"nodes={graph_stats['nodes']}, edges={graph_stats['edges']}"
+            )
+        except Exception as e:
+            logger.warning(f"GraphRAG pipeline init failed: {e} – graph routing disabled")
+            unified_pipeline = None
+
+        # ── Hybrid Search (optional) ──────────────────────────────────────
+        if settings.USE_HYBRID_RETRIEVAL and lancedb_retriever_service:
+            try:
+                from services.hybrid_search import HybridSearchService as _HybridSearchService
+                hybrid_search_service = _HybridSearchService(
+                    lancedb_retriever=lancedb_retriever_service,
+                    settings=settings,
+                )
+                if not hybrid_search_service.build_bm25_index():
+                    logger.warning(
+                        "HybridSearchService: BM25 index build failed — disabling hybrid search"
+                    )
+                    hybrid_search_service = None
+                else:
+                    logger.info("HybridSearchService: BM25 index built successfully")
+            except Exception as e:
+                logger.error(f"HybridSearchService: startup init failed: {e}", exc_info=True)
+                hybrid_search_service = None
+
+        logger.info("=" * 60)
+        logger.info("API Ready! PaddedRAG + GraphRAG + SmartRouter")
+        logger.info("=" * 60)
+
+    except Exception as e:
+        logger.error(f"Failed to initialize services: {e}")
+        import traceback
+        traceback.print_exc()
+
+    yield
+
+    # ---- shutdown ----
+    logger.info("Shutting down RAG API 2025")
+
+
 app = FastAPI(
     title="RAG API 2025 - HYDE + Multi-Embedding + LanceDB",
     description="Advanced RAG with provider-aware query enhancement and embedded vector retrieval",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # CORS middleware - restricted allowlist
@@ -347,112 +451,6 @@ hybrid_search_service: Optional["HybridSearchService"] = None
 # Debug tools
 chunk_config: ChunkConfig | None = None
 chunker: Chunker | None = None
-
-
-# ========== Startup/Shutdown ==========
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services on startup"""
-    global query_enhancer_service, lancedb_retriever_service, llm_generator_service, embedding_service, unified_pipeline, reranker_service, query_cache, guardrail_service, hybrid_search_service
-
-    logger.info("=" * 60)
-    logger.info("Starting RAG API 2025 v3.0 - Unified PaddedRAG + GraphRAG")
-    logger.info("=" * 60)
-
-    try:
-        # Legacy HYDE enhancer
-        logger.info("Initializing HYDE Query Enhancer...")
-        query_enhancer_service = query_enhancer
-
-        logger.info("Initializing Embedding Service...")
-        embedding_service = EmbeddingService(settings)
-
-        logger.info("Initializing LanceDB Retriever...")
-        import concurrent.futures
-
-        def init_lancedb():
-            try:
-                return get_retriever()
-            except Exception as e:
-                logger.error(f"LanceDB initialization failed: {e}")
-                return None
-
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(init_lancedb)
-            try:
-                lancedb_retriever_service = future.result(timeout=10.0)
-                if lancedb_retriever_service:
-                    logger.info("LanceDB Retriever initialized successfully")
-                else:
-                    logger.warning("LanceDB not available – degraded mode")
-            except concurrent.futures.TimeoutError:
-                logger.warning("LanceDB initialization timeout – degraded mode")
-                lancedb_retriever_service = None
-
-        logger.info("Initializing LLM Generator...")
-        llm_generator_service = get_llm_generator()
-
-        logger.info("Initializing Reranker Service...")
-        reranker_service = RerankerService(settings)
-
-        logger.info("Initializing Query Cache...")
-        query_cache = QueryCache(ttl_seconds=settings.CACHE_TTL)
-
-        logger.info("Initializing Guardrail Service...")
-        guardrail_service = GuardrailService(settings)
-
-        # Initialize Unified GraphRAG Pipeline
-        logger.info("Initializing Unified RAG Pipeline (PaddedRAG + GraphRAG)...")
-        try:
-            from services.graphrag_retriever import UnifiedRAGPipeline
-            unified_pipeline = UnifiedRAGPipeline.from_disk(
-                alpha=settings.GRAPHRAG_ALPHA,
-                beta=1.0 - settings.GRAPHRAG_ALPHA,
-            )
-            graph_stats = unified_pipeline._graphrag.graph_stats
-            logger.info(
-                f"GraphRAG Pipeline ready: "
-                f"nodes={graph_stats['nodes']}, edges={graph_stats['edges']}"
-            )
-        except Exception as e:
-            logger.warning(f"GraphRAG pipeline init failed: {e} – graph routing disabled")
-            unified_pipeline = None
-
-        # ── Hybrid Search (optional) ──────────────────────────────────────
-        if settings.USE_HYBRID_RETRIEVAL and lancedb_retriever_service:
-            try:
-                from services.hybrid_search import HybridSearchService as _HybridSearchService
-                hybrid_search_service = _HybridSearchService(
-                    lancedb_retriever=lancedb_retriever_service,
-                    settings=settings,
-                )
-                if not hybrid_search_service.build_bm25_index():
-                    logger.warning(
-                        "HybridSearchService: BM25 index build failed — disabling hybrid search"
-                    )
-                    hybrid_search_service = None
-                else:
-                    logger.info("HybridSearchService: BM25 index built successfully")
-            except Exception as e:
-                logger.error(f"HybridSearchService: startup init failed: {e}", exc_info=True)
-                hybrid_search_service = None
-
-        logger.info("=" * 60)
-        logger.info("API Ready! PaddedRAG + GraphRAG + SmartRouter")
-        logger.info("=" * 60)
-
-    except Exception as e:
-        logger.error(f"Failed to initialize services: {e}")
-        import traceback
-        traceback.print_exc()
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    logger.info("Shutting down RAG API 2025")
 
 
 # ========== API Endpoints ==========

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import unittest
 from unittest.mock import MagicMock
 
@@ -31,18 +32,26 @@ def _make_retriever(docs=None):
     retriever.retrieve.return_value = RetrievalResult(documents=docs, confidence=0.5)
     # Mock adapter._table for BM25 build
     table = MagicMock()
-    table.schema.names = ["text", "source", "chunk_id"]
-    table.to_pandas.return_value = (
+    table.schema.names = ["text", "sparse_terms", "source", "chunk_id", "metadata_json"]
+    df = (
         pd.DataFrame(
             {
                 "text": [d.text for d in docs],
+                "sparse_terms": [[] for _ in docs],
                 "source": [d.source for d in docs],
                 "chunk_id": [d.chunk_id for d in docs],
+                "metadata_json": [json.dumps(d.metadata) for d in docs],
             }
         )
         if docs
         else pd.DataFrame()
     )
+    # MagicMock's select().to_pandas() returns another MagicMock by default.
+    # Make it return the real DataFrame so hybrid_search sees non-empty table.
+    select_result = MagicMock()
+    select_result.to_pandas.return_value = df
+    table.select.return_value = select_result
+    table.to_pandas.return_value = df
     retriever._adapter._table = table
     return retriever
 
@@ -80,9 +89,13 @@ class TestRetrieve(unittest.TestCase):
         retriever = _make_retriever(docs)
         svc = HybridSearchService(retriever, _make_settings())
         svc.build_bm25_index()
-        result = asyncio.get_event_loop().run_until_complete(
-            svc.retrieve(query="tuyển sinh", query_vector=[0.1] * 10, top_k=2)
-        )
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(
+                svc.retrieve(query="tuyển sinh", query_vector=[0.1] * 10, top_k=2)
+            )
+        finally:
+            loop.close()
         self.assertIsInstance(result, RetrievalResult)
         self.assertGreater(len(result.documents), 0)
 
@@ -91,9 +104,13 @@ class TestRetrieve(unittest.TestCase):
         retriever = _make_retriever(docs)
         svc = HybridSearchService(retriever, _make_settings())
         # Do NOT build index — _bm25 is None
-        result = asyncio.get_event_loop().run_until_complete(
-            svc.retrieve(query="tuyển sinh", query_vector=[0.1] * 10, top_k=2)
-        )
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(
+                svc.retrieve(query="tuyển sinh", query_vector=[0.1] * 10, top_k=2)
+            )
+        finally:
+            loop.close()
         # Should fall back to dense-only
         self.assertEqual(result.documents, docs)
 

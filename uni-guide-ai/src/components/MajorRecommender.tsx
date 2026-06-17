@@ -524,5 +524,3 @@ function Stat({
     </div>
   );
 }
-
-export default MajorRecommender;

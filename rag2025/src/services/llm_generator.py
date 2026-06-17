@@ -6,6 +6,7 @@ Generate final answer from retrieved chunks using:
 - Groq / OpenAI-compatible fallbacks via llm_client
 - Optional direct GLM-4.5 (Z.AI) path when available
 """
+import asyncio
 import os
 import re
 from pathlib import Path
@@ -14,6 +15,7 @@ from groq import AsyncGroq
 from tenacity import retry, stop_after_attempt, wait_exponential
 from loguru import logger
 
+from config.settings import settings
 from services.llm_client import get_llm_client
 from services.risky_intent import infer_intent_from_query, RISKY_INTENTS
 from services.temporal_authority import get_current_admission_year
@@ -369,10 +371,10 @@ class LLMGenerator:
         # Fallback = gpt-5.4 (faster total but ~33% intermittent internal errors,
         # so demoted to fallback). Model-level fallback below covers the case
         # where the primary model itself errors out after retries.
-        gen_model = os.getenv("RAMCLOUDS_GEN_MODEL", "mimo-v2.5-pro")
+        gen_model = settings.RAMCLOUDS_GEN_MODEL
         self.unified_client = get_llm_client(force_model=gen_model)
         self.gen_model = gen_model
-        gen_fallback = os.getenv("RAMCLOUDS_GEN_FALLBACK_MODEL", "gpt-5.4")
+        gen_fallback = settings.RAMCLOUDS_GEN_FALLBACK_MODEL
         self.gen_fallback_model = gen_fallback
         self.unified_fallback_client = (
             get_llm_client(force_model=gen_fallback) if gen_fallback and gen_fallback != gen_model else None
@@ -581,7 +583,7 @@ class LLMGenerator:
 
         # Build context
         context = self._build_context(chunks)
-        max_context_chars = int(os.getenv("MAX_CONTEXT_CHARS", "12000"))
+        max_context_chars = settings.MAX_CONTEXT_CHARS
         if len(context) > max_context_chars:
             context = context[:max_context_chars]
 
@@ -611,8 +613,8 @@ class LLMGenerator:
         # generation. ENUM (program-list) answers can be much longer (a full
         # 28-major list source is ~4200 chars / ~1400 tokens), so the ENUM cap
         # stays high at 4000. Both are operator-overridable via env.
-        max_tokens_enum = int(os.getenv("MAX_GEN_TOKENS_ENUM", "4000"))
-        max_tokens_std = int(os.getenv("MAX_GEN_TOKENS", "1200"))
+        max_tokens_enum = settings.MAX_GEN_TOKENS_ENUM
+        max_tokens_std = settings.MAX_GEN_TOKENS
         max_tokens = max_tokens_enum if is_program_list_query else max_tokens_std
 
         # Priority: UnifiedLLMClient → direct Groq → direct GLM-4.5
@@ -686,7 +688,7 @@ class LLMGenerator:
                     "Hãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."
                 )
                 response = await self.groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model=os.getenv("GROQ_GEN_MODEL", "llama-3.3-70b-versatile"),
                     messages=[
                         {"role": "system", "content": self.generation_system_prompt},
                         {"role": "user", "content": groq_user_content}
@@ -700,8 +702,9 @@ class LLMGenerator:
             # Tertiary: direct GLM-4.5 path
             elif self.zai_client:
                 logger.info("Generation: Falling back to direct GLM-4.5 (Z.AI)")
-                response = self.zai_client.chat.completions.create(
-                    model="glm-4-32b-0414-128k",
+                response = await asyncio.to_thread(
+                    self.zai_client.chat.completions.create,
+                    model=os.getenv("ZAI_GEN_MODEL", "glm-4-32b-0414-128k"),
                     messages=[
                         {"role": "user", "content": full_prompt}
                     ],

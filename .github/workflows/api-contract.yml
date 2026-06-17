@@ -1,0 +1,42 @@
+name: API Contract
+
+on:
+  pull_request:
+    paths:
+      - 'rag2025/src/**'
+      - 'uni-guide-ai/src/lib/api-types.ts'
+      - 'api/openapi.json'
+
+jobs:
+  api-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: uni-guide-ai/package-lock.json
+
+      - run: pip install -r rag2025/requirements.txt
+        if: hashFiles('rag2025/requirements.txt') != ''
+
+      - run: cd uni-guide-ai && npm ci
+
+      - name: Export OpenAPI schema
+        run: python rag2025/scripts/export_openapi.py
+        env:
+          PYTHONPATH: rag2025/src
+
+      - name: Generate FE types
+        run: cd uni-guide-ai && npm run types:gen
+
+      - name: Check no drift
+        run: |
+          git diff --exit-code api/openapi.json uni-guide-ai/src/lib/api-types.ts
+        # Failure indicates BE/FE schema drift — regen locally and commit.

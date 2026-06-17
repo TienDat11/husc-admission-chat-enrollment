@@ -1,6 +1,6 @@
-import { motion } from 'framer-motion';
-import { Paperclip, Mic, Send, Loader2 } from 'lucide-react';
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import { Send, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -10,7 +10,6 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, isLoading, disabled }: ChatInputProps) {
   const [message, setMessage] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = () => {
@@ -48,16 +47,6 @@ export function ChatInput({ onSend, isLoading, disabled }: ChatInputProps) {
       <div className="max-w-4xl mx-auto">
         {/* Input Container - Locket style */}
         <div className="relative flex items-end gap-3">
-          {/* Attach File Button */}
-          <motion.button
-            whileHover={{ scale: 1.1, y: -2 }}
-            whileTap={{ scale: 0.9 }}
-            className="flex-shrink-0 p-3 rounded-xl bg-muted hover:bg-muted/80 transition-colors border-3 border-border shadow-[0_3px_0_hsl(var(--border))] hover:shadow-[0_4px_0_hsl(var(--border))] hover:-translate-y-0.5"
-            aria-label="Đính kèm tệp"
-          >
-            <Paperclip className="w-5 h-5 text-muted-foreground" />
-          </motion.button>
-
           {/* Textarea Container */}
           <div className="relative flex-1">
             <textarea
@@ -68,23 +57,8 @@ export function ChatInput({ onSend, isLoading, disabled }: ChatInputProps) {
               placeholder="Hỏi bất cứ điều gì về tuyển sinh... 💬"
               disabled={disabled || isLoading}
               rows={1}
-              className="w-full px-5 py-4 pr-28 rounded-2xl bg-muted border-3 border-border focus:border-primary focus:bg-background resize-none text-[15px] leading-relaxed font-medium placeholder:text-muted-foreground/70 transition-all duration-200 outline-none shadow-[0_3px_0_hsl(var(--border))] focus:shadow-[0_4px_0_hsl(var(--primary-dark))] disabled:opacity-50"
+              className="w-full px-5 py-4 pr-16 rounded-2xl bg-muted border-3 border-border focus:border-primary focus:bg-background resize-none text-[15px] leading-relaxed font-medium placeholder:text-muted-foreground/70 transition-all duration-200 outline-none shadow-[0_3px_0_hsl(var(--border))] focus:shadow-[0_4px_0_hsl(var(--primary-dark))] disabled:opacity-50"
             />
-
-            {/* Voice Input Button */}
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setIsRecording(!isRecording)}
-              className={`absolute right-16 bottom-3 p-2.5 rounded-xl transition-all border-2 ${
-                isRecording
-                  ? 'bg-destructive text-white border-destructive animate-pulse'
-                  : 'hover:bg-muted text-muted-foreground hover:text-foreground border-transparent hover:border-border'
-              }`}
-              aria-label={isRecording ? 'Dừng ghi âm' : 'Ghi âm'}
-            >
-              <Mic className="w-5 h-5" />
-            </motion.button>
 
             {/* Send Button - Locket style */}
             <motion.button

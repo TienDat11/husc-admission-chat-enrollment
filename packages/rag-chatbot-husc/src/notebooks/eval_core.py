@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import requests
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 
 class PipelineError(Exception):
@@ -77,27 +77,25 @@ def normalize_pipeline_output(raw: dict[str, Any], mode: str = "v2") -> dict[str
         - route: Routing label
         - raw: Original raw input
     """
+    chunks_val = raw.get("chunks", [])
+    context_chunks = chunks_val if isinstance(chunks_val, list) else []
+
     if mode == "v2":
-        # v2 mode: sources -> source_ids, chunks -> context_chunks
-        source_ids: list = []
-        if "sources" in raw:
-            sources_val = raw["sources"]
-            if isinstance(sources_val, list):
-                source_ids = sources_val
+        source_ids_val = raw.get("source_ids", [])
+        if isinstance(source_ids_val, list):
+            source_ids = [str(v) for v in source_ids_val if v]
+        else:
+            source_ids = []
 
-        context_chunks: list = []
-        if "chunks" in raw:
-            chunks_val = raw["chunks"]
-            if isinstance(chunks_val, list):
-                context_chunks = chunks_val
+        if not source_ids:
+            source_ids = _source_ids_from_chunks(context_chunks)
 
+        # Backward compatibility for old API payloads. New eval runs should rely
+        # on source_ids/chunk_id, not human-readable source filenames.
+        if not source_ids:
+            sources_val = raw.get("sources", [])
+            source_ids = [str(v) for v in sources_val if v] if isinstance(sources_val, list) else []
     else:
-        # v1 mode: chunks -> context_chunks only, no source_ids mapping
-        context_chunks = []
-        if "chunks" in raw:
-            chunks_val = raw["chunks"]
-            if isinstance(chunks_val, list):
-                context_chunks = chunks_val
         source_ids = []
 
     # Extract groundedness_score, default to 0.0 if not present
@@ -119,6 +117,22 @@ def normalize_pipeline_output(raw: dict[str, Any], mode: str = "v2") -> dict[str
         "route": route,
         "raw": raw,
     }
+
+
+def _source_ids_from_chunks(chunks: Sequence[Any]) -> list[str]:
+    source_ids: list[str] = []
+    seen: set[str] = set()
+    for chunk in chunks:
+        if not isinstance(chunk, dict):
+            continue
+        chunk_id = chunk.get("chunk_id") or chunk.get("id") or chunk.get("point_id")
+        if chunk_id is None:
+            continue
+        chunk_id_str = str(chunk_id)
+        if chunk_id_str and chunk_id_str not in seen:
+            seen.add(chunk_id_str)
+            source_ids.append(chunk_id_str)
+    return source_ids
 
 def should_abort_after_smoke(total: int, failures: int) -> bool:
     """Return True if smoke test suite should abort.
@@ -207,6 +221,56 @@ def normalize_text(s: str) -> str:
 def exact_correctness(pred: str, gt: str) -> int:
     """Return 1 if normalized pred equals normalized gt, else 0."""
     return 1 if normalize_text(pred) == normalize_text(gt) else 0
+
+
+_FACT_STOPWORDS = {
+    "cua", "cho", "voi", "cac", "mot", "nay", "thi", "la", "va", "ve",
+    "trong", "theo", "duoc", "khong", "nganh", "dai", "hoc", "khoa",
+    "hue", "husc", "answer", "the", "and", "for", "with",
+}
+
+
+def _fact_tokens(text: str) -> set[str]:
+    normalized = normalize_text(text)
+    tokens = {
+        token for token in re.findall(r"\w+", normalized)
+        if len(token) >= 3 and token not in _FACT_STOPWORDS
+    }
+    numeric_tokens = set(re.findall(r"\d+(?:[.,]\d+)?%?", text))
+    return tokens | numeric_tokens
+
+
+def answer_contains_key_facts(pred: str, gt: str, min_overlap: float = 0.6) -> int:
+    """Return 1 when pred covers the required key facts from gt.
+
+    This deterministic judge is intentionally conservative for Colab eval:
+    numeric/code facts in the ground truth must appear in the answer, then the
+    remaining keyword overlap must pass min_overlap.
+    """
+    gt_tokens = _fact_tokens(gt)
+    pred_tokens = _fact_tokens(pred)
+    if not gt_tokens:
+        return 0
+    if not pred_tokens:
+        return 0
+
+    required_numeric = {token for token in gt_tokens if any(ch.isdigit() for ch in token)}
+    if required_numeric and not required_numeric.issubset(pred_tokens):
+        return 0
+
+    overlap = len(gt_tokens & pred_tokens) / len(gt_tokens)
+    return 1 if overlap >= min_overlap else 0
+
+
+def semantic_correctness(pred: str, gt: str, min_overlap: float = 0.6) -> int:
+    """Primary answer correctness metric for RAG eval."""
+    if exact_correctness(pred, gt):
+        return 1
+    pred_norm = normalize_text(pred)
+    gt_norm = normalize_text(gt)
+    if gt_norm and gt_norm in pred_norm:
+        return 1
+    return answer_contains_key_facts(pred, gt, min_overlap=min_overlap)
 
 
 # =============================================================================

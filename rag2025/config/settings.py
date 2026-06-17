@@ -136,7 +136,11 @@ class RAGSettings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = Field(default=None, description="Gemini API key")
     OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI-compat API key")
     ZAI_API_KEY: Optional[str] = Field(default=None, description="Z.AI API key (GLM-4.5)")
-    LLM_MODEL: str = Field(default="gemini-2.5-flash", description="LLM model name")
+    @property
+    def LLM_MODEL(self) -> str:
+        """Backward-compatible alias that always tracks RAMCLOUDS_MODEL."""
+        return self.RAMCLOUDS_MODEL
+
     LLM_TEMPERATURE: float = Field(default=0.1, description="LLM temperature")
     FORCE_RAG_ONLY: bool = Field(
         default=False, description="Disable LLM fallback (RAG-only mode)"
@@ -153,7 +157,33 @@ class RAGSettings(BaseSettings):
     )
     RAMCLOUDS_MODEL: str = Field(
         default="gemini-2.5-flash",
-        description="Model name at the primary provider"
+        description="Model name at the primary provider (NER + fallback)"
+    )
+    RAMCLOUDS_NER_MODEL: str = Field(
+        default="deepseek-v4-flash",
+        description="Model for NER/graph extraction at ramclouds.me (needs speed + JSON)"
+    )
+    RAMCLOUDS_HYDE_MODEL: str = Field(
+        default="gemini-3-flash",
+        description="Model for HYDE query enhancement at ramclouds.me (needs creativity)"
+    )
+    RAMCLOUDS_GEN_MODEL: str = Field(
+        default="mimo-v2.5-pro",
+        description="Model for final answer generation at ramclouds.me (needs quality)"
+    )
+    RAMCLOUDS_GEN_FALLBACK_MODEL: str = Field(
+        default="gpt-5.4",
+        description="Fallback generation model at ramclouds.me"
+    )
+    RAMCLOUDS_ROUTER_MODEL: str = Field(
+        default="",
+        description=(
+            "Model for the routing/HyDE classifier client (S15.4 / ADR-D, "
+            "MUST-FIX #3). Empty (default) resolves to RAMCLOUDS_HYDE_MODEL "
+            "via the `effective_router_model` property — a true no-op vs the "
+            "pre-S15 wiring at graphrag_retriever.py:259. Set this to swap the "
+            "router LLM without touching the HYDE pipeline used elsewhere."
+        ),
     )
     GROQ_API_KEY: Optional[str] = Field(default=None, description="Groq API key (LLM fallback)")
     QWEN_API_KEY: Optional[str] = Field(default=None, description="Qwen API key (NER fallback)")
@@ -176,6 +206,17 @@ class RAGSettings(BaseSettings):
     CACHE_TTL: int = Field(default=900, description="Cache TTL in seconds (15 min)")
     REDIS_URL: str = Field(default="redis://localhost:6379", description="Redis URL")
     USE_REDIS_CACHE: bool = Field(default=False, description="Enable Redis caching")
+
+    # ========== Answer Generation Parameters ==========
+    MAX_CONTEXT_CHARS: int = Field(
+        default=12000, description="Max characters of chunk context fed to generation"
+    )
+    MAX_GEN_TOKENS: int = Field(
+        default=1200, description="Max output tokens for normal answers"
+    )
+    MAX_GEN_TOKENS_ENUM: int = Field(
+        default=4000, description="Max output tokens for program list answers"
+    )
 
     # ========== Guardrail & Error Exposure ==========
     GUARDRAIL_ENABLED: bool = Field(default=True, description="Enable out-of-scope guardrail")
@@ -243,6 +284,25 @@ class RAGSettings(BaseSettings):
             return 0.45
         else:
             return 0.55
+
+    @property
+    def effective_router_model(self) -> str:
+        """Resolved model name for the router/classify LLM client (S15.4 / ADR-D).
+
+        Returns ``RAMCLOUDS_ROUTER_MODEL`` when explicitly set; otherwise falls
+        through to ``RAMCLOUDS_HYDE_MODEL``. An empty string is treated as
+        unset so operators can "clear" an override without pinning the router
+        to a blank model name.
+
+        Wire-up: ``graphrag_retriever.from_disk`` (currently ``:259`` —
+        ``get_llm_client(force_model=settings.RAMCLOUDS_HYDE_MODEL)``) must
+        switch to ``get_llm_client(force_model=settings.effective_router_model)``
+        for the override to take effect end-to-end. That edit is owned by
+        Lane A; this property exposes the resolved value safely so the swap
+        is a one-line change.
+        """
+        override = (self.RAMCLOUDS_ROUTER_MODEL or "").strip()
+        return override or self.RAMCLOUDS_HYDE_MODEL
 
 
 # Global settings instance

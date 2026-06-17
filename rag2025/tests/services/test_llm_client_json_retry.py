@@ -120,7 +120,15 @@ async def test_chat_json_caps_attempts_on_empty_body():
     """A json_mode call that returns empty body N times must make AT MOST 2
     attempts before raising (not 4). This is the root cause of the 30-60s
     p95/max tail observed on router_classify."""
-    with patch.dict(os.environ, {"RAMCLOUDS_API_KEY": "sk-test-fake"}):
+    with patch.dict(
+        os.environ,
+        {
+            "RAMCLOUDS_API_KEY": "sk-test-fake",
+            "GROQ_API_KEY": "",
+            "OPENAI_COMPAT_API_KEY": "",
+            "OPENAI_COMPAT_BASE_URL": "",
+        },
+    ):
         c = UnifiedLLMClient()
 
     provider = c._providers[0] if c._providers else _make_provider()
@@ -176,7 +184,15 @@ async def test_chat_json_caps_attempts_on_empty_body():
 async def test_chat_path_retains_wider_retry_budget():
     """chat (non-json) path must NOT be reduced to 2 attempts. Streaming
     generation legitimately hits transient 5xx — keep CHAT_MAX_ATTEMPTS=4."""
-    with patch.dict(os.environ, {"RAMCLOUDS_API_KEY": "sk-test-fake"}):
+    with patch.dict(
+        os.environ,
+        {
+            "RAMCLOUDS_API_KEY": "sk-test-fake",
+            "GROQ_API_KEY": "",
+            "OPENAI_COMPAT_API_KEY": "",
+            "OPENAI_COMPAT_BASE_URL": "",
+        },
+    ):
         c = UnifiedLLMClient()
 
     provider = c._providers[0] if c._providers else _make_provider()

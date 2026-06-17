@@ -290,7 +290,6 @@ rag2025/uvicorn_error_log.md
 !PROGRESS.md
 !docs/rag-chatbot-husc-spec.md
 !**/README.md
-!.claude/**
 
 # Amp report artifacts (local-only)
 .amp/in/artifacts/

@@ -132,3 +132,24 @@ def test_default_threshold_when_env_unset(fa, tmp_path, monkeypatch):
     # 30 < default 90 → ok.
     assert res["status"] == "ok"
     assert res["threshold"] == 90
+
+
+# --- data_year_is_stale: year-aware staleness (complements the age check) ---
+
+def test_data_year_is_stale_when_year_behind(fa):
+    # Index newest year (2025) is older than the current admission year (2026).
+    assert fa.data_year_is_stale(2025, 2026) is True
+
+
+def test_data_year_is_stale_false_when_year_matches(fa):
+    assert fa.data_year_is_stale(2026, 2026) is False
+
+
+def test_data_year_is_stale_false_when_year_ahead(fa):
+    # Early-landed future data must NOT be flagged stale.
+    assert fa.data_year_is_stale(2027, 2026) is False
+
+
+def test_data_year_is_stale_false_when_unknown(fa):
+    # None (unknown max year) must not raise a false alarm.
+    assert fa.data_year_is_stale(None, 2026) is False

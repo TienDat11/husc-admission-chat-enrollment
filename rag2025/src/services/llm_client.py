@@ -121,7 +121,7 @@ def _build_providers() -> List[ProviderConfig]:
     providers: List[ProviderConfig] = []
 
     # Primary: ramclouds.me (configurable model — highest quality for NER/GraphRAG)
-    ramclouds_key = os.getenv("RAMCLOUDS_API_KEY") or os.getenv("OPENAI_API_KEY")
+    ramclouds_key = os.getenv("RAMCLOUDS_API_KEY")
     ramclouds_url = os.getenv("RAMCLOUDS_BASE_URL", "https://ramclouds.me/v1")
     ramclouds_model = os.getenv("RAMCLOUDS_MODEL", "gemini-2.5-flash")
     if ramclouds_key:

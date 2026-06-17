@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
+from services.temporal_authority import get_current_admission_year
 
 
 # Anchor relative paths to the repo root so the endpoint works regardless of CWD.
@@ -41,11 +42,8 @@ class MetaResponse(BaseModel):
 
 
 def _get_current_admission_year() -> int:
-    """Read CURRENT_ADMISSION_YEAR env (defaults to 2026). Safe parse — invalid → 2026."""
-    try:
-        return int(os.getenv("CURRENT_ADMISSION_YEAR", "2026"))
-    except ValueError:
-        return 2026
+    """Delegate to temporal_authority for the current admission year."""
+    return get_current_admission_year()
 
 
 def _read_audit_fallback(audit_path: Path) -> dict[str, Any] | None:

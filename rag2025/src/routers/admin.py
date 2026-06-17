@@ -13,6 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from config.settings import settings
+
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 ADMIN_TOKEN_HEADER = "X-Admin-Token"
@@ -60,8 +62,9 @@ async def warmup() -> dict:
     embedding.encode_query("warmup ping")
     results["embedding_ms"] = round((time.perf_counter() - t0) * 1000)
 
-    # LLM warmup (connection check) — skip if no provider key
-    ramclouds_key = os.environ.get("RAMCLOUDS_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    # LLM warmup (connection check) — skip if no provider key.
+    # Routed through settings so the single source of truth is preserved.
+    ramclouds_key = settings.RAMCLOUDS_API_KEY
     if ramclouds_key:
         t1 = time.perf_counter()
         llm = services.get_llm_client()

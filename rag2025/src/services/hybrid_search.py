@@ -6,12 +6,20 @@ Integrates directly with LanceDBRetriever.
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
 from rank_bm25 import BM25Okapi
 
-from services.lancedb_retrieval import LanceDBRetriever, RetrievedDocument, RetrievalResult
+from services.lancedb_retrieval import (
+    CURRENT_ADMISSION_YEAR,
+    LanceDBRetriever,
+    RetrievedDocument,
+    RetrievalResult,
+    YEAR_BOOST_FACTOR,
+    OLD_YEAR_DEMOTE_FACTOR,
+)
 from config.settings import RAGSettings
 
 logger = logging.getLogger(__name__)
@@ -42,17 +50,30 @@ class HybridSearchService:
         Scan LanceDB, build in-memory BM25 index.
 
         Uses column-selective to_pandas() to avoid loading 4096-dim vectors.
+        Excludes superseded chunks from BM25 corpus (temporal freshness).
         Returns True on success, False on failure (caller should set service = None).
         """
         try:
             adapter = self._retriever._adapter
             table = adapter._table
 
-            cols = ["text", "sparse_terms", "source", "chunk_id"]
+            cols = ["text", "sparse_terms", "source", "chunk_id", "metadata_json"]
             available_cols = table.schema.names
             load_cols = [c for c in cols if c in available_cols]
 
-            df = table.to_pandas(columns=load_cols)
+            # LanceDB API tương thích nhiều version: dùng select() khi có
+            # (avoid loading the 1024-dim vector column), fallback to_pandas()
+            # rồi project columns ở pandas-level. Cả hai path đều an toàn.
+            try:
+                if hasattr(table, "select") and callable(getattr(table, "select")):
+                    df = table.select(load_cols).to_pandas()
+                else:
+                    df = table.to_pandas()
+                    df = df[[c for c in load_cols if c in df.columns]]
+            except TypeError:
+                # Phòng trường hợp .select() có signature khác — fallback an toàn
+                df = table.to_pandas()
+                df = df[[c for c in load_cols if c in df.columns]]
 
             if df.empty:
                 logger.warning("HybridSearchService: LanceDB table is empty, BM25 not built")
@@ -62,6 +83,12 @@ class HybridSearchService:
             self._corpus_docs = []
 
             for _, row in df.iterrows():
+                # Exclude superseded chunks from BM25 index
+                raw_meta = row.get("metadata_json", "{}")
+                meta = json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
+                if meta.get("is_superseded", False):
+                    continue
+
                 sparse_terms = row.get("sparse_terms")
                 if sparse_terms and isinstance(sparse_terms, list) and len(sparse_terms) > 0:
                     tokens = [str(t) for t in sparse_terms]
@@ -75,7 +102,7 @@ class HybridSearchService:
                         text=str(row.get("text", "")),
                         source=str(row.get("source", "")),
                         chunk_id=str(row.get("chunk_id", "")),
-                        metadata={},
+                        metadata=meta,
                         score=0.0,
                         point_id=None,
                     )
@@ -110,10 +137,15 @@ class HybridSearchService:
         because LanceDB is embedded (in-process); there is no network or kernel I/O
         that would block the event loop. If LanceDB is ever switched to remote mode, revisit.
         """
+        # Inject query text into metadata_filter so temporal filter can detect
+        # historical intent (e.g. "so sánh 2024 và 2025")
+        mf = metadata_filter or {}
+        mf = {**mf, "query": query}
+
         dense_result: RetrievalResult = self._retriever.retrieve(
             query_vector=query_vector,
             top_k=top_k * 2,
-            metadata_filter=metadata_filter,
+            metadata_filter=mf,
         )
         dense_docs: List[RetrievedDocument] = dense_result.documents
 
@@ -141,20 +173,45 @@ class HybridSearchService:
         scored = sorted(zip(scores, self._corpus_docs), key=lambda x: x[0], reverse=True)
 
         results = []
-        for score, doc in scored[:top_k]:
+        for score, doc in scored[:top_k * 3]:
             if score <= 0:
                 break
+            # Temporal boost/demote: adjust BM25 score by data_year
+            adjusted_score = self._apply_temporal_bm25_boost(doc, score)
             results.append(
                 RetrievedDocument(
                     text=doc.text,
                     source=doc.source,
                     chunk_id=doc.chunk_id,
                     metadata=doc.metadata,
-                    score=float(score),
+                    score=adjusted_score,
                     point_id=doc.point_id,
                 )
             )
-        return results
+
+        # Re-sort by adjusted score and return top_k
+        results.sort(key=lambda d: d.score, reverse=True)
+        return results[:top_k]
+
+    @staticmethod
+    def _apply_temporal_bm25_boost(doc: RetrievedDocument, raw_score: float) -> float:
+        """Apply temporal scoring to BM25 results: boost current year, demote old."""
+        meta = doc.metadata or {}
+        chunk_year = meta.get("data_year") or meta.get("year")
+        if isinstance(chunk_year, str):
+            try:
+                chunk_year = int(chunk_year)
+            except (ValueError, TypeError):
+                chunk_year = None
+
+        if chunk_year is None:
+            return raw_score
+
+        if chunk_year == CURRENT_ADMISSION_YEAR:
+            return raw_score * YEAR_BOOST_FACTOR
+        elif chunk_year < CURRENT_ADMISSION_YEAR:
+            return raw_score * OLD_YEAR_DEMOTE_FACTOR
+        return raw_score
 
     def _rrf_fusion(
         self,

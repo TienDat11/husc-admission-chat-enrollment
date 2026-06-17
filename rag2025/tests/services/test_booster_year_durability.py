@@ -154,8 +154,9 @@ def test_tuition_query_year_2027_matches_and_uses_2027_chunk_ids(monkeypatch):
     # clock-2027 we MUST reload both the temporal authority AND the
     # booster after the env patch so the snapshot picks up 2027.
     import importlib
-    from src.services import temporal_authority
+    from src.services import temporal_authority, aggregation_rules
     importlib.reload(temporal_authority)
+    importlib.reload(aggregation_rules)
     from src.services import aggregation_booster
     importlib.reload(aggregation_booster)
 
@@ -192,7 +193,8 @@ def test_none_fetch_emits_warn_and_increments_booster_chunk_miss(monkeypatch, ca
     monkeypatch.delenv("APP_ENV", raising=False)
 
     import importlib
-    from services import aggregation_booster
+    from services import aggregation_rules, aggregation_booster
+    importlib.reload(aggregation_rules)
     importlib.reload(aggregation_booster)  # ensure year is read fresh
 
     # An empty fake retriever => every fetch returns None.

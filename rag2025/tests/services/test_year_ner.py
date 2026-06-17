@@ -37,13 +37,16 @@ def test_three_digit_number_not_extracted(yn):
 
 
 def test_year_outside_range_filtered(yn):
-    # Years outside [1990, 2039] are filtered.
+    # Years outside [1990, current_year+6] are filtered.
     assert yn.extract_years("Năm 1850 chưa có dữ liệu") == []
     assert yn.extract_years("Đến năm 2150 sẽ ra sao?") == []
 
 
 def test_year_at_lower_bound(yn):
-    assert yn.extract_years("Tài liệu từ năm 1990 đến 2039") == [1990, 2039]
+    from datetime import datetime
+    current_year = datetime.now().year
+    future_year = current_year + 3
+    assert yn.extract_years(f"Tài liệu từ năm 1990 đến {future_year}") == [1990, future_year]
 
 
 def test_empty_text_returns_empty_list(yn):

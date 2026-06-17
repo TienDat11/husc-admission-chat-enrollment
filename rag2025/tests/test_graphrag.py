@@ -19,6 +19,12 @@ class _FailingNER:
     async def extract(self, chunk: Chunk) -> ExtractionResult:
         return ExtractionResult(chunk_id=chunk.chunk_id, error="ner failed")
 
+    def extract_from_query(self, query: str):
+        # Regex-first path returns empty → falls through to async `extract`,
+        # which then fails. Pre-S15 the path was async-only; the regex-first
+        # change requires this method exist on every NER-like fake.
+        return []
+
 
 def _build_graph():
     builder = KnowledgeGraphBuilder()

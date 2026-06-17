@@ -85,7 +85,6 @@ export function ChatMessages({ messages, isTyping }: ChatMessagesProps) {
             <MessageBubble
               key={message.id}
               message={message}
-              isLast={index === messages.length - 1}
             />
           ))}
         </AnimatePresence>

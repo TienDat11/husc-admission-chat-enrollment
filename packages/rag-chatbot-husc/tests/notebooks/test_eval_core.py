@@ -10,7 +10,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 from notebooks.eval_core import (
     load_test_questions, normalize_pipeline_output, should_abort_after_smoke,
     call_pipeline, PipelineError, normalize_text, exact_correctness,
-    retrieval_recall_proxy, hallucination_flag,
+    retrieval_recall_proxy, hallucination_flag, answer_contains_key_facts,
+    semantic_correctness,
     get_decision_table, bootstrap_ci95, non_inferiority_test,
     rerun_stability, compute_route_parity, build_evidence_map,
     validate_matrix_completeness,
@@ -110,6 +111,30 @@ def test_normalize_pipeline_output_v2_sources_mapping():
     assert out["context_chunks"] == [{"text": "chunk one"}, {"text": "chunk two"}]
     assert out["confidence"] == 0.95
     assert out["answer"] == "the answer is 42"
+
+
+def test_normalize_pipeline_output_v2_prefers_source_ids():
+    raw = {
+        "answer": "ok",
+        "sources": ["filename.md"],
+        "source_ids": ["chunk_a", "chunk_b"],
+        "chunks": [{"chunk_id": "chunk_a", "text": "chunk"}],
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert out["source_ids"] == ["chunk_a", "chunk_b"]
+
+
+def test_normalize_pipeline_output_v2_derives_source_ids_from_chunks():
+    raw = {
+        "answer": "ok",
+        "chunks": [
+            {"chunk_id": "husc_nganh_7480103_2025", "text": "chunk one"},
+            {"chunk_id": "husc_nganh_7480103_2025", "text": "duplicate"},
+            {"id": "fallback_id", "text": "chunk two"},
+        ],
+    }
+    out = normalize_pipeline_output(raw, mode="v2")
+    assert out["source_ids"] == ["husc_nganh_7480103_2025", "fallback_id"]
 
 
 def test_normalize_pipeline_output_v1_chunks_mapping():
@@ -400,6 +425,24 @@ def test_exact_correctness_returns_one_on_match():
 
 def test_exact_correctness_returns_zero_on_mismatch():
     assert exact_correctness("foo", "bar") == 0
+
+
+def test_answer_contains_key_facts_requires_numeric_facts():
+    assert answer_contains_key_facts(
+        "Mã ngành Kỹ thuật phần mềm là 7480103.",
+        "Kỹ thuật phần mềm có mã ngành 7480103.",
+    ) == 1
+    assert answer_contains_key_facts(
+        "Mã ngành Kỹ thuật phần mềm là 7480201.",
+        "Kỹ thuật phần mềm có mã ngành 7480103.",
+    ) == 0
+
+
+def test_semantic_correctness_accepts_paraphrase_with_key_facts():
+    assert semantic_correctness(
+        "Ngành Kỹ thuật phần mềm tại HUSC sử dụng mã 7480103.",
+        "Kỹ thuật phần mềm có mã ngành 7480103.",
+    ) == 1
 
 
 # =============================================================================

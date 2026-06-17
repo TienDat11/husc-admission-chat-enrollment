@@ -8,10 +8,8 @@ has no data yet.
 """
 from __future__ import annotations
 import re
+from datetime import datetime
 from typing import NamedTuple
-
-
-_EXPLICIT_YEAR_RX = re.compile(r"\b(20[2-3]\d)\b")
 
 
 class Replacement(NamedTuple):
@@ -36,6 +34,26 @@ _REL_RULES: list[tuple[re.Pattern[str], int, bool]] = [
 ]
 
 
+def _now() -> datetime:
+    """Testable clock — monkeypatch this to simulate future dates."""
+    return datetime.now()
+
+
+def _has_explicit_year_in_window(query: str, current_year: int) -> bool:
+    """Return True if query contains a 4-digit year inside the valid window.
+
+    Window: [1990, current_year + 6]. The generous upper bound keeps the
+    normalizer from rewriting relative phrases when the query already names a
+    plausible future admission year.
+    """
+    year_hi = current_year + 6
+    for m in re.finditer(r"\b(20\d{2})\b", query):
+        year = int(m.group(1))
+        if 1990 <= year <= year_hi:
+            return True
+    return False
+
+
 def normalize_relative_year(query: str, current_year: int) -> tuple[str, list[Replacement]]:
     """Substitute relative-year phrases with explicit "năm <year>" form.
 
@@ -50,9 +68,10 @@ def normalize_relative_year(query: str, current_year: int) -> tuple[str, list[Re
     if not isinstance(query, str) or not query:
         return query, []
 
-    # HIGH-1 fix: if query already contains an explicit year, do NOT substitute
-    # relative phrases (avoids producing "năm 2026 2026" malformed output).
-    if _EXPLICIT_YEAR_RX.search(query):
+    # HIGH-1 fix: if query already contains an explicit year within the valid
+    # window, do NOT substitute relative phrases (avoids producing
+    # "năm 2026 2026" malformed output). The window grows with current_year.
+    if _has_explicit_year_in_window(query, current_year):
         return query, []
 
     out = query

@@ -67,12 +67,12 @@ const v2QueryResponse = {
 // ---------------------------------------------------------------------------
 // Helper: simulate what ChatLayout.tsx:58-91 does with a response
 // ---------------------------------------------------------------------------
-function simulateChatLayoutMapping(response: Record<string, any>) {
-  const statusCode = response.status_code || 'SUCCESS';
-  const statusReason = response.status_reason || '';
-  const dataGapHints = response.data_gap_hints || [];
-  const internalStatusCode = response.internal_status_code || undefined;
-  const piiDetected = response.pii_detected;
+function simulateChatLayoutMapping(response: Record<string, unknown>) {
+  const statusCode = (response.status_code as string | undefined) || 'SUCCESS';
+  const statusReason = (response.status_reason as string | undefined) || '';
+  const dataGapHints = (response.data_gap_hints as string[] | undefined) || [];
+  const internalStatusCode = (response.internal_status_code as string | undefined) || undefined;
+  const piiDetected = response.pii_detected as boolean | undefined;
 
   return { statusCode, statusReason, dataGapHints, internalStatusCode, piiDetected };
 }

@@ -28,27 +28,31 @@ def test_embedding_service_initialization(embedding_service, settings):
     assert embedding_service.model_name == settings.EMBEDDING_MODEL
     assert embedding_service.expected_dim == settings.EMBEDDING_DIM
     assert embedding_service.batch_size == settings.EMBEDDING_BATCH_SIZE
-    assert embedding_service.model is not None
+    # @spec(S10.B2): lazy — no model loaded at init
+    assert embedding_service._model is None
+    assert not embedding_service.is_loaded
 
 
 def test_model_dimension_validation(embedding_service):
     """Test model dimension validation."""
     # Should not raise error (already validated in __init__)
-    assert embedding_service.expected_dim == 768
+    assert embedding_service.expected_dim == embedding_service.settings.EMBEDDING_DIM
 
 
 def test_encode_single(embedding_service):
     """Test single text encoding."""
+    pytest.importorskip("sentence_transformers")
     text = "This is a test sentence for embedding."
     embedding = embedding_service.encode_single(text)
 
     assert isinstance(embedding, np.ndarray)
-    assert embedding.shape == (768,)
+    assert embedding.shape == (embedding_service.expected_dim,)
     assert embedding.dtype == np.float32
 
 
 def test_encode_batch(embedding_service):
     """Test batch encoding."""
+    pytest.importorskip("sentence_transformers")
     texts = [
         "First test sentence",
         "Second test sentence",
@@ -57,7 +61,7 @@ def test_encode_batch(embedding_service):
     embeddings = embedding_service.encode_batch(texts, show_progress=False)
 
     assert isinstance(embeddings, np.ndarray)
-    assert embeddings.shape == (3, 768)
+    assert embeddings.shape == (3, embedding_service.expected_dim)
     assert embeddings.dtype == np.float32
 
 
@@ -66,16 +70,17 @@ def test_encode_empty_batch(embedding_service):
     embeddings = embedding_service.encode_batch([], show_progress=False)
 
     assert isinstance(embeddings, np.ndarray)
-    assert embeddings.shape == (0, 768)
+    assert embeddings.shape == (0, embedding_service.expected_dim)
 
 
 def test_encode_query(embedding_service):
     """Test query encoding with e5 prefix."""
+    pytest.importorskip("sentence_transformers")
     query = "What is the admission deadline?"
     embedding = embedding_service.encode_query(query)
 
     assert isinstance(embedding, np.ndarray)
-    assert embedding.shape == (768,)
+    assert embedding.shape == (embedding_service.expected_dim,)
 
     # Query embedding should be different from document embedding
     doc_embedding = embedding_service.encode_single(query)
@@ -84,6 +89,7 @@ def test_encode_query(embedding_service):
 
 def test_encode_documents(embedding_service):
     """Test document encoding with e5 prefix."""
+    pytest.importorskip("sentence_transformers")
     documents = [
         "The admission deadline is June 30, 2025.",
         "Registration opens on May 1, 2025.",
@@ -91,11 +97,12 @@ def test_encode_documents(embedding_service):
     embeddings = embedding_service.encode_documents(documents)
 
     assert isinstance(embeddings, np.ndarray)
-    assert embeddings.shape == (2, 768)
+    assert embeddings.shape == (2, embedding_service.expected_dim)
 
 
 def test_save_and_load_embeddings(embedding_service):
     """Test saving and loading embeddings."""
+    pytest.importorskip("sentence_transformers")
     # Create test embeddings
     texts = ["Test 1", "Test 2", "Test 3"]
     embeddings = embedding_service.encode_batch(texts)
@@ -120,6 +127,7 @@ def test_save_and_load_embeddings(embedding_service):
 
 def test_embedding_normalization(embedding_service):
     """Test L2 normalization of embeddings."""
+    pytest.importorskip("sentence_transformers")
     text = "Test normalization"
     embedding = embedding_service.encode_single(text)
 
@@ -130,6 +138,7 @@ def test_embedding_normalization(embedding_service):
 
 def test_batch_consistency(embedding_service):
     """Test that batch and single encoding produce same results."""
+    pytest.importorskip("sentence_transformers")
     text = "Consistency test"
 
     # Encode as single

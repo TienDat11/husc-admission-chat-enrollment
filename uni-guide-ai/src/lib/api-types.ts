@@ -11,3 +11,35 @@
 // Placeholder — actual content generated on first `npm run types:gen` run.
 // CI gate enforces sync between BE schema and this file.
 export type _PlaceholderEmptySchema = Record<string, never>;
+
+/**
+ * Enriched source object returned by the /v2/query endpoint.
+ *
+ * Keeps the API shape explicit instead of `any[]`. The FE maps this to the
+ * presentation-level `Source` type in `chat-types.ts` (which adds `confidence`).
+ */
+export interface SourceChip {
+  id: string;
+  title: string;
+  url: string | null;
+  snippet?: string;
+  data_year?: string;
+}
+
+/** Minimal router metadata returned by /v2/query. */
+export interface RouterInfo {
+  route?: string;
+  model?: string;
+  provider?: string;
+  // Additional router-specific fields are intentionally loosely-typed so we
+  // do not break when the BE adds extra diagnostics.
+  [key: string]: unknown;
+}
+
+/** Minimal graph statistics returned by /v2/query. */
+export interface GraphStats {
+  nodes?: number;
+  edges?: number;
+  // Additional graph-specific fields are intentionally loosely-typed.
+  [key: string]: unknown;
+}
