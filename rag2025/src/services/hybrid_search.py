@@ -57,7 +57,7 @@ class HybridSearchService:
             adapter = self._retriever._adapter
             table = adapter._table
 
-            cols = ["text", "sparse_terms", "source", "chunk_id", "metadata_json"]
+            cols = ["text", "sparse_terms", "source", "chunk_id", "metadata_json", "id"]
             available_cols = table.schema.names
             load_cols = [c for c in cols if c in available_cols]
 
@@ -100,8 +100,8 @@ class HybridSearchService:
                 self._corpus_docs.append(
                     RetrievedDocument(
                         text=str(row.get("text", "")),
-                        source=str(row.get("source", "")),
-                        chunk_id=str(row.get("chunk_id", "")),
+                        source=str(row.get("source") or meta.get("source") or ""),
+                        chunk_id=str(row.get("chunk_id") or row.get("id") or ""),
                         metadata=meta,
                         score=0.0,
                         point_id=None,
