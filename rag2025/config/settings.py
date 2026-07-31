@@ -131,8 +131,15 @@ class RAGSettings(BaseSettings):
     LANCEDB_URI: str = Field(
         default="./data/lancedb", description="LanceDB local URI (embedded)"
     )
+    @field_validator("LANCEDB_URI", mode="after")
+    @classmethod
+    def resolve_lancedb_uri(cls, v):
+        """Relative ./data/lancedb → absolute (rag2025/ as anchor). Schemed/absolute giữ nguyên."""
+        if "://" in v or v.startswith("/") or (len(v) > 1 and v[1] == ":"):
+            return v
+        return str((Path(__file__).resolve().parent.parent / v).resolve())
     LANCEDB_TABLE: str = Field(
-        default="rag2025", description="LanceDB table name for chunks"
+        default="husc_chunks", description="LanceDB table name for chunks"
     )
     LANCEDB_ENTITY_TABLE: str = Field(
         default="husc_entities", description="LanceDB table name for entities"

@@ -17,6 +17,7 @@ from loguru import logger
 
 from config.settings import RAGSettings
 from src.infrastructure.lancedb_adapter import LanceDBAdapter
+from services._metadata_helpers import get_legacy_source
 
 # --- Temporal Configuration ---
 def _detect_current_admission_year() -> int:
@@ -547,8 +548,8 @@ class LanceDBRetriever:
             documents.append(
                 RetrievedDocument(
                     text=text,
-                    source=row.get("source"),
-                    chunk_id=row.get("chunk_id"),
+                    source=row.get("source") or get_legacy_source({"metadata": metadata}) or None,
+                    chunk_id=str(row.get("chunk_id") or row.get("id") or ""),
                     metadata=metadata,
                     score=score,
                     point_id=str(row.get("id")) if row.get("id") is not None else None,
@@ -572,8 +573,8 @@ class LanceDBRetriever:
             metadata = json.loads(raw_meta) if isinstance(raw_meta, str) and raw_meta else {}
             return RetrievedDocument(
                 text=row.get('text', '') if 'text' in row else '',
-                source=row.get('source'),
-                chunk_id=row.get('chunk_id', row.get('id')),
+                source=row.get('source') or get_legacy_source({'metadata': metadata}),
+                chunk_id=row.get('chunk_id') or row.get('id') or "",
                 metadata=metadata,
                 score=1.0,  # injected priority
                 point_id=str(row.get('id')) if row.get('id') is not None else None,
@@ -613,8 +614,8 @@ class LanceDBRetriever:
                 metadata = json.loads(raw_meta) if isinstance(raw_meta, str) and raw_meta else {}
                 result[str(row_id)] = RetrievedDocument(
                     text=row.get('text', ''),
-                    source=row.get('source'),
-                    chunk_id=row.get('chunk_id', row_id),
+                    source=row.get('source') or get_legacy_source({'metadata': metadata}),
+                    chunk_id=row.get('chunk_id') or str(row_id),
                     metadata=metadata,
                     score=1.0,  # injected priority — same sentinel as fetch_by_id
                     point_id=str(row_id),
