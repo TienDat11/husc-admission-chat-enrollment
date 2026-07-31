@@ -262,10 +262,9 @@ async def test_cache_hit_makes_no_llm_calls():
 
     q = "học phí ngành CNTT 2026"
     await router.route(q)
-    # After the first call: the single merged classify (chat_json) fired once;
-    # the step-back/HyDE `chat` chain is gone (L3) → zero `chat` calls.
+    # Cold path uses one merged classify call; removed step-back/HyDE means no chat.
     assert len(call_log_json) == 1
-    assert len(call_log_text) == 0  # L3: no step-back/HyDE chat calls
+    assert len(call_log_text) == 0
 
     # Reset the counters, then a repeat hit MUST NOT touch the LLM at all.
     call_log_json.clear()

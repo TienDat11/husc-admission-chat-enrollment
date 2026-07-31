@@ -1,11 +1,56 @@
 """Infrastructure adapter for LanceDB operations."""
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import lancedb
 from loguru import logger
+
+
+# Module-level singleton state for `ensure_warm()`. Kept private so
+# callers always go through the helper (which holds the lock).
+_ensure_warm_instance: Optional["LanceDBAdapter"] = None
+_ensure_warm_lock = threading.Lock()
+_ensure_warm_factory = None  # set by the lifespan; defaults to LanceDBAdapter
+
+
+def configure_ensure_warm_factory(factory):
+    """Install the factory used by `ensure_warm()` (called once at lifespan
+    startup so the adapter uses the same URI/table as the rest of the app)."""
+    global _ensure_warm_factory
+    _ensure_warm_factory = factory
+
+
+def ensure_warm() -> "LanceDBAdapter":
+    """Return a process-wide singleton LanceDB adapter.
+
+    Idempotent: the first call constructs via the configured factory,
+    subsequent calls return the cached instance. Thread-safe via a
+    re-entrant guard (double-checked locking).
+
+    Init failures are NOT cached — the next caller can retry. This keeps
+    a transient boot-time LanceDB hiccup from permanently disabling
+    retrieval for the lifetime of the process.
+    """
+    global _ensure_warm_instance
+    if _ensure_warm_instance is not None:
+        return _ensure_warm_instance
+    with _ensure_warm_lock:
+        if _ensure_warm_instance is None:
+            factory = _ensure_warm_factory or LanceDBAdapter
+            _ensure_warm_instance = factory()
+        return _ensure_warm_instance
+
+
+def _reset_ensure_warm_for_tests() -> None:
+    """Test hook: drop the cached singleton + factory (call sites must
+    NOT depend on this — only the test suite uses it)."""
+    global _ensure_warm_instance, _ensure_warm_factory
+    with _ensure_warm_lock:
+        _ensure_warm_instance = None
+        _ensure_warm_factory = None
 
 
 class LanceDBAdapter:
@@ -26,9 +71,29 @@ class LanceDBAdapter:
         return self._uri
 
     def table_exists(self) -> bool:
-        # lancedb 0.29.2: table_names() is deprecated but still present;
-        # list_tables() is the non-deprecated replacement in this version.
-        names = self._db.list_tables()
+        # lancedb 0.29.2: list_tables() returns a ListTablesResponse Pydantic
+        # model; iterating it yields (key, value) tuples, not table names.
+        # Normalize to a flat list of table names.
+        raw = self._db.list_tables()
+        names: List[str] = []
+        # Case 1: dict-like with 'tables' key
+        if hasattr(raw, "tables"):
+            try:
+                names = list(raw.tables)
+            except TypeError:
+                names = []
+        # Case 2: plain iterable of names
+        if not names:
+            try:
+                for entry in raw:
+                    # tuple like ('tables', ['a','b']) → take names from value
+                    if isinstance(entry, tuple) and len(entry) == 2 and entry[0] == "tables":
+                        names = list(entry[1])
+                        break
+                    if isinstance(entry, str):
+                        names.append(entry)
+            except TypeError:
+                pass
         return self._table_name in names
 
     def ensure_table(self) -> None:
@@ -43,6 +108,32 @@ class LanceDBAdapter:
         if self._table is None:
             self.ensure_table()
         return int(self._table.count_rows())
+
+    def get_table(self):
+        """Return the underlying lancedb Table object, opening it via
+        ensure_table() if not already open. Callers outside this adapter
+        (e.g. src.infrastructure.lancedb_versioning.tag_release/maintain/
+        rollback_to/promote_to_prod/prune_versions/read_only_at) operate on
+        the raw LanceTable, not this wrapper class.
+
+        WARNING: returns a raw handle — caller MUST NOT call ``drop``,
+        ``delete_all``, or any destructive API on the production tables
+        ``rag2025`` / ``husc_v2026_clean``. Those tables are on the
+        rollback path and must be preserved until M6 is green for two
+        consecutive weeks.
+
+        Consumer state: currently only test code calls this method. It
+        serves as infra preparation for ``lancedb_versioning.py`` (six
+        functions that accept a raw ``table`` argument) which will be
+        wired into the M5 CLI publisher pipeline.
+
+        ponytail: when M5 CLI publisher is live and versioning functions
+        are wired, remove this warning block and replace with a proper
+        access-control guard (read-only context manager or ACL check).
+        """
+        if self._table is None:
+            self.ensure_table()
+        return self._table
 
     def search(
         self,

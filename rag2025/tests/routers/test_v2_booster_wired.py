@@ -81,6 +81,7 @@ def _fake_router_result(*, route_value: str = "graph_rag", intent: str = "enumer
         reasoning="enumeration query",
         hyde_variants=[],
         route=SimpleNamespace(value=route_value),
+        is_in_scope=True,
     )
 
 
@@ -159,6 +160,9 @@ def _install_fakes(
                                      reason="ok", public_code="SUCCESS", short_answer="",
                                      pii_detected=False, data_gap_hints=[])
     )
+    guardrail._pii_warning_answer = MagicMock(return_value="Vui lòng ẩn thông tin cá nhân.")
+    guardrail.expose_internal = MagicMock(return_value=False)
+    guardrail._contains_sensitive_pii = MagicMock(return_value=False)
     main_module.guardrail_service = guardrail
 
     # query_cache disabled (avoid TTL coupling)
@@ -366,6 +370,9 @@ async def test_v2_booster_safe_when_lancedb_retriever_none(monkeypatch, main_mod
                                      reason="ok", public_code="SUCCESS",
                                      short_answer="", pii_detected=False, data_gap_hints=[])
     )
+    guardrail._pii_warning_answer = MagicMock(return_value="Vui lòng ẩn thông tin cá nhân.")
+    guardrail.expose_internal = MagicMock(return_value=False)
+    guardrail._contains_sensitive_pii = MagicMock(return_value=False)
     main_module.guardrail_service = guardrail
     main_module.query_cache = None
 

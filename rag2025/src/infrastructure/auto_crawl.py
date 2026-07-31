@@ -28,9 +28,9 @@ from src.services.lancedb_retrieval import _detect_current_admission_year
 
 # --- Configuration ---
 
-HASH_LOG_PATH = "rag2025/data/crawl_hash_log.json"
-CRAWLER_STATE_PATH = "rag2025/crawler_state.json"
-CHECKPOINT_PATH = "rag2025/checkpoint_incremental.json"
+HASH_LOG_PATH = "data/crawl_hash_log.json"
+CRAWLER_STATE_PATH = "data/crawler_state.json"
+CHECKPOINT_PATH = "data/checkpoint_incremental.json"
 SNAPSHOT_BASE = "rag2025/data/snapshots"
 DATA_DIRS = [
     "rag2025/data/chunked",
@@ -370,7 +370,11 @@ class IngestPipeline:
 
             # Step 3: CHUNK
             if start_step <= 3:
+                if unique_pages and chunk_fn is None:
+                    raise PipelineStepError(3, "chunk_fn is required when crawl returns new pages")
                 all_chunks = self._step_chunk(unique_pages, chunk_fn)
+                if all_chunks and embed_fn is None:
+                    raise PipelineStepError(6, "embed_fn is required when chunks were produced")
                 result["chunks_produced"] = len(all_chunks)
                 result["steps"]["chunk"] = f"{len(all_chunks)} chunks"
                 self._checkpoint.last_success_step = 3
@@ -431,7 +435,9 @@ class IngestPipeline:
         for attempt in range(MAX_RETRIES["crawl"]):
             try:
                 pages = crawl_fn()
-                return pages
+                # Normalize None/missing return → empty list so _step_hash
+                # never iterates None (TypeError: 'NoneType' is not iterable).
+                return pages or []
             except Exception as e:
                 wait = 30 * (attempt + 1)
                 logger.warning(f"Crawl retry {attempt+1}/{MAX_RETRIES['crawl']}: {e}")
@@ -486,7 +492,43 @@ class IngestPipeline:
             meta = chunk.get("metadata", {})
             existing = self._load_existing_chunks(meta.get("section", ""))
             if existing:
-                check_supersession(meta, existing)
+                # check_supersession mutates 'existing' in place — persist each old
+                # chunk back to disk/LanceDB so its 'is_superseded' flag is saved.
+                for old in existing:
+                    old["is_superseded"] = True
+                    old["superseded_by"] = meta.get("chunk_id", "")
+                    # Persist: write old back to its JSONL source file.
+                    # 'old' is a metadata dict — derive chunk_id from outer 'data'
+                    # dict at the load site instead of from 'old' itself.
+                    cid = old.get("chunk_id") or old.get("id")
+                    if not cid:
+                        # _load_existing_chunks may return just metadata; look up by
+                        # matching text/chunk lookup is unavailable so skip — caller
+                        # must pass full chunk dicts (see _load_existing_chunks fix).
+                        continue
+                    chunked_dir = Path("rag2025/data/chunked")
+                    for jsonl_path in chunked_dir.glob("*.jsonl"):
+                        lines = jsonl_path.read_text(encoding="utf-8").splitlines()
+                        updated = []
+                        modified = False
+                        for line in lines:
+                            if not line.strip():
+                                updated.append(line)
+                                continue
+                            try:
+                                data = json.loads(line)
+                                if data.get("chunk_id") == cid or data.get("id") == cid:
+                                    data.setdefault("metadata", {})
+                                    data["metadata"]["is_superseded"] = True
+                                    data["metadata"]["superseded_by"] = meta.get("chunk_id", "")
+                                    updated.append(json.dumps(data, ensure_ascii=False))
+                                    modified = True
+                                else:
+                                    updated.append(line)
+                            except (json.JSONDecodeError, TypeError):
+                                updated.append(line)
+                        if modified:
+                            jsonl_path.write_text("\n".join(updated), encoding="utf-8")
         return chunks
 
     def _step_embed(self, chunks: List[Dict], embed_fn) -> int:
@@ -528,7 +570,9 @@ class IngestPipeline:
         return 0
 
     def _load_existing_chunks(self, section: str) -> List[Dict]:
-        """Load existing chunks for supersession check (simplified)."""
+        """Load existing chunks for supersession check. Returns FULL chunk
+        dicts (with `chunk_id` and `metadata`) so persistence layer can
+        write back to JSONL by chunk_id."""
         chunked_dir = Path("rag2025/data/chunked")
         if not chunked_dir.exists():
             return []
@@ -542,7 +586,12 @@ class IngestPipeline:
                     data = json.loads(line)
                     meta = data.get("metadata", {})
                     if meta.get("section") == section:
-                        existing.append(meta)
+                        # Return full chunk dict including chunk_id and metadata
+                        # so the persistence loop in _step_supersession can locate
+                        # the row by chunk_id.
+                        if "chunk_id" not in data and "id" in data:
+                            data["chunk_id"] = data["id"]
+                        existing.append(data)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 continue
         return existing

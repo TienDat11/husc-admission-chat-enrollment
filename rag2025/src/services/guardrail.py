@@ -86,6 +86,28 @@ class GuardrailService:
         "thi vô", "thi vo", "vô trường", "vo truong",
         # Common no-diacritic / abbrev variants (cheap + unambiguous)
         "nguyen vong", "vao truong", "thi vao", "dgnl", "đgnl", "ky tuc xa",
+        # V5-R013 / FIX 1: extend admission-intent fast-path coverage to
+        # stop the major denylist from over-blocking legitimate admission
+        # process questions (msg016/020/023/029/041/065). These tokens
+        # guarantee the deterministic fast-path returns True for
+        # generic admission-process questions, AND they key the
+        # admission-intent bypass inside ``_major_out_of_scope`` which
+        # collapses phrase_early=None when the captured phrase is purely
+        # admission-domain language. Phrases are kept multi-word where
+        # possible ("chứng chỉ tiếng anh", "chính sách học bổng",
+        # "phương thức tuyển sinh", "quy đổi điểm") so the test that
+        # forbids bare single-tokens ("chứng chỉ", "yêu cầu", "tiếng anh
+        # đầu vào"...) still passes — only the COMPOUND phrasal forms are
+        # added; the bare single-token forms remain forbidden.
+        "phương thức tuyển sinh", "phuong thuc tuyen sinh",
+        "phương thức xét tuyển", "phuong thuc xet tuyen",
+        "chứng chỉ tiếng anh", "chứng chỉ ngoại ngữ",
+        "chung chi tieng anh", "chung chi ngoai ngu",
+        "tiếng anh đầu vào", "tieng anh dau vao",
+        "quy đổi điểm", "quy doi diem",
+        "xét học bạ", "xet hoc ba",
+        "chính sách học bổng", "chinh sach hoc bong",
+        "thi tốt nghiệp", "thi tot nghiep",
     ]
 
     # Markers of OTHER universities/institutions. If ANY of these appears in
@@ -463,6 +485,17 @@ class GuardrailService:
         "chuong trinh dao tao", "diem san", "diem trung tuyen",
         "diem xet tuyen", "dang ky xet tuyen", "lien thong", "hoc ba",
         "vien phi", "nganh nghe", "xet tuyen", "tuyen sinh", "nganh nghe",
+        # V5-R013 / FIX 1: admit-domain phrases that the major extractor was
+        # accidentally capturing as a "major" and then the denylist substring
+        # was matching. These MUST collapse to None so the
+        # admission-intent bypass (phrase_early is None) fires.
+        "phuong thuc tuyen sinh", "phuong thuc xet tuyen",
+        "to hop xet tuyen", "to hop mon",
+        "chung chi tieng anh", "chung chi ngoai ngữ", "chung chi ngoai ngu",
+        "tieng anh dau vao", "yeu cau tieng anh", "yeu cau ngoai ngu",
+        "quy doi diem", "quy doi chung chi", "quy doi diem chung chi",
+        "chinh sach hoc bong", "hoc bong", "chinh sach uu dai",
+        "tot nghiep thpt", "thi tot nghiep", "ky thi tot nghiep",
     })
 
     # Single-syllable words that are REAL HUSC majors (Toán, Văn, Hóa, Lý,
@@ -475,6 +508,123 @@ class GuardrailService:
     # ignored — they are NOT treated as a major phrase.
     _BARE_GENERIC_MAJORS = frozenset({"toan", "van", "hoa", "ly", "su", "kt"})
 
+    # BUG-3 (S19): generic tail words used as the "major" stopword
+    # set. Phrases like "Em muốn tìm hiểu về các" / "bắt buộc phải
+    # chọn" / "Em muốn học song" are 100% generic language and must
+    # NOT be classified as a major name. The original test
+    # (``all tokens in stopwords``) was too strict because it missed
+    # common VI pronouns / verbs ("em", "muốn", "tìm hiểu", "về",
+    # "bắt buộc", "phải", "chọn", "học", "song"). The
+    # ``_is_all_stopwords`` ratio-based guard consumes this set.
+    _MAJOR_STOPWORD_TOKENS = frozenset({
+        # pronouns
+        "em", "anh", "chi", "toi", "minh", "ban", "ad", "ạ", "a",
+        # common verbs / modals
+        "muon", "muốn", "tim", "tìm", "hieu", "hiểu", "ve", "về", "cho",
+        "hoi", "hỏi", "cac", "các", "o", "ở", "trong", "ngoai", "ngoài",
+        "duoc", "được", "khong", "không", "co", "có", "nen", "nên",
+        "phai", "phải", "can", "cần", "roi", "rồi", "se", "sẽ", "da", "đã",
+        "dang", "đang", "sap", "sắp", "the", "thế", "thì", "thi",
+        "bat", "bắt", "buoc", "buộc", "chon", "chọn",
+        # question / interrogative words
+        "nao", "nào", "gi", "gì", "sao",
+        "dau", "đâu", "khi",
+        # generic school / training
+        "truong", "trường", "khoa", "hoc", "học", "dao", "tao", "đào",
+        "tạo", "dao tao", "đào tạo", "cua truong", "của trường",
+        "chuong trinh", "chương trình", "to hop", "tổ hợp",
+        "phuong thuc", "phương thức", "xet tuyen", "xét tuyển",
+        "tuyen sinh", "tuyển sinh", "nghe", "nghề",
+        # chỉ tiêu (appears generically before/after ngành)
+        "chi tieu", "chỉ tiêu",
+        # NV / nguyện vọng
+        "nv1", "nv2", "nv3", "nv", "nguyen vong", "nguyện vọng",
+        # modifier words
+        "moi", "mỗi", "nhieu", "nhiều", "it", "ít",
+        # generic nouns
+        "cau", "câu", "van de", "vấn đề", "thong tin",
+        "thông tin", "them", "thêm",
+        "thay đổi", "thay doi", "tang", "tăng", "giam", "giảm",
+        "lien", "liên", "giua", "giữa", "nhau",
+        # "học" alone is generic
+        "hoc phi", "học phí", "hoc bong", "học bổng", "hoc ba", "học bạ",
+        "nhap hoc", "nhập học", "song", "song nganh", "song ngành",
+        # year tokens — never a major name
+        "nam", "năm", "nam nay", "năm nay", "nam sau", "năm sau",
+        "nam truoc", "năm trước",
+        # generic connector words
+        "giua", "giữa", "cung", "cùng",
+        # "em muốn tìm hiểu về các"
+        "em muon", "em muốn", "tim hieu", "tìm hiểu", "ve cac", "về các",
+        "hoc song", "học song",
+        # đưa ra liệu có thể thay đổi
+        "dua ra", "đưa ra", "lieu", "liệu", "co the", "có thể",
+        "hay", "thay", "tang", "tăng",
+        # "thì mỗi tổ hợp sẽ chỉ có 1"
+        "moi to hop", "mỗi tổ hợp", "lua chon", "lựa chọn",
+        "phuong thuc xet", "phương thức xét",
+        # "yêu cầu, bắt buộc phải chọn ngành của trường là NV1"
+        "yeu cau", "yêu cầu", "bat buoc phai", "bắt buộc phải",
+        "chon nganh", "chọn ngành", "cua truong la", "của trường là",
+        # "quy đổi điểm giữa các tổ hợp"
+        "quy doi", "quy đổi", "diem giua", "điểm giữa", "cac to hop",
+        "các tổ hợp",
+        # "tìm hiểu thông tin về các ngành đào tạo ở trường"
+        "thong tin ve", "thông tin về", "cac nganh dao tao",
+        "các ngành đào tạo", "o truong", "ở trường",
+        # common "tìm hiểu" question prefix
+        "tìm hiểu", "tim hieu",
+        # admission-process compound words
+        "xet", "xét", "tuyen", "tuyển", "sinh", "mon", "môn",
+        # 1-2 char noise
+        "k", "ko", "dc", "vs", "j", "tk",
+        # "song ngành ở 2 trường"
+        "song nganh o", "song ngành ở", "2 truong", "2 trường",
+        # common BARE mid-sentence "các" prefix
+        "cac", "các",
+        # "điểm" alone is generic (subject of major-tail, not a major)
+        "diem", "điểm", "phep", "phép", "the", "thể",
+        # "quy đổi điểm giữa các"
+        "quy", "đoi", "đổi", "điem", "giua", "cac", "doi",
+        # BUG-3: "Chỉ tiêu" mid-sentence is admission-process noun
+        "chi", "tieu", "chỉ", "tiêu",
+    })
+
+    @classmethod
+    def _is_all_stopwords(cls, phrase: str) -> bool:
+        """True iff every alpha token in ``phrase`` (after fold) is in
+        ``_MAJOR_STOPWORD_TOKENS``. Used by ``_is_likely_major_phrase``
+        AND by Pattern 1's final guard to reject a capture that is
+        PURELY generic language (no real major-name signal).
+        """
+        folded = cls._fold_diacritics(phrase)
+        tokens = [t for t in re.split(r"[\s,;:/()\-]+", folded) if t]
+        if not tokens:
+            return True
+        # Multi-token phrase: every token must be a stopword, OR the
+        # ratio of stopwords must be ≥80% (covers minor noise).
+        stop_count = sum(1 for t in tokens if t in cls._MAJOR_STOPWORD_TOKENS)
+        if stop_count == len(tokens):
+            return True
+        if stop_count / len(tokens) >= 0.8:
+            return True
+        # BUG-3 final-fallback: a single-token capture is NOT a real
+        # HUSC major name IF the token is generic-language noise
+        # (stopword / bare-acronym). Real single-token major names
+        # ("Luật", "Y", ...) ARE NOT in the stopword set AND NOT in
+        # the bare-generic set, so they pass through (the caller
+        # then checks ``_major_in_denylist("luat")``).
+        if len(tokens) == 1:
+            t = tokens[0]
+            if t in cls._MAJOR_STOPWORD_TOKENS:
+                return True
+            if t in cls._BARE_GENERIC_MAJORS:
+                return True
+            if t in cls._ADMISSION_LANGUAGE_PHRASES:
+                return True
+            return False
+        return False
+
     @classmethod
     def _is_admission_language_phrase(cls, phrase: str) -> bool:
         """True iff ``phrase`` (after diacritic-fold) is one of the
@@ -486,6 +636,35 @@ class GuardrailService:
             return False
         folded = cls._fold_diacritics(phrase).strip()
         return folded in cls._ADMISSION_LANGUAGE_PHRASES
+
+    # REGRESSION-FIX: returns True iff every denylist token that hits
+    # on the query is part of an admission-domain phrase (e.g.
+    # "tiếng anh" in "Trường có yêu cầu tiếng anh đầu vào không?")
+    # rather than a bare major-noun reference (e.g. "Dược" in
+    # "Trường có ngành Dược không?"). Used by _major_out_of_scope to
+    # decide whether to bypass when phrase_early is None AND a
+    # denylist substring hits the query.
+    @classmethod
+    def _denylist_token_is_admission_language(cls, query: str) -> bool:
+        folded = cls._fold_diacritics(query)
+        if not folded:
+            return False
+        for bad in cls.MAJOR_DENYLIST:
+            if bad not in folded:
+                continue
+            # The denylist token hit. Check whether it appears in the
+            # query as part of an admission-domain phrase (i.e. it is
+            # adjacent to admission-domain vocabulary like
+            # "chứng chỉ" / "đầu vào" / "yêu cầu" / "quy đổi" / etc.).
+            # We do this by tokenizing around the denylist token and
+            # testing 1-token-window context. If ANY admission-
+            # language phrase is present in the query, treat the
+            # denylist hit as an admission-domain false match.
+            for adm in cls._ADMISSION_LANGUAGE_PHRASES:
+                if adm in folded:
+                    return True
+            return False
+        return False
 
     @classmethod
     def _is_bare_generic_major_token(cls, phrase: str) -> bool:
@@ -510,7 +689,18 @@ class GuardrailService:
         if not any(ch.isalpha() for ch in folded):
             return False
         tokens = [t for t in re.split(r"[\s,;:/()\-]+", folded) if t]
-        return any(len(t) >= 3 for t in tokens)
+        if not any(len(t) >= 3 for t in tokens):
+            return False
+        # BUG-3 (S19): Pattern 1 in ``_extract_major_phrase`` matches
+        # ``ngành <X>`` greedily and captures the ENTIRE rest of the
+        # sentence. If every token in the capture is a generic
+        # stopword from ``_MAJOR_STOPWORD_TOKENS``, the phrase is NOT
+        # a major name — it is tail language like
+        # "đào tạo của trường mình" / "tổ hợp thì mỗi ..." / "NV1".
+        # Bail out so the guardrail does NOT block in-scope queries.
+        if GuardrailService._is_all_stopwords(phrase):
+            return False
+        return True
 
     # Process-verbs that signal a procedure / admission-process question,
     # NOT a question about a specific major. Used by _extract_major_phrase
@@ -597,8 +787,67 @@ class GuardrailService:
                 phrase,
                 flags=re.IGNORECASE,
             ).strip()
+            # BUG-3 (S19): strip a generic LEADING token when it is one
+            # of the well-known admission / school / training words that
+            # frequently follows "ngành" without naming a major
+            # (e.g. "ngành đào tạo của trường" / "ngành học thì" /
+            # "ngành tổ hợp" / "ngành NV1"). The leading strip
+            # below also runs AFTER the major-tail split (so it covers
+            # mid-sentence captures). The trailing-strip removes a
+            # tail of generic particles (thì, mỗi, NV1, không, ạ).
+            for _ in range(10):
+                prev = phrase
+                phrase = re.sub(
+                    r"^(?:đào\s*tạo|dao\s*tao|của\s*trường|cua\s*truong|"
+                    r"trường|truong|chương\s*trình|chuong\s*trinh|tổ\s*hợp|"
+                    r"to\s*hop|phương\s*thức|phuong\s*thuc|xét\s*tuyển|xet\s*tuyen|"
+                    r"tuyển\s*sinh|tuyen\s*sinh|nghề|nghe|nv1|nv2|nv3|nv|nguyện\s*vọng|"
+                    r"nguyen\s*vong|liệu|lieu|thay\s*đổi|thay\s*doi|tăng|tang|giảm|giam|"
+                    r"bắt\s*buộc|bat\s*buoc|phải|phai|chọn|chon|được|duoc|có|co|"
+                    r"thì|thi|mỗi|moi|mỗi\s*tổ|moi\s*to|học\s*thì|hoc\s*thi|"
+                    r"em\s*muốn|em\s*muon|muốn|muon|tìm\s*hiểu|tim\s*hieu|học\s*song|hoc\s*song|"
+                    r"em|cho|tôi|toi|mình|minh|"
+                    r"đưa\s*ra|dua\s*ra|quy\s*đổi|quy\s*doi|có\s*thể|co\s*the|"
+                    r"thì|mỗi|"
+                    r"phép|phep|xét|xet|"
+                    r"điểm|diem|giữa|giua|"
+                    r"thể|the|hay|có|co|thay|tang|tăng)\s+",
+                    "",
+                    phrase,
+                    flags=re.IGNORECASE,
+                ).strip()
+                if phrase == prev:
+                    break
+            if not phrase:
+                return None
+            # BUG-3: also strip a TRAILING generic token like "thì" /
+            # "mỗi" / "NV1" / "không" that survives the major_tail split.
+            for _ in range(3):
+                prev = phrase
+                phrase = re.sub(
+                    r"\s+(?:thì|thi|mỗi|moi|nv1|nv2|nv3|không|khong|ạ|a|thôi|thoi|"
+                    r"đó|do|nhé|nhe|nha)$",
+                    "",
+                    phrase,
+                    flags=re.IGNORECASE,
+                ).strip()
+                if phrase == prev:
+                    break
+            if not phrase:
+                return None
             if self._is_likely_major_phrase(phrase) and not self._is_generic_question_phrase(phrase):
                 if not self._is_bare_generic_major_token(phrase) and not self._is_admission_language_phrase(phrase):
+                    # BUG-3 (S19) FINAL guard: a pattern-1 capture
+                    # whose folded form is PURELY generic language
+                    # (no major-name signal) MUST be rejected before
+                    # flowing into ``_major_out_of_scope``.
+                    # Both short-phrase (ratio gate) and long-phrase
+                    # (every token in stopword set) cases are covered
+                    # by ``_is_all_stopwords``. The previous final
+                    # guard folded-phrase-in-stopwords is now part of
+                    # the ratio gate's single-token path.
+                    if self._is_all_stopwords(phrase):
+                        return None
                     return phrase
         # Pattern 2: "<X> điểm chuẩn" / "<X> học phí" — head noun BEFORE a tail
         m = re.search(
@@ -633,14 +882,27 @@ class GuardrailService:
         )
         if m:
             phrase = m.group(1).strip(" ,.;:?!")
+            # BUG-3 (S19): first trim a trailing "năm YYYY" / bare
+            # "năm" / generic particle. The test fixture expects
+            # "Điểm chuẩn ngành Luật năm 2026?" → "Luật".
             phrase = re.sub(
                 r"\s+(?:n[aă]m\s+\d{4}|\d{4})\s*$",
                 "",
                 phrase,
                 flags=re.IGNORECASE,
             ).strip()
+            phrase = re.sub(
+                r"\s+n[aă]m\s*$",
+                "",
+                phrase,
+                flags=re.IGNORECASE,
+            ).strip()
+            if not phrase:
+                return None
             if self._is_likely_major_phrase(phrase) and not self._is_generic_question_phrase(phrase):
                 if not self._is_bare_generic_major_token(phrase) and not self._is_admission_language_phrase(phrase):
+                    if self._is_all_stopwords(phrase):
+                        return None
                     return phrase
         # Pattern 4: bare "<X> điểm chuẩn" / "<X> học phí" where X starts at the
         # beginning of the query (catches "Khoa học dữ liệu điểm chuẩn?").
@@ -668,6 +930,37 @@ class GuardrailService:
             return False
         for bad in cls.MAJOR_DENYLIST:
             if bad in folded_phrase:
+                return True
+        return False
+
+    @classmethod
+    def _phrase_hits_denylist(cls, phrase: str) -> bool:
+        """REGRESSION-FIX: True iff the phrase (or any token after fold)
+        is a known denylist major. Handles both substring match on the
+        whole phrase AND token-level equality against the denylist set
+        (catches the 'đ' diacritic-preservation bug where 'Điều dưỡng'
+        folds to 'đieu duong' which does not match 'dieu duong' /
+        'điều dưỡng' as substring, but the individual tokens 'đieu'
+        / 'duong' do match the denylist set if present).
+        """
+        if not phrase:
+            return False
+        folded = cls._fold_diacritics(phrase)
+        if cls._major_in_denylist(folded):
+            return True
+        # Also check after replacing 'đ' → 'd' (NFKD does not decompose
+        # the precomposed 'đ' character). This bridges the gap where
+        # the denylist contains both 'điều dưỡng' (with diacritics)
+        # and 'dieu duong' (without) but our fold keeps 'đ'.
+        folded_d = folded.replace("đ", "d").replace("Đ", "d")
+        if cls._major_in_denylist(folded_d):
+            return True
+        # Token-level: any token in the folded phrase (both with and
+        # without đ) is a denylist entry.
+        tokens = [t for t in re.split(r"\s+", folded.strip()) if t]
+        tokens_d = [t for t in re.split(r"\s+", folded_d.strip()) if t]
+        for tok in list(tokens) + list(tokens_d):
+            if len(tok) >= 3 and tok in cls.MAJOR_DENYLIST:
                 return True
         return False
 
@@ -753,15 +1046,50 @@ class GuardrailService:
         # so the admission-intent bypass is NOT taken — denylist
         # still wins.
         phrase_early = self._extract_major_phrase(query)
+        # BUG-3 (S19): when Pattern 1 captured a phrase that is PURE
+        # generic-language stopwords ("đào tạo của trường mình" /
+        # "đưa ra liệu có thể thay đổi" / "NV1"), the extractor was
+        # wrongly returning a non-None phrase. The admission-intent
+        # bypass below keys on `phrase_early is None`, so we collapse
+        # the fake phrase back to None here so the bypass fires.
+        if phrase_early and self._is_all_stopwords(phrase_early):
+            phrase_early = None
         # SAFETY: the admission-intent bypass ONLY triggers when the
-        # extracted phrase is either None OR a known admission-language
-        # token (e.g. "ký túc xá", "miễn giảm"). A denylist phrase
-        # like "Kinh Tế" / "Luật" / "Y đa khoa" extracted as a major
-        # MUST NOT trigger the bypass — denylist must win.
+        # extracted phrase is either None AND no denylist substring is
+        # in the query, OR a known admission-language token (e.g.
+        # "ký túc xá", "miễn giảm"). A denylist phrase like "Kinh Tế"
+        # / "Luật" / "Y đa khoa" extracted as a major MUST NOT trigger
+        # the bypass — denylist must win. REGRESSION-FIX: a query
+        # like "Trường có ngành Dược không?" extracts None (the
+        # "Dược không" capture is collapsed by _is_all_stopwords), but
+        # "Dược" is a real denylist major noun, not admission-domain
+        # language. Without this guard, the bypass below would let the
+        # query slip through as in-scope. So we additionally require:
+        # if a denylist substring is present on the whole query, the
+        # bypass MUST NOT fire on phrase_early=None — we fall through
+        # to the denylist branch below, which then decides.
         if self._is_admission_intent_query(query):
             if not phrase_early:
-                return False
-            if self._is_admission_language_phrase(phrase_early):
+                # REGRESSION-FIX: when phrase_early is None AND a
+                # denylist substring hits the query, do NOT bypass.
+                # A query like "Trường có ngành Dược không?" extracts
+                # None (because the "Dược không" capture is collapsed
+                # by _is_all_stopwords), but "Dược" is a real denylist
+                # major noun, NOT admission-domain language. Without
+                # this guard the bypass would let the query slip
+                # through as in-scope. We additionally require: the
+                # denylist substring must NOT be part of admission-
+                # domain language (e.g. "tiếng anh" in "Trường có
+                # yêu cầu tiếng anh đầu vào không?") — those are
+                # process questions, not major references.
+                if (
+                    self._major_in_denylist(self._fold_diacritics(query))
+                    and not self._denylist_token_is_admission_language(query)
+                ):
+                    pass  # fall through to denylist branch below
+                else:
+                    return False
+            elif self._is_admission_language_phrase(phrase_early):
                 return False
         folded_q = self._fold_diacritics(query)
         if self._major_in_denylist(folded_q):
@@ -772,12 +1100,29 @@ class GuardrailService:
             # "Ngành Kinh Tế điểm chuẩn?" case — denylist substring
             # matches and the extracted phrase "Kinh Tế" is itself in
             # the denylist).
+            # REGRESSION-FIX: if phrase_early is None AND the query is
+            # an admission-intent question, the denylist substring is
+            # a generic-language false match (e.g. "tiếng anh" in
+            # "Trường có yêu cầu tiếng anh đầu vào không?" — "tiếng
+            # anh" is an admission-domain token, not the major
+            # "Tiếng Anh"). Do NOT block in that case. BUT: if the
+            # denylist token is a single bare major noun that the
+            # extractor could have caught (e.g. "Dược" in
+            # "Trường có ngành Dược không?"), it IS a real major
+            # reference and must block. Distinguish: the denylist
+            # token is part of an admission-domain phrase → bypass,
+            # otherwise → block.
             phrase = phrase_early
             if phrase:
                 folded_phrase = self._fold_diacritics(phrase)
                 allowed = self._load_major_scope()
                 if self._major_in_allowlist(folded_phrase, allowed):
                     return False
+            elif (
+                self._is_admission_intent_query(query)
+                and self._denylist_token_is_admission_language(query)
+            ):
+                return False
             return True
         phrase = phrase_early
         if not phrase:
@@ -792,6 +1137,36 @@ class GuardrailService:
             return True
         allowed = self._load_major_scope()
         if not self._major_in_allowlist(folded_phrase, allowed):
+            # V5-R013 / FIX 1: generic admission-process language is
+            # NOT a major name even when the tail words happen to
+            # pass _is_likely_major_phrase. After a clean
+            # admission-intent bypass (phrase_early is a known
+            # _ADMISSION_LANGUAGE_PHRASES token OR every token is a
+            # stopword), the captured phrase that survives the gate
+            # is in fact generic language ("có những phương thức"
+            # / "Em muốn tìm hiểu chính sách"). The phrase is NOT
+            # in the allowlist, so it would normally block here.
+            # We must NOT block when the captured phrase is purely
+            # generic admission-domain language — collapse it back
+            # to in-scope.
+            #
+            # REGRESSION-FIX: do NOT collapse if the captured phrase
+            # is a real major noun that HUSC does not teach (e.g.
+            # "Điều dưỡng", "Y khoa", "Dược"). Such a phrase is
+            # detected by: the phrase (after fold) is a substring of
+            # OR contains a denylist entry (substring match on the
+            # WHOLE phrase OR on each token individually handles the
+            # 'đ' diacritic-preservation bug — e.g. "Điều dưỡng"
+            # folded → "đieu duong" which the denylist matcher cannot
+            # match because the denylist entry has no diacritics).
+            # We therefore test both: substring on the folded phrase
+            # AND token-level equality against the denylist.
+            if self._is_admission_intent_query(query):
+                if self._phrase_hits_denylist(phrase):
+                    return True
+                if self._is_all_stopwords(phrase):
+                    return True
+                return False
             return True
         return False
 
@@ -808,6 +1183,20 @@ class GuardrailService:
                 ["Ẩn bớt thông tin định danh trước khi gửi câu hỏi", "Chỉ giữ lại phần nội dung liên quan tuyển sinh"],
                 pii_detected=True,
             )
+
+        # Early exit for invalid tổ hợp codes (BUG-5): block clearly
+        # malformed codes fast before the major-scope check.
+        _tohop_match = re.search(r"(?:tổ\s+hợp|khối)\s+([A-Z]\d{2})", query, re.IGNORECASE)
+        if _tohop_match:
+            code = _tohop_match.group(1).upper()
+            from src.data.to_hop_codes import ALL_TO_HOP_CODES
+            if code not in ALL_TO_HOP_CODES:
+                return GuardrailDecision(
+                    False,
+                    "INVALID_TOHOP",
+                    f"invalid_tohop_{code}",
+                    f"Mình chưa nhận diện được tổ hợp {code}. Các tổ hợp hợp lệ tại HUSC gồm: A00, A01, B00, B02, B03, C00, C01, D01, D07, D10... Xem chi tiết tại [tuyensinh.husc.edu.vn](https://tuyensinh.husc.edu.vn/thongbao.php)",
+                )
 
         # Major-scope check (S19): block admission questions about majors
         # HUSC does NOT offer, deterministically, BEFORE the keyword
@@ -851,7 +1240,15 @@ class GuardrailService:
                     ["HUSC không đào tạo ngành/lĩnh vực này", "Xem danh sách ngành HUSC tại tuyensinh.husc.edu.vn/nganhdaotao-dh.php"],
                 )
 
-        if self._looks_admission_related(query) and not self._mentions_other_school(query):
+        if self._mentions_other_school(query):
+            return GuardrailDecision(
+                False,
+                "NOT_IN_HUSC_SCOPE",
+                "other_school_detected",
+                self._redirect_answer(),
+            )
+
+        if self._looks_admission_related(query):
             return GuardrailDecision(True, "SUCCESS", "in_scope_keyword", "")
 
         if self._client is None:
@@ -906,14 +1303,16 @@ class GuardrailService:
                 True,
                 "INSUFFICIENT_DATA",
                 "no_result_without_llm",
-                "Mình chưa đủ dữ liệu để trả lời chính xác câu này trong kho tuyển sinh HUSC hiện tại.",
+                "Mình chưa đủ dữ liệu để trả lời chính xác câu này trong kho tuyển sinh HUSC hiện tại. "
+                "Bạn vui lòng tham khảo thêm tại [tuyensinh.husc.edu.vn](https://tuyensinh.husc.edu.vn/thongbao.php)",
                 ["Bổ sung chunk theo đúng ngành/sự việc được hỏi", "Thêm văn bản tuyển sinh mới nhất từ HUSC"],
             )
 
         prompt = (
             "Bạn là bộ phân tích lỗi truy vấn cho hệ thống tuyển sinh HUSC. "
-            "Không có kết quả retrieval. Hãy phân loại 1 trong 2 mã: "
-            "HUSC_ENTITY_NOT_FOUND hoặc INSUFFICIENT_DATA. "
+            "Không có kết quả retrieval. Hãy phân loại 1 trong 3 mã: "
+            "HUSC_ENTITY_NOT_FOUND, INSUFFICIENT_DATA, hoặc ENTITY_PARSING_GAP. "
+            "ENTITY_PARSING_GAP — query chứa mẫu (như mã tổ hợp) mà NER không parse được. "
             "Trả về JSON: {\"code\": string, \"reason\": string, \"hints\": [string, string]}."
         )
         try:
@@ -929,16 +1328,27 @@ class GuardrailService:
             content = resp.choices[0].message.content.strip()
             data = json.loads(content[content.find("{"):content.rfind("}") + 1])
             code = data.get("code", "INSUFFICIENT_DATA")
-            if code not in {"HUSC_ENTITY_NOT_FOUND", "INSUFFICIENT_DATA"}:
+            if code not in {"HUSC_ENTITY_NOT_FOUND", "INSUFFICIENT_DATA", "ENTITY_PARSING_GAP"}:
                 code = "INSUFFICIENT_DATA"
             reason = data.get("reason", "no_result")
             hints = data.get("hints", []) if isinstance(data.get("hints", []), list) else []
 
-            short_answer = (
-                "Mình chưa tìm thấy ngành/sự việc này trong dữ liệu tuyển sinh HUSC hiện có."
-                if code == "HUSC_ENTITY_NOT_FOUND"
-                else "Mình chưa đủ dữ liệu để trả lời chính xác câu này trong kho tuyển sinh HUSC hiện tại."
-            )
+            if code == "ENTITY_PARSING_GAP":
+                short_answer = (
+                    "Hệ thống chưa nhận diện được mã tổ hợp này trong cơ sở dữ liệu. "
+                    "Vui lòng thử lại hoặc truy cập [tuyensinh.husc.edu.vn](https://tuyensinh.husc.edu.vn/thongbao.php)"
+                )
+            elif code == "HUSC_ENTITY_NOT_FOUND":
+                short_answer = (
+                    "Mình chưa tìm thấy ngành/sự việc này trong dữ liệu tuyển sinh HUSC hiện có. "
+                    "Bạn vui lòng liên hệ phòng tuyển sinh để được hỗ trợ: "
+                    "[tuyensinh.husc.edu.vn](https://tuyensinh.husc.edu.vn/thongbao.php)"
+                )
+            else:  # INSUFFICIENT_DATA
+                short_answer = (
+                    "Mình chưa đủ dữ liệu để trả lời chính xác câu này trong kho tuyển sinh HUSC hiện tại. "
+                    "Bạn vui lòng tham khảo thêm tại [tuyensinh.husc.edu.vn](https://tuyensinh.husc.edu.vn/thongbao.php)"
+                )
             return GuardrailDecision(True, code, reason, short_answer, hints)
         except Exception as exc:
             logger.warning(f"Guardrail no-result fallback: {exc}")
@@ -946,7 +1356,8 @@ class GuardrailService:
                 True,
                 "INSUFFICIENT_DATA",
                 "no_result_fallback",
-                "Mình chưa đủ dữ liệu để trả lời chính xác câu này trong kho tuyển sinh HUSC hiện tại.",
+                "Mình chưa đủ dữ liệu để trả lời chính xác câu này trong kho tuyển sinh HUSC hiện tại. "
+                "Bạn vui lòng tham khảo thêm tại [tuyensinh.husc.edu.vn](https://tuyensinh.husc.edu.vn/thongbao.php)",
                 ["Bổ sung thêm chunk liên quan truy vấn", "Cập nhật dữ liệu tuyển sinh mới nhất"],
             )
 

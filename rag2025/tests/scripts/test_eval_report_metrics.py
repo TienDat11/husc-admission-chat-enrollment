@@ -259,6 +259,14 @@ class TestGatePass:
             assert out[k]["verdict"] == "PASS", f"{k} should pass"
 
 
+class TestEnforceGates:
+    def test_failed_gate_is_detected(self, rep_module):
+        assert rep_module.has_failed_gates({"faithfulness": {"verdict": "FAIL"}}) is True
+
+    def test_all_pass_gates_are_not_detected(self, rep_module):
+        assert rep_module.has_failed_gates({"faithfulness": {"verdict": "PASS"}}) is False
+
+
 # =============================================================================
 # 6. abstain accuracy
 # =============================================================================

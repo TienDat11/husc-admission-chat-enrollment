@@ -10,7 +10,7 @@ import asyncio
 import os
 import re
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import AsyncIterator, List, Dict, Any, Optional, Tuple
 from groq import AsyncGroq
 from tenacity import retry, stop_after_attempt, wait_exponential
 from loguru import logger
@@ -285,6 +285,39 @@ def _validate_markdown_table(answer: str) -> str:
     return "\n".join(out)
 
 
+def _chunk_text_for_stream(text: str, chunk_size: int = 40) -> List[str]:
+    """Split text into word-boundary-safe chunks for SSE delta frames.
+
+    Same logic as main.py's _chunk_answer_for_stream but standalone so
+    the streaming generator can emit fallback text chunks without
+    importing main.py.
+    """
+    if not text:
+        return [""]
+    chunks: List[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        target_end = min(i + chunk_size, n)
+        if target_end < n:
+            best = target_end
+            for k in range(target_end, max(i + 1, target_end - 30), -1):
+                ch = text[k - 1]
+                if ch in " \n\t,.;:!?。，：；！？":
+                    best = k
+                    break
+            if best > i:
+                chunks.append(text[i:best])
+                i = best
+            else:
+                chunks.append(text[i:target_end])
+                i = target_end
+        else:
+            chunks.append(text[i:target_end])
+            i = target_end
+    return chunks
+
+
 class LLMGenerator:
     """
     Generate final answer from retrieved chunks.
@@ -306,7 +339,16 @@ class LLMGenerator:
     # Standard abstain phrasing — reused from the existing LLM-error path
     # (line 428) and the fallback prompt rule #5. Single source of truth.
     _ABSTAIN_STRING = (
-        "Tôi không tìm thấy thông tin này trong tài liệu hiện có."
+        "Tôi không tìm thấy thông tin này trong tài liệu tuyển sinh hiện có. "
+        "Bạn vui lòng liên hệ phòng tuyển sinh để được hỗ trợ: "
+        "[tuyensinh.husc.edu.vn](https://tuyensinh.husc.edu.vn/thongbao.php)"
+    )
+    # Tổ hợp (admission combination) abstain — used when the query contains a
+    # tohop code pattern like B02, D66, X78 but no matching data was retrieved.
+    _ABSTAIN_STRING_TOHOP = (
+        "Mình chưa tìm thấy thông tin tổ hợp này trong dữ liệu tuyển sinh hiện có. "
+        "Bạn vui lòng kiểm tra danh sách tổ hợp xét tuyển tại: "
+        "[tuyensinh.husc.edu.vn](https://tuyensinh.husc.edu.vn/thongbao.php)"
     )
     # UW1 — markers that identify the intentional chunk-less clarification
     # path (e.g. `query_router.hyde_auto_answer`, season-aware vague-query
@@ -392,13 +434,11 @@ class LLMGenerator:
         Cải tiến: ngưỡng 4 từ liên tiếp ≥3 ký tự (giảm false positive khi context
         liệt kê nhiều mã tổ hợp/ngành dạng ABC123 nối nhau).
         """
+        from src.data.to_hop_codes import ALL_TO_HOP_CODES
         allowed = {"THPT","HUSC","IELTS","TOEFL","VSTEP","VNĐ","KTX","CNTT","KTPM","KHMT",
-                   "NV","CCCD","DHT","A00","A01","A02","A04","A09","B00","B03","B08",
-                   "C00","C01","C02","C03","C04","C14","C19","D01","D06","D07","D10",
-                   "D14","D66","D78","D84","V00","V01","V02","V12","X01","X02","X06",
-                   "X21","X25","X26","X70","X78","HSG","TPHCM","HN","ĐGNL","BGDĐT",
-                   "QPADL","KTPM","CNKT","ĐT","VT","KT","XHH","QLNN","QLVH","QLTN",
-                   "QLATSK","QHGD","NXB","TC"}
+                   "NV","CCCD","DHT","HSG","TPHCM","HN","ĐGNL","BGDĐT",
+                   "QPADL","CNKT","ĐT","VT","KT","XHH","QLNN","QLVH","QLTN",
+                   "QLATSK","QHGD","NXB","TC"} | set(ALL_TO_HOP_CODES)
         # Yêu cầu tối thiểu 4 từ tiếng Anh thuần liên tiếp (mỗi từ ≥3 ký tự)
         pattern = re.compile(r'(?:^|[\s(])([A-Za-z]{3,}(?:\s+[A-Za-z]{3,}){3,})(?:[\s).,]|$)')
         for m in pattern.finditer(text):
@@ -584,8 +624,16 @@ class LLMGenerator:
         # Build context
         context = self._build_context(chunks)
         max_context_chars = settings.MAX_CONTEXT_CHARS
-        if len(context) > max_context_chars:
-            context = context[:max_context_chars]
+        # Truncate to token count using tiktoken if available, else char-based
+        try:
+            import tiktoken
+            tokenizer = tiktoken.get_encoding("cl100k_base")
+            context_tokens = tokenizer.encode(context)
+            if len(context_tokens) > max_context_chars:
+                context = tokenizer.decode(context_tokens[:max_context_chars])
+        except (ImportError, Exception):
+            if len(context) > max_context_chars:
+                context = context[:max_context_chars]
 
         secure_system_prompt = (
             f"{self.generation_system_prompt}\n\n"
@@ -632,11 +680,14 @@ class LLMGenerator:
                     "Hãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."
                 )
                 try:
-                    unified_resp = await self.unified_client.chat(
-                        user_message=gen_user_msg,
-                        system_message=self.generation_system_prompt,
-                        temperature=0.1,
-                        max_tokens=max_tokens,
+                    unified_resp = await asyncio.wait_for(
+                        self.unified_client.chat(
+                            user_message=gen_user_msg,
+                            system_message=self.generation_system_prompt,
+                            temperature=0.1,
+                            max_tokens=max_tokens,
+                        ),
+                        timeout=30.0,
                     )
                     answer = unified_resp.content.strip()
                     provider = f"{unified_resp.model} ({unified_resp.provider})"
@@ -649,11 +700,14 @@ class LLMGenerator:
                             f"Primary gen model {self.gen_model} returned empty/short "
                             f"output (len={len(answer)}); falling back to {self.gen_fallback_model}"
                         )
-                        fb_resp = await self.unified_fallback_client.chat(
-                            user_message=gen_user_msg,
-                            system_message=self.generation_system_prompt,
-                            temperature=0.1,
-                            max_tokens=max_tokens,
+                        fb_resp = await asyncio.wait_for(
+                            self.unified_fallback_client.chat(
+                                user_message=gen_user_msg,
+                                system_message=self.generation_system_prompt,
+                                temperature=0.1,
+                                max_tokens=max_tokens,
+                            ),
+                            timeout=30.0,
                         )
                         fb_answer = fb_resp.content.strip()
                         if fb_answer and len(fb_answer) >= 20:
@@ -667,11 +721,14 @@ class LLMGenerator:
                             f"Primary gen model {self.gen_model} failed ({primary_err}); "
                             f"falling back to {self.gen_fallback_model}"
                         )
-                        fb_resp = await self.unified_fallback_client.chat(
-                            user_message=gen_user_msg,
-                            system_message=self.generation_system_prompt,
-                            temperature=0.1,
-                            max_tokens=max_tokens,
+                        fb_resp = await asyncio.wait_for(
+                            self.unified_fallback_client.chat(
+                                user_message=gen_user_msg,
+                                system_message=self.generation_system_prompt,
+                                temperature=0.1,
+                                max_tokens=max_tokens,
+                            ),
+                            timeout=30.0,
                         )
                         answer = fb_resp.content.strip()
                         provider = f"{fb_resp.model} ({fb_resp.provider}, fallback)"
@@ -687,7 +744,8 @@ class LLMGenerator:
                     f"CONTEXT:\n{context}\n\n---\n\nCÂU HỎI: {query}\n\n"
                     "Hãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."
                 )
-                response = await self.groq_client.chat.completions.create(
+                response = await asyncio.wait_for(
+                self.groq_client.chat.completions.create(
                     model=os.getenv("GROQ_GEN_MODEL", "llama-3.3-70b-versatile"),
                     messages=[
                         {"role": "system", "content": self.generation_system_prompt},
@@ -695,22 +753,27 @@ class LLMGenerator:
                     ],
                     temperature=0.1,
                     max_tokens=max_tokens,
-                )
+                ),
+                timeout=30.0,
+            )
                 answer = response.choices[0].message.content.strip()
                 provider = "Llama-3.3-70B (Groq-direct)"
 
             # Tertiary: direct GLM-4.5 path
             elif self.zai_client:
                 logger.info("Generation: Falling back to direct GLM-4.5 (Z.AI)")
-                response = await asyncio.to_thread(
-                    self.zai_client.chat.completions.create,
-                    model=os.getenv("ZAI_GEN_MODEL", "glm-4-32b-0414-128k"),
-                    messages=[
-                        {"role": "user", "content": full_prompt}
-                    ],
-                    thinking={"type": "enabled"},
-                    max_tokens=max_tokens,
-                    temperature=0.1,
+                response = await asyncio.wait_for(
+                    asyncio.shield(asyncio.to_thread(
+                        self.zai_client.chat.completions.create,
+                        model=os.getenv("ZAI_GEN_MODEL", "glm-4-32b-0414-128k"),
+                        messages=[
+                            {"role": "user", "content": full_prompt}
+                        ],
+                        thinking={"type": "enabled"},
+                        max_tokens=max_tokens,
+                        temperature=0.1,
+                    )),
+                    timeout=60.0,
                 )
                 answer = response.choices[0].message.content.strip()
                 provider = "GLM-4.5 (Z.AI-direct)"
@@ -722,7 +785,10 @@ class LLMGenerator:
 
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
-            answer = "Tôi không tìm thấy thông tin này trong tài liệu hiện có."
+            answer = (
+                "Hệ thống đã tìm thấy tài liệu liên quan nhưng dịch vụ tạo câu trả lời "
+                "đang tạm thời không khả dụng. Vui lòng thử lại sau."
+            )
             provider = "Fallback(Error)"
 
         # Enforce Vietnamese output
@@ -826,14 +892,18 @@ class LLMGenerator:
             not chunks
             and answer
             and answer.strip() != self._ABSTAIN_STRING
+            and answer.strip() != self._ABSTAIN_STRING_TOHOP
             and not self._CLARIFY_MARKERS.search(answer)
             and "chưa được công bố" not in answer
+            and "liên hệ phòng tuyển sinh" not in answer
+            and "tuyển sinh hiện có" not in answer
         ):
-            logger.info(
-                "Empty-retrieval guard fired: substantive answer produced "
-                "with 0 retrieved chunks; replacing with standard abstain."
-            )
-            answer = self._ABSTAIN_STRING
+            # Check if query mentions a tổ hợp code pattern
+            _tohop_re = re.compile(r"(?:tổ\s+hợp|khối)\s+[A-Z]\d{2}", re.IGNORECASE)
+            if _tohop_re.search(query):
+                answer = self._ABSTAIN_STRING_TOHOP
+            else:
+                answer = self._ABSTAIN_STRING
             provider = f"{provider} + empty-retrieval-abstain".lstrip()
 
         # ------------------------------------------------------------------
@@ -908,6 +978,78 @@ class LLMGenerator:
             "provider": provider,
             "chunks_used": chunks_used
         }
+
+    async def generate_answer_stream(
+        self,
+        query: str,
+        chunks: List[Dict[str, Any]],
+        confidence: float,
+        is_program_list_query: bool = False,
+        history: Optional[List[Dict[str, str]]] = None,
+    ) -> AsyncIterator[str]:
+        """Streaming variant: yields raw token pieces from the LLM.
+
+        Builds the same context/prompt as generate_answer() but streams
+        token deltas from the unified client instead of collecting them
+        into a single response. The caller accumulates via "".join() for
+        the full answer, which is then passed through post-guards (URL
+        strip, contact-abstain).
+
+        Preserves the empty-output fallback: if the stream yields <20
+        chars total, falls back to the fallback model (non-streaming).
+        """
+        # Build context (same as generate_answer)
+        context = self._build_context(chunks)
+        max_context_chars = settings.MAX_CONTEXT_CHARS
+        # Truncate to token count using tiktoken if available, else char-based
+        try:
+            import tiktoken
+            tokenizer = tiktoken.get_encoding("cl100k_base")
+            context_tokens = tokenizer.encode(context)
+            if len(context_tokens) > max_context_chars:
+                context = tokenizer.decode(context_tokens[:max_context_chars])
+        except (ImportError, Exception):
+            if len(context) > max_context_chars:
+                context = context[:max_context_chars]
+
+        max_tokens = settings.MAX_GEN_TOKENS_ENUM if is_program_list_query else settings.MAX_GEN_TOKENS
+
+        history_prefix = _format_history_prefix(history)
+        gen_user_msg = (
+            f"{history_prefix}"
+            f"CONTEXT:\n{context}\n\n---\n\nCÂU HỎI: {query}\n\n"
+            "Hãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."
+        )
+
+        # Stream from the unified client (primary gen model)
+        accumulated: List[str] = []
+        async for piece in self.unified_client.chat_stream(
+            user_message=gen_user_msg,
+            system_message=self.generation_system_prompt,
+            temperature=0.1,
+            max_tokens=max_tokens,
+        ):
+            accumulated.append(piece)
+            yield piece
+
+        # Empty-output fallback (same logic as generate_answer)
+        full = "".join(accumulated).strip()
+        if (not full or len(full) < 20) and self.unified_fallback_client is not None:
+            logger.warning(
+                f"Primary gen stream returned empty/short (len={len(full)}); "
+                f"falling back to {self.gen_fallback_model}"
+            )
+            fb_resp = await self.unified_fallback_client.chat(
+                user_message=gen_user_msg,
+                system_message=self.generation_system_prompt,
+                temperature=0.1,
+                max_tokens=max_tokens,
+            )
+            fb_answer = fb_resp.content.strip()
+            if fb_answer and len(fb_answer) >= 20:
+                for piece in _chunk_text_for_stream(fb_answer):
+                    yield piece
+
 # Lazy singleton instance (avoid import-time hard failures)
 _llm_generator: Optional[LLMGenerator] = None
 

@@ -10,6 +10,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
+import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Set
 
@@ -26,6 +29,10 @@ from src.services.embedding import EmbeddingService
 load_dotenv()
 
 MANIFEST_PATH = Path(__file__).parent.parent / "data" / "chunked" / ".ingest_manifest.json"
+
+# M3-N2b: ingest target is unified husc_chunks (not legacy rag2025)
+import os
+TARGET_TABLE = os.environ.get("LANCEDB_UNIFIED_TABLE", "husc_chunks")
 
 
 def _file_digest(path: Path) -> str:
@@ -80,6 +87,16 @@ def _resolve_target_files(chunks_dir: Path, incremental: bool) -> List[Path]:
     return changed
 
 
+def _normalize_for_hash(text: str) -> str:
+    """Normalize text for content hashing: strip whitespace + remove date patterns."""
+    t = re.sub(r"\d{2}/\d{2}/\d{4}", "", text)
+    return " ".join(t.split())
+
+
+def _content_hash(text: str) -> str:
+    return hashlib.sha256(_normalize_for_hash(text).encode("utf-8")).hexdigest()
+
+
 def _load_chunks(files: List[Path]) -> List[Dict]:
     all_chunks: List[Dict] = []
 
@@ -107,8 +124,12 @@ def _load_chunks(files: List[Path]) -> List[Dict]:
                         "chunk_id": chunk_id,
                         "text": text,
                         "source": obj.get("metadata", {}).get("source", file.name),
+                        # File provenance for orphan scoping. Distinct from
+                        # `source` (often a URL, shared across several files).
+                        "ingest_file": file.name,
                         "faq_type": obj.get("faq_type", obj.get("metadata", {}).get("faq_type", "")),
                         "metadata": obj.get("metadata", {}),
+                        "content_hash": _content_hash(text),
                     }
                 )
 
@@ -117,11 +138,84 @@ def _load_chunks(files: List[Path]) -> List[Dict]:
 
 def _load_existing_ids(table) -> Set[str]:
     try:
-        df = table.to_pandas(columns=["id"])
-        return {str(v) for v in df["id"].tolist()}
+        rows = table.to_arrow().select(["id"]).to_pylist()
+        return {str(r["id"]) for r in rows}
     except Exception as e:
         logger.warning(f"Failed to read existing IDs from LanceDB table: {e}")
         return set()
+
+
+def _esc(raw: str) -> str:
+    """Escape single quotes for SQL IN-clause values."""
+    return raw.replace("'", "''")
+
+
+def _orphan_ids(table, batch_files: Set[str], batch_ids: Set[str]) -> List[str]:
+    """Rows ingested from batch_files but absent from batch_ids.
+
+    husc_chunks (CHUNK_SCHEMA) has no `source` column, so provenance lives in
+    metadata_json under `ingest_file` (the JSONL filename). Rows with no
+    recorded ingest_file are never orphans — they came from another ingest
+    script (581 of 2068 production rows) and must not be touched.
+
+    Scoping by `source` is WRONG: it is usually a URL shared by several files,
+    so it matches rows this batch does not own.
+    """
+    if not batch_files:
+        return []
+    try:
+        rows = table.to_arrow().select(["id", "metadata_json"]).to_pylist()
+    except Exception as e:
+        logger.warning(f"Orphan scan failed, skipping orphan delete: {e}")
+        return []
+
+    orphans: List[str] = []
+    for row in rows:
+        row_id = str(row["id"])
+        if row_id in batch_ids:
+            continue
+        try:
+            meta = json.loads(row.get("metadata_json") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if meta.get("ingest_file") in batch_files:
+            orphans.append(row_id)
+    return orphans
+
+
+def _trigger_graph_sync(new_ids: List[str]) -> None:
+    """M3-N3a: Post-ingest graph sync hook (fail-safe, non-blocking).
+
+    Writes new chunk IDs to data/graph/.new_chunk_ids.json and triggers
+    build_graph.py --incremental via subprocess. Failures are logged but
+    do NOT propagate — eventual consistency per R3 direction A.
+    """
+    repo_root = Path(__file__).parent.parent
+    graph_dir = repo_root / "data" / "graph"
+    graph_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write new chunk IDs for incremental build
+    new_ids_path = graph_dir / ".new_chunk_ids.json"
+    try:
+        new_ids_path.write_text(json.dumps(new_ids, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to write .new_chunk_ids.json: {e}")
+        return
+
+    # Trigger incremental graph build (non-blocking, fail-safe)
+    try:
+        subprocess.run(
+            [sys.executable, "scripts/build_graph.py", "--incremental"],
+            cwd=str(repo_root),
+            timeout=300,  # 5 min timeout
+            capture_output=True,
+            text=True,
+        )
+        logger.info(f"Graph sync triggered for {len(new_ids)} new chunk(s)")
+    except subprocess.TimeoutExpired:
+        logger.warning("Graph sync timed out after 300s (non-fatal)")
+    except Exception as e:
+        logger.warning(f"Graph sync failed (non-fatal): {e}")
 
 
 def ingest_lancedb(incremental: bool = False) -> bool:
@@ -148,57 +242,193 @@ def ingest_lancedb(incremental: bool = False) -> bool:
         return False
 
     logger.info(f"Loaded {len(chunks)} chunks")
-    logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL} (dim={settings.EMBEDDING_DIM})")
 
-    embedding_service = EmbeddingService(settings)
-    texts = [chunk["text"] for chunk in chunks]
-    embeddings = embedding_service.encode_documents(texts)
+    # M3-N1b: content-hash guardrail — skip re-embed when text unchanged
+    db = lancedb.connect(settings.LANCEDB_URI)
+    target = TARGET_TABLE
+    table_exists = target in db.table_names()
+
+    existing_hashes: Dict[str, str] = {}
+    if incremental and table_exists:
+        try:
+            table_tmp = db.open_table(target)
+            rows = table_tmp.to_arrow().select(["id", "metadata_json"]).to_pylist()
+            for r in rows:
+                try:
+                    meta = json.loads(r.get("metadata_json") or "{}")
+                    h = meta.get("content_hash")
+                    if h:
+                        existing_hashes[r["id"]] = h
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        except Exception as e:
+            logger.warning(f"Failed to load existing hashes: {e}")
+
+    chunks_to_embed = [
+        c for c in chunks
+        if c["content_hash"] != existing_hashes.get(c["id"])
+    ]
+    chunks_unchanged = [
+        c for c in chunks
+        if c["content_hash"] == existing_hashes.get(c["id"])
+    ]
+    skipped = len(chunks_unchanged)
+    if skipped:
+        logger.info(f"Content-hash guardrail: skipping {skipped} unchanged chunk(s)")
+
+    # Embed only changed chunks
+    embeddings_map: Dict[str, list] = {}
+    if chunks_to_embed:
+        logger.info(f"Embedding {len(chunks_to_embed)} chunk(s) (skipped {skipped} unchanged)")
+        logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL} (dim={settings.EMBEDDING_DIM})")
+        embedding_service = EmbeddingService(settings)
+        texts = [chunk["text"] for chunk in chunks_to_embed]
+        embeddings = embedding_service.encode_documents(texts)
+        for chunk, vector in zip(chunks_to_embed, embeddings):
+            embeddings_map[chunk["id"]] = vector.tolist()
+
+    # For unchanged chunks, reuse existing vectors from table
+    if chunks_unchanged and table_exists:
+        try:
+            table_tmp2 = db.open_table(target)
+            unchanged_ids = [c["id"] for c in chunks_unchanged]
+            escaped_ids = ", ".join(f"'{_esc(i)}'" for i in unchanged_ids)
+            rows = table_tmp2.search().where(f"id IN ({escaped_ids})").limit(len(unchanged_ids)).to_arrow().to_pylist()
+            for r in rows:
+                embeddings_map[r["id"]] = r["vector"]
+        except Exception as e:
+            logger.warning(f"Failed to load existing vectors for unchanged chunks: {e}")
+            # Fallback: embed them anyway
+            embedding_service = EmbeddingService(settings)
+            for chunk in chunks_unchanged:
+                if chunk["id"] not in embeddings_map:
+                    embeddings_map[chunk["id"]] = embedding_service.encode_documents([chunk["text"]])[0].tolist()
 
     records = []
-    for chunk, vector in zip(chunks, embeddings):
+    for chunk in chunks:
+        vector = embeddings_map.get(chunk["id"])
+        if vector is None:
+            continue  # safety: skip if no vector available
         raw_meta = chunk.get("metadata", {})
+        # M3-N2b: extract data_year (pattern from migrate_schema_v2.py:32-41)
+        data_year = 0
+        needs_review = True
+        for key in ("data_year", "year"):
+            val = raw_meta.get(key)
+            if isinstance(val, int) and val > 0:
+                data_year, needs_review = val, False
+                break
+            if isinstance(val, str) and val.isdigit():
+                data_year, needs_review = int(val), False
+                break
+
+        faq_type = chunk.get("faq_type", "")
+        # Provenance: husc_chunks has no `source` column, so record it in
+        # metadata_json — orphan detection needs it to scope deletes by file.
+        meta_out = {
+            **raw_meta,
+            "ingest_file": chunk["ingest_file"],
+            "needs_review": needs_review,
+            "content_hash": chunk["content_hash"],
+        }
+        if faq_type:
+            meta_out["source_faq_type"] = faq_type
+
         records.append(
             {
                 "id": chunk["id"],
-                "chunk_id": chunk["chunk_id"],
+                "doc_id": chunk.get("chunk_id") or chunk["id"],
+                "release_id": "legacy",
                 "text": chunk["text"],
-                "source": chunk.get("source", "unknown"),
-                "faq_type": chunk.get("faq_type", ""),
-                "metadata_json": json.dumps(raw_meta, ensure_ascii=False, default=str),
-                "vector": vector.tolist(),
+                "summary": None,
+                "vector": vector,
+                "data_year": data_year,
+                "scope": "admissions",
+                "doc_type": faq_type or "chunk",
+                "status": "current",
+                "effective_from": 0,
+                "effective_to": 99991231,
+                "is_tombstone": False,
+                "superseded_by": None,
+                "metadata_json": json.dumps(meta_out, ensure_ascii=False, default=str),
+                "is_reference": bool(raw_meta.get("is_reference")),
+                "crawl_date": raw_meta.get("crawl_date"),
             }
         )
 
-    db = lancedb.connect(settings.LANCEDB_URI)
-    table_exists = settings.LANCEDB_TABLE in db.table_names()
-
     if incremental and table_exists:
-        table = db.open_table(settings.LANCEDB_TABLE)
-        existing_ids = _load_existing_ids(table)
-        new_records = [r for r in records if r["id"] not in existing_ids]
-        if not new_records:
-            logger.info("Incremental ingest: no new chunk IDs to append")
+        table = db.open_table(target)
+
+        # Pre-ingest tag for rollback safety
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        try:
+            from src.infrastructure.lancedb_versioning import tag_release
+            tag_release(table, f"pre-ingest-{ts}")
+        except Exception:
+            logger.warning(f"tag_release failed (non-fatal): {ts}")
+
+        # Orphan delete only when table has "source" column (legacy rag2025).
+        # husc_chunks (CHUNK_SCHEMA) has no "source" column — skip.
+        where_clause = None
+        if "source" in table.schema.names:
+            sources_in_batch = sorted({c.get("source", "unknown") for c in chunks})
+            if sources_in_batch:
+                escaped = ", ".join(f"'{_esc(s)}'" for s in sources_in_batch)
+                where_clause = f"source IN ({escaped})"
+
+        job = (
+            table.merge_insert("id")
+                 .when_matched_update_all()
+                 .when_not_matched_insert_all()
+        )
+        if where_clause:
+            job.when_not_matched_by_source_delete(condition=where_clause)
         else:
-            table.add(new_records)
-            logger.info(
-                f"Incremental ingest complete: appended={len(new_records)}, total_rows={table.count_rows()}, "
-                f"table={settings.LANCEDB_TABLE}, uri={settings.LANCEDB_URI}"
+            # husc_chunks has no `source` column, so orphans are resolved from
+            # metadata_json provenance instead. An UNCONDITIONAL delete here
+            # would wipe every row outside the batch: in --incremental mode the
+            # batch is only the CHANGED files, and 581 of 2068 production rows
+            # come from other ingest scripts entirely.
+            orphans = _orphan_ids(
+                table,
+                {c["ingest_file"] for c in chunks},
+                # From `chunks`, NOT `records`: records drops any chunk whose
+                # vector went missing (:309-311), and that loss is silent. A
+                # chunk still present in the JSONL must never count as an orphan.
+                {c["id"] for c in chunks},
             )
+            if orphans:
+                escaped_orphans = ", ".join(f"'{_esc(o)}'" for o in orphans)
+                job.when_not_matched_by_source_delete(
+                    condition=f"id IN ({escaped_orphans})"
+                )
+                logger.info(f"Orphan delete: {len(orphans)} row(s) from batch files")
+        job.execute(records)
+
+        logger.info(
+            f"Incremental ingest complete: merged={len(records)}, total_rows={table.count_rows()}, "
+            f"table={target}, uri={settings.LANCEDB_URI}"
+        )
     else:
         if table_exists:
-            table = db.create_table(settings.LANCEDB_TABLE, data=records, mode="overwrite")
+            table = db.create_table(target, data=records, mode="overwrite")
             logger.info(
-                f"Full ingest complete (overwrite): table={settings.LANCEDB_TABLE}, "
+                f"Full ingest complete (overwrite): table={target}, "
                 f"rows={table.count_rows()}, uri={settings.LANCEDB_URI}"
             )
         else:
-            table = db.create_table(settings.LANCEDB_TABLE, data=records)
+            table = db.create_table(target, data=records)
             logger.info(
-                f"Initial ingest complete: table={settings.LANCEDB_TABLE}, "
+                f"Initial ingest complete: table={target}, "
                 f"rows={table.count_rows()}, uri={settings.LANCEDB_URI}"
             )
 
     _refresh_manifest_for_all_files(chunks_dir)
+
+    # M3-N3a: trigger graph sync for new chunks
+    new_chunk_ids = [r["id"] for r in records]
+    _trigger_graph_sync(new_chunk_ids)
+
     return True
 
 

@@ -322,3 +322,25 @@ def test_fetch_rows_by_ids_equivalence_with_reference_construction():
         assert adapter_row["source"] == ref[cid].source
         assert adapter_row.get("chunk_id", adapter_row["id"]) == ref[cid].chunk_id
         assert adapter_meta == ref[cid].metadata
+
+
+
+def test_get_table_returns_opened_table():
+    """Targeted-edit regression: get_table() opens (if needed) and returns
+    the same raw table object the adapter uses internally."""
+    adapter = LanceDBAdapter.__new__(LanceDBAdapter)
+    adapter._table_name = "probe"
+    adapter._uri = "mem://x"
+    adapter._table = None
+
+    fake_table = MagicMock()
+
+    def _fake_ensure_table():
+        adapter._table = fake_table
+
+    adapter.ensure_table = MagicMock(side_effect=_fake_ensure_table)
+
+    result = adapter.get_table()
+
+    assert result is fake_table
+    adapter.ensure_table.assert_called_once()

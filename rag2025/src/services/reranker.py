@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from loguru import logger
@@ -15,6 +15,9 @@ class RerankerService:
         self._model_name = settings.RERANKER_MODEL
         self._weight = settings.RERANKER_WEIGHT
         self._max_rerank = settings.MAX_RERANK
+        self._max_length = getattr(settings, "RERANKER_MAX_LENGTH", 512)
+        self._pool = getattr(settings, "RERANKER_POOL", 5)
+        self._adaptive_confidence = getattr(settings, "RERANKER_ADAPTIVE_CONFIDENCE", 0.5)
         self._model = None
 
         if not self._enabled:
@@ -22,8 +25,8 @@ class RerankerService:
             return
 
         try:
-            self._model = CrossEncoder(self._model_name)
-            logger.info(f"Reranker loaded: {self._model_name}")
+            self._model = CrossEncoder(self._model_name, max_length=self._max_length)
+            logger.info(f"Reranker loaded: {self._model_name} (max_length={self._max_length})")
         except Exception as exc:
             self._enabled = False
             logger.warning(f"Failed to load reranker {self._model_name}: {exc}")
@@ -32,12 +35,21 @@ class RerankerService:
     def enabled(self) -> bool:
         return self._enabled and self._model is not None
 
+    @property
+    def adaptive_confidence(self) -> float:
+        return self._adaptive_confidence
+
+    @property
+    def pool(self) -> int:
+        return self._pool
+
     def rerank(
         self,
         query: str,
         chunks: List[Dict[str, Any]],
         top_k: int,
         apply_lost_in_middle: bool = True,
+        max_length: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         if not self.enabled or not chunks:
             return chunks[:top_k]
@@ -45,8 +57,13 @@ class RerankerService:
         # Pre-filter: limit candidates to MAX_RERANK before cross-encoder
         candidates = chunks[: self._max_rerank]
 
+        # Truncation is SCORING-ONLY: the cross-encoder receives at most
+        # `max_length` tokens of each chunk text for relevance scoring.
+        # The original chunk text (including full text) is preserved in the
+        # returned list — the generator always sees the complete chunk text.
+        ml = max_length if max_length is not None else self._max_length
         pairs = [(query, c.get("text", "")) for c in candidates]
-        rerank_scores = self._model.predict(pairs)
+        rerank_scores = self._model.predict(pairs, show_progress_bar=False, max_length=ml)
 
         rescored = []
         for chunk, rr_score in zip(candidates, rerank_scores):
@@ -56,6 +73,10 @@ class RerankerService:
             updated = dict(chunk)
             updated["score"] = fused
             updated["rerank_score"] = rr
+            # Apply adaptive confidence gate: if max rerank score < threshold,
+            # scale down the fused score to demote low-confidence results
+            if float(rr_score) < self._adaptive_confidence:
+                updated["score"] = fused * 0.5  # halve the fused score
             rescored.append(updated)
 
         rescored.sort(key=lambda x: x.get("score", 0.0), reverse=True)

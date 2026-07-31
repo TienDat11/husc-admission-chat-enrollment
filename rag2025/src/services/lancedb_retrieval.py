@@ -33,8 +33,11 @@ def _detect_current_admission_year() -> int:
             adapter.ensure_table()
             table = adapter._table
             if "data_year" in table.schema.names:
-                import pandas as pd
-                df = table.to_pandas(columns=["data_year"])
+                # `search().select()` pushes the projection into Lance. Plain
+                # `to_arrow()` materializes the 1024-dim vector column first —
+                # measured 18ms/+9.4MB vs 6ms/+0.0MB on 2138 rows, and this runs
+                # at module import. `to_pandas(columns=)` does not exist on 0.29.2.
+                df = table.search().select(["data_year"]).to_pandas()
                 max_year = int(df["data_year"].max())
                 if max_year >= 2025:
                     return max_year
@@ -92,6 +95,7 @@ class RetrievalResult:
     error_type: Optional[RetrievalError] = None
     error_message: Optional[str] = None
     confidence: float = 0.0
+    degraded_filter: bool = False  # M3-N4b: True when prior-year fallback rows returned
 
     @property
     def is_success(self) -> bool:
@@ -220,7 +224,9 @@ class LanceDBRetriever:
                     error_message="No matching documents found",
                     confidence=0.0,
                 )
-            return RetrievalResult(documents=docs, confidence=self._calculate_confidence(docs))
+            # M3-N4b: aggregate degraded_filter flag
+            degraded = any(d.metadata.get("degraded_filter") for d in docs)
+            return RetrievalResult(documents=docs, confidence=self._calculate_confidence(docs), degraded_filter=degraded)
         except Exception as exc:
             logger.error(f"LanceDB retrieval failed: {exc}")
             return RetrievalResult(
@@ -354,6 +360,16 @@ class LanceDBRetriever:
             # current year also survives.
             if hard_drop_prior_year:
                 if chunk_year is not None and isinstance(chunk_year, int) and chunk_year < current_year:
+                    # Tổ hợp overview chunks are year-agnostic mapping data —
+                    # preserve them regardless of year (BUG-6 fix).
+                    _cid = row.get("chunk_id") or row.get("id") or ""
+                    if isinstance(_cid, str) and _cid.startswith("qa_chi_tieu_khoi_xet_"):
+                        kept_rows.append(row)
+                        # Apply temporal demote (soft) instead of hard-drop
+                        distance = row.get("_distance", 0.0)
+                        row["_distance"] = distance / OLD_YEAR_DEMOTE_FACTOR
+                        row["_temporal_demoted"] = True
+                        continue
                     # Prior-year chunk — hard-drop.
                     continue
                 # else: keep (current-year OR year-agnostic None OR non-int year-tag)
@@ -373,6 +389,18 @@ class LanceDBRetriever:
                 distance = row.get("_distance", 0.0)
                 row["_distance"] = distance / OLD_YEAR_DEMOTE_FACTOR  # Higher distance = lower score
                 row["_temporal_demoted"] = True
+                # M3-N4b: prior-year kept via fallback → flag degraded
+                row["_degraded_filter"] = True
+
+            # M3-N4b: is_reference flat column (or metadata fallback) → demote + flag, never drop
+            is_ref = row.get("is_reference")
+            if is_ref is None:
+                is_ref = meta.get("is_reference")
+            if is_ref and not row.get("_degraded_filter"):
+                distance = row.get("_distance", 0.0)
+                row["_distance"] = distance / OLD_YEAR_DEMOTE_FACTOR
+                row["_temporal_demoted"] = True
+                row["_degraded_filter"] = True
 
             kept_rows.append(row)
 
@@ -432,7 +460,10 @@ class LanceDBRetriever:
         Tests may monkey-patch this method to avoid touching LanceDB.
         """
         import pandas as pd  # local import to keep module-import light
-        df = self._adapter._table.to_pandas(columns=["data_year"])
+        # Same projection-pushdown reason as _detect_current_admission_year.
+        # Verified on 0.29.2: no default row cap — a 2138-row table returns 2138,
+        # so the DISTINCT is computed over every row, not a truncated head.
+        df = self._adapter._table.search().select(["data_year"]).to_pandas()
         distinct: set = set()
         for value in df["data_year"].tolist():
             if value is None:
@@ -509,6 +540,10 @@ class LanceDBRetriever:
             if distance is not None:
                 score = 1.0 / (1.0 + float(distance))
 
+            # M3-N4b: propagate degraded_filter flag into metadata
+            if row.get("_degraded_filter"):
+                metadata["degraded_filter"] = True
+
             documents.append(
                 RetrievedDocument(
                     text=text,
@@ -522,26 +557,26 @@ class LanceDBRetriever:
         return documents
 
     def fetch_by_id(self, chunk_id: str) -> Optional[RetrievedDocument]:
-        """Fetch a single chunk by its chunk_id (no vector search).
+        """Fetch a single chunk by its chunk_id using server-side filter (no full-table scan).
 
         Used by the Phase E aggregation booster to inject canonical summary chunks.
         """
         try:
             self._adapter.ensure_table()
-            df = self._adapter._table.to_pandas()
-            match = df[df['id'] == chunk_id]
-            if match.empty:
+            # Use server-side 'id =' predicate to avoid full to_pandas() scan.
+            rows = self._adapter.fetch_rows_by_ids([chunk_id])
+            if not rows:
                 return None
-            row = match.iloc[0]
-            raw_meta = row.get('metadata_json') if 'metadata_json' in df.columns else None
+            row = rows[0]
+            raw_meta = row.get('metadata_json')
             metadata = json.loads(raw_meta) if isinstance(raw_meta, str) and raw_meta else {}
             return RetrievedDocument(
-                text=row.get('text', '') if 'text' in df.columns else '',
-                source=row.get('source') if 'source' in df.columns else None,
-                chunk_id=row.get('id') if 'id' in df.columns else chunk_id,
+                text=row.get('text', '') if 'text' in row else '',
+                source=row.get('source'),
+                chunk_id=row.get('chunk_id', row.get('id')),
                 metadata=metadata,
                 score=1.0,  # injected priority
-                point_id=str(row.get('id')) if 'id' in df.columns and row.get('id') is not None else None,
+                point_id=str(row.get('id')) if row.get('id') is not None else None,
             )
         except Exception as e:
             logger.warning(f"fetch_by_id({chunk_id}) failed: {e}")

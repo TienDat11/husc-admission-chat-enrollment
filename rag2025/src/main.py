@@ -17,9 +17,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 # CRITICAL: Load .env BEFORE any imports that use env vars
 import config.env_loader  # noqa: F401
 
-from typing import Any, Dict, List, Literal, Optional
+import asyncio
+from typing import Any, Callable, Dict, List, Literal, Optional
 from collections import defaultdict, deque
-from asyncio import Lock, create_task
+from dataclasses import replace
+from asyncio import FIRST_COMPLETED, Lock, create_task
+from threading import Lock as ThreadingLock
 import time
 import uuid
 import json
@@ -30,15 +33,17 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from loguru import logger
+import numpy as np
 from pydantic import BaseModel, Field
 
 # Import new services
-from services.query_enhancer import query_enhancer
-from services.lancedb_retrieval import get_retriever, LanceDBRetrieverConfig
-from services.llm_generator import get_llm_generator
-from services.reranker import RerankerService
-from services.query_cache import QueryCache
-from services.guardrail import GuardrailService
+from src.services.query_enhancer import query_enhancer
+from src.services.lancedb_retrieval import get_retriever, LanceDBRetrieverConfig
+from src.services.llm_generator import get_llm_generator
+from src.services.reranker import RerankerService
+from src.services.query_cache import QueryCache
+from src.services.guardrail import GuardrailService
+from src.services.llm_generator import _chunk_text_for_stream as _chunk_answer_for_stream
 
 # Keep existing imports for backward compatibility
 from config.settings import RAGSettings
@@ -59,8 +64,9 @@ RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
 GROUNDING_THRESHOLD = float(os.getenv("GROUNDING_THRESHOLD", "0.18"))
 
 # Simple in-memory rate limiter
-_rate_limit_lock = Lock()
+_rate_limit_lock = ThreadingLock()
 _rate_limit_buckets: dict[str, deque[float]] = defaultdict(deque)
+_graph_update_lock = Lock()
 
 # Lightweight in-memory metrics (no external dependencies)
 _metrics_lock = Lock()
@@ -164,13 +170,28 @@ async def _enforce_rate_limit(request: Request) -> None:
     ip = _client_ip(request)
     now = time.time()
     window_start = now - 60.0
-    async with _rate_limit_lock:
-        bucket = _rate_limit_buckets[ip]
-        while bucket and bucket[0] < window_start:
-            bucket.popleft()
-        if len(bucket) >= RATE_LIMIT_PER_MINUTE:
-            raise HTTPException(status_code=429, detail="Too many requests")
-        bucket.append(now)
+
+    def _evict_then_record(ip: str, now: float, window_start: float) -> None:
+        cutoff = window_start - 60.0
+        with _rate_limit_lock:
+            empty = [k for k, b in _rate_limit_buckets.items()
+                     if not b or b[-1] < cutoff]
+            for k in empty:
+                _rate_limit_buckets.pop(k, None)
+            bucket = _rate_limit_buckets[ip]
+            while bucket and bucket[0] < window_start:
+                bucket.popleft()
+            if len(bucket) >= RATE_LIMIT_PER_MINUTE:
+                raise _RateLimited()
+            bucket.append(now)
+
+    # run_in_threadpool is best-effort: under heavy load ~1-2 requests may race
+    # past the cutoff check before the bucket is updated.  This is acceptable for
+    # rate limiting (no asyncio.Lock guard needed).
+    try:
+        await run_in_threadpool(_evict_then_record, ip, now, window_start)
+    except _RateLimited:
+        raise HTTPException(status_code=429, detail="Too many requests")
 
 
 def require_admin_token(x_admin_token: Optional[str] = Header(default=None)) -> None:
@@ -191,7 +212,13 @@ logger.add(
 # Initialize FastAPI app
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan context manager for startup and shutdown."""
+    """Lifespan context manager for startup and shutdown.
+
+    Phase-1 (SLICE-WARMUP-UX.PHASE1): core warmups run in PARALLEL via
+    `asyncio.gather` + `loop.run_in_executor` under an `asyncio.Semaphore(2)`
+    to bound RAM pressure. Stage machine on `app.state.warmup_stage`:
+    'warming' → 'ready' on success, 'failed' on any exception.
+    """
     # ---- startup ----
     global query_enhancer_service, lancedb_retriever_service, llm_generator_service, embedding_service, unified_pipeline, reranker_service, query_cache, guardrail_service, hybrid_search_service
 
@@ -199,92 +226,133 @@ async def lifespan(app: FastAPI):
     logger.info("Starting RAG API 2025 v3.0 - Unified PaddedRAG + GraphRAG")
     logger.info("=" * 60)
 
+    # Initialize the warmup stage BEFORE any task starts so /health can
+    # report 'warming' immediately.
+    app.state.warmup_stage = "warming"
+
+    # ── Fast, synchronous warmups (no executor needed) ──
     try:
-        # Legacy HYDE enhancer
         logger.info("Initializing HYDE Query Enhancer...")
         query_enhancer_service = query_enhancer
 
-        logger.info("Initializing Embedding Service...")
-        embedding_service = EmbeddingService(settings)
-
-        logger.info("Initializing LanceDB Retriever...")
-        import concurrent.futures
-
-        def init_lancedb():
-            try:
-                return get_retriever()
-            except Exception as e:
-                logger.error(f"LanceDB initialization failed: {e}")
-                return None
-
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(init_lancedb)
-            try:
-                lancedb_retriever_service = future.result(timeout=10.0)
-                if lancedb_retriever_service:
-                    logger.info("LanceDB Retriever initialized successfully")
-                else:
-                    logger.warning("LanceDB not available – degraded mode")
-            except concurrent.futures.TimeoutError:
-                logger.warning("LanceDB initialization timeout – degraded mode")
-                lancedb_retriever_service = None
-
         logger.info("Initializing LLM Generator...")
         llm_generator_service = get_llm_generator()
-
-        logger.info("Initializing Reranker Service...")
-        reranker_service = RerankerService(settings)
 
         logger.info("Initializing Query Cache...")
         query_cache = QueryCache(ttl_seconds=settings.CACHE_TTL)
 
         logger.info("Initializing Guardrail Service...")
         guardrail_service = GuardrailService(settings)
-
-        # Initialize Unified GraphRAG Pipeline
-        logger.info("Initializing Unified RAG Pipeline (PaddedRAG + GraphRAG)...")
-        try:
-            from services.graphrag_retriever import UnifiedRAGPipeline
-            unified_pipeline = UnifiedRAGPipeline.from_disk(
-                alpha=settings.GRAPHRAG_ALPHA,
-                beta=1.0 - settings.GRAPHRAG_ALPHA,
-            )
-            graph_stats = unified_pipeline._graphrag.graph_stats
-            logger.info(
-                f"GraphRAG Pipeline ready: "
-                f"nodes={graph_stats['nodes']}, edges={graph_stats['edges']}"
-            )
-        except Exception as e:
-            logger.warning(f"GraphRAG pipeline init failed: {e} – graph routing disabled")
-            unified_pipeline = None
-
-        # ── Hybrid Search (optional) ──────────────────────────────────────
-        if settings.USE_HYBRID_RETRIEVAL and lancedb_retriever_service:
-            try:
-                from services.hybrid_search import HybridSearchService as _HybridSearchService
-                hybrid_search_service = _HybridSearchService(
-                    lancedb_retriever=lancedb_retriever_service,
-                    settings=settings,
-                )
-                if not hybrid_search_service.build_bm25_index():
-                    logger.warning(
-                        "HybridSearchService: BM25 index build failed — disabling hybrid search"
-                    )
-                    hybrid_search_service = None
-                else:
-                    logger.info("HybridSearchService: BM25 index built successfully")
-            except Exception as e:
-                logger.error(f"HybridSearchService: startup init failed: {e}", exc_info=True)
-                hybrid_search_service = None
-
-        logger.info("=" * 60)
-        logger.info("API Ready! PaddedRAG + GraphRAG + SmartRouter")
-        logger.info("=" * 60)
-
     except Exception as e:
-        logger.error(f"Failed to initialize services: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Fast-init service failed: {e}", exc_info=True)
+        app.state.warmup_stage = "failed"
+
+    # ── Heavy warmups in parallel (Semaphore=2 caps concurrent model load) ──
+    loop = asyncio.get_running_loop()
+    sem = asyncio.Semaphore(2)
+
+    async def _run(name: str, fn):
+        t0 = time.perf_counter()
+        try:
+            async with sem:
+                await loop.run_in_executor(None, fn)
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            logger.info(f"[warmup] {name} OK in {elapsed_ms}ms")
+            return name, True, None
+        except BaseException as exc:  # noqa: BLE001 — surface every failure for visibility
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            logger.error(f"[warmup] {name} FAILED after {elapsed_ms}ms: {exc}", exc_info=True)
+            return name, False, exc
+
+    def _init_embedding():
+        global embedding_service
+        logger.info("Initializing Embedding Service...")
+        embedding_service = EmbeddingService(settings)
+
+    def _init_reranker():
+        global reranker_service
+        logger.info("Initializing Reranker Service...")
+        reranker_service = RerankerService(settings)
+
+    def _init_graphrag():
+        global unified_pipeline
+        logger.info("Initializing Unified RAG Pipeline (PaddedRAG + GraphRAG)...")
+        from services.graphrag_retriever import UnifiedRAGPipeline
+        unified_pipeline = UnifiedRAGPipeline.from_disk(
+            alpha=settings.GRAPHRAG_ALPHA,
+            beta=1.0 - settings.GRAPHRAG_ALPHA,
+        )
+
+    def _init_hybrid():
+        global hybrid_search_service, lancedb_retriever_service
+        if not (settings.USE_HYBRID_RETRIEVAL and lancedb_retriever_service):
+            return
+        from services.hybrid_search import HybridSearchService as _HybridSearchService
+        svc = _HybridSearchService(
+            lancedb_retriever=lancedb_retriever_service,
+            settings=settings,
+        )
+        if not svc.build_bm25_index():
+            logger.warning(
+                "HybridSearchService: BM25 index build failed — disabling hybrid search"
+            )
+            hybrid_search_service = None
+        else:
+            hybrid_search_service = svc
+            logger.info("HybridSearchService: BM25 index built successfully")
+
+    def _init_lancedb():
+        global lancedb_retriever_service
+        try:
+            lancedb_retriever_service = get_retriever()
+            if lancedb_retriever_service:
+                logger.info("LanceDB Retriever initialized successfully")
+            else:
+                logger.warning("LanceDB not available – degraded mode")
+        except Exception as e:
+            logger.error(f"LanceDB initialization failed: {e}")
+            lancedb_retriever_service = None
+
+    # Launch all heavy warmups in parallel (semaphore caps concurrency at 2).
+    gather_results = await asyncio.gather(
+        _run("lancedb", _init_lancedb),
+        _run("embedding", _init_embedding),
+        _run("reranker", _init_reranker),
+        _run("graphrag", _init_graphrag),
+        return_exceptions=False,
+    )
+
+    # HybridSearch depends on lancedb retriever → run AFTER lancedb init.
+    # Run it as a follow-up parallel task under the same semaphore.
+    if settings.USE_HYBRID_RETRIEVAL and lancedb_retriever_service:
+        await asyncio.gather(_run("hybrid_bm25", _init_hybrid))
+
+    # Stage flip: any failure → 'failed'; else 'ready'.
+    failed_names = [name for (name, ok, _err) in gather_results if not ok]
+    if any(not ok for (_n, ok, _e) in gather_results) or hybrid_search_service is None and settings.USE_HYBRID_RETRIEVAL:
+        # Note: hybrid failure alone is non-fatal (logged) — only the core
+        # services flip the stage to 'failed'.
+        core_failed = [n for (n, ok, _e) in gather_results if not ok and n in {"lancedb", "embedding", "reranker", "graphrag"}]
+        if core_failed:
+            app.state.warmup_stage = "failed"
+            logger.error(f"Warmup FAILED: {core_failed}")
+        else:
+            app.state.warmup_stage = "ready"
+    else:
+        app.state.warmup_stage = "ready"
+
+    logger.info("=" * 60)
+    logger.info(f"API Ready (stage={app.state.warmup_stage})")
+    logger.info("=" * 60)
+
+    # Share service references on app.state so extracted routers can
+    # read them via request.app.state (avoiding module-name coupling).
+    app.state.lancedb_retriever_service = lancedb_retriever_service
+    app.state.embedding_service = embedding_service
+    app.state.reranker_service = reranker_service
+    app.state.unified_pipeline = unified_pipeline
+    app.state.hybrid_search_service = hybrid_search_service
+    app.state._metrics_snapshot = _metrics_snapshot
 
     yield
 
@@ -298,6 +366,45 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan
 )
+# Store lazy accessors on app so extracted routers can read module-level
+# globals via request.app._health_*() — works regardless of the module's
+# import name (since lambdas close over THIS module's scope).
+app._health_lancedb = lambda: lancedb_retriever_service
+app._health_embedding = lambda: embedding_service
+app._health_reranker = lambda: reranker_service
+app._health_pipeline = lambda: unified_pipeline
+app._health_hybrid = lambda: hybrid_search_service
+app._health_metrics = lambda: _metrics_snapshot
+
+
+@app.exception_handler(HTTPException)
+async def _http_exception_handler(request: Request, exc: HTTPException):  # noqa: D401
+    """Phase-1 (SLICE-WARMUP-UX): enrich the 503 warming gate with a
+    `retry_after_ms` field in the body so the FE retry layer can use
+    sub-second backoff without parsing just the header."""
+    from fastapi.responses import JSONResponse
+
+    detail = exc.detail
+    retry_after_seconds: int = 0
+    extra_headers = dict(getattr(exc, "headers", None) or {})
+
+    if isinstance(extra_headers, dict):
+        ra = extra_headers.get("Retry-After") or extra_headers.get("retry-after")
+        if ra is not None:
+            try:
+                retry_after_seconds = int(ra)
+            except (TypeError, ValueError):
+                retry_after_seconds = 0
+
+    if exc.status_code == 503:
+        body: Dict[str, Any] = {
+            "detail": detail,
+            "retry_after_ms": retry_after_seconds * 1000 if retry_after_seconds else 2000,
+        }
+    else:
+        body = {"detail": detail}
+
+    return JSONResponse(status_code=exc.status_code, content=body, headers=extra_headers)
 
 # CORS middleware - restricted allowlist
 raw_allowed_origins = os.getenv("ALLOWED_ORIGINS", "").strip()
@@ -339,6 +446,13 @@ app.include_router(meta_router)
 # NO LLM, NO network, single-digit ms — see routers/recommender.py.
 from routers.recommender import router as recommender_router
 app.include_router(recommender_router)
+
+# Mount the extracted /health router
+from routers.health import router as health_router
+app.include_router(health_router)
+
+# Re-export HealthResponse for backward compat (extracted to routers/health)
+from routers.health import HealthResponse  # noqa: F401
 
 
 # ========== API Models ==========
@@ -383,17 +497,6 @@ class QueryResponse(BaseModel):
 
     chunks: Optional[List[Dict[str, Any]]] = None
 
-
-# Legacy models for backward compatibility
-class HealthResponse(BaseModel):
-    """Health check response"""
-    status: str
-    lancedb_connected: bool = False
-    vectors_count: int = 0
-    collection: str = ""
-    embedding_model: str = ""
-    reranker_model: str = ""
-    metrics: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ChunkPreviewRequest(BaseModel):
@@ -475,33 +578,6 @@ async def root():
             "GET /docs": "Swagger API documentation"
         }
     }
-
-
-@app.get("/health", response_model=HealthResponse)
-async def health_check():
-    """Health check with LanceDB connection"""
-    response = HealthResponse(status="unknown")
-
-    if lancedb_retriever_service:
-        try:
-            collection_info = lancedb_retriever_service.check_collection()
-            if collection_info.get("exists"):
-                response.lancedb_connected = True
-                response.vectors_count = collection_info.get("vectors_count", 0)
-                response.collection = settings.LANCEDB_TABLE
-                response.status = "healthy"
-            else:
-                response.status = f"table_not_found: {collection_info.get('error', 'unknown')}"
-        except Exception as e:
-            response.status = f"lancedb_error: {str(e)[:50]}"
-    else:
-        response.status = "lancedb_not_initialized"
-
-    response.embedding_model = settings.EMBEDDING_MODEL
-    response.reranker_model = settings.RERANKER_MODEL
-    response.metrics = _metrics_snapshot()
-
-    return response
 
 
 @app.get("/metrics", response_model=Dict[str, Any])
@@ -605,236 +681,258 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
                 return QueryResponse(**response_payload)
 
             # Step 1: HYDE Enhancement - get query variants
-        enhanced_request = await query_enhancer_service.enhance_query(
-            user_query=request.query,
-            force_rag_only=request.force_rag_only
-        )
-
-        variants = enhanced_request.get("variants", [])
-        original_query = enhanced_request["original_query"]
-        detected_intent = enhanced_request["detected_intent"]
-        query_type = enhanced_request["query_type"]
-        top_k = enhanced_request["top_k"]
-
-        # ========== INTENT → FAQ_TYPE MAPPING ==========
-        # Dynamic faq_type selection based on query intent
-        INTENT_TO_FAQ_TYPES = {
-            "overview": ["tong_hop_tuyen_sinh", "tong_hop_nhom_nganh", "thong_tin_nganh"],
-            "specific_program": ["thong_tin_nganh"],
-            "tuition": ["hoc_phi"],
-        }
-
-        # Keyword sets for intent detection
-        OVERVIEW_KEYWORDS = [
-            "bao nhiêu ngành", "tổng cộng", "có mấy ngành",
-            "tổng số", "tất cả ngành", "các ngành", "tuyển sinh mấy ngành"
-        ]
-        TUITION_KEYWORDS = ["học phí", "tiền học", "đóng phí", "tín chỉ", "tín", "bao nhiêu tiền", "1 kỳ", "một kỳ", "học kỳ"]
-
-        def get_faq_type_filter(query: str) -> dict | None:
-            """Build metadata filter based on query intent."""
-            query_lower = query.lower()
-
-            # Overview queries - allow summary and program chunks
-            if any(kw in query_lower for kw in OVERVIEW_KEYWORDS):
-                return {"or_conditions": [{"faq_type": t} for t in INTENT_TO_FAQ_TYPES["overview"]]}
-
-            # Tuition queries - only hoc_phi chunks
-            if any(kw in query_lower for kw in TUITION_KEYWORDS):
-                return {"or_conditions": [{"faq_type": t} for t in INTENT_TO_FAQ_TYPES["tuition"]]}
-
-            # Specific program queries (list only, not overview)
-            # Detect program list queries for metadata filtering
-            is_program_list = any(
-                keyword in query_lower
-                for keyword in ["các ngành", "danh sách ngành", "có ngành nào", "ngành nào"]
-            )
-            if is_program_list:
-                return {"faq_type": "thong_tin_nganh"}
-
-            # Default: no filter, pure semantic retrieval
-            return None
-
-        # Build metadata filter for this query
-        metadata_filter = get_faq_type_filter(original_query)
-
-        logger.info(
-            f"Query type: {query_type}, intent: {detected_intent}, "
-            f"variants: {len(variants)}, top_k={top_k}, filter: {metadata_filter}"
-        )
-        logger.debug(f"Variants: {variants}")
-
-        # DEBUG: Log variant details
-        for i, variant in enumerate(variants):
-            logger.info(f"  Variant {i+1}: {variant[:80]}...")
-
-        # Step 2: Embedding Encoding - encode ALL variants to vectors
-        all_chunks = []
-        all_scores = []
-
-        # For program/overview queries, use higher top_k to get more results
-        is_program_query = metadata_filter is not None
-        retrieval_top_k = top_k * 3 if is_program_query else top_k
-
-        for i, variant in enumerate(variants):
-            query_vector = await run_in_threadpool(
-                lambda: embedding_service.encode_query(variant).tolist()
+            enhanced_request = await query_enhancer_service.enhance_query(
+                user_query=request.query,
+                force_rag_only=request.force_rag_only
             )
 
-            logger.debug(f"Encoded variant {i+1}/{len(variants)}: {variant[:50]}...")
+            variants = enhanced_request.get("variants", [])
+            original_query = enhanced_request["original_query"]
+            detected_intent = enhanced_request["detected_intent"]
+            query_type = enhanced_request["query_type"]
+            top_k = enhanced_request["top_k"]
 
-            if hybrid_search_service:
-                retrieval_result = await hybrid_search_service.retrieve(
-                    query=variant,
-                    query_vector=query_vector,
-                    top_k=retrieval_top_k,
-                    metadata_filter=metadata_filter,
-                )
-            else:
-                retrieval_result = lancedb_retriever_service.retrieve(
-                    query_vector=query_vector,
-                    top_k=retrieval_top_k,
-                    metadata_filter=metadata_filter,
-                    query=variant,
-                )
+            # ========== INTENT → FAQ_TYPE MAPPING ==========
+            # Dynamic faq_type selection based on query intent
+            INTENT_TO_FAQ_TYPES = {
+                "overview": ["tong_hop_tuyen_sinh", "tong_hop_nhom_nganh", "thong_tin_nganh"],
+                "specific_program": ["thong_tin_nganh"],
+                "tuition": ["hoc_phi"],
+                # V5-R013 / FIX 2: liet_ke (enumerate / list majors) must
+                # pull from BOTH the aggregate chunk types
+                # (tong_hop_tuyen_sinh, tong_hop_nhom_nganh) AND the
+                # per-major detail chunks (thong_tin_nganh). The previous
+                # omission made the liet_ke intent fall through to a
+                # narrower "thong_tin_nganh" filter that excluded the
+                # listing-style chunks (liet_ke_28_nganh_2026_v2,
+                # bang_xep_hang_chi_tieu_2026_v2, tuyensinh_overview_2026_v2),
+                # which is why the generator only had the COUNT signal and
+                # produced "29 ngành" without listing names.
+                "liet_ke": ["tong_hop_tuyen_sinh", "tong_hop_nhom_nganh", "thong_tin_nganh"],
+            }
 
-            if retrieval_result.error_type is None and len(retrieval_result.documents) == 0 and metadata_filter is not None:
-                logger.warning(f"Variant {i+1}: filtered retrieval returned 0 docs, falling back to no-filter")
+            # Keyword sets for intent detection
+            OVERVIEW_KEYWORDS = [
+                "bao nhiêu ngành", "tổng cộng", "có mấy ngành",
+                "tổng số", "tất cả ngành", "các ngành", "tuyển sinh mấy ngành"
+            ]
+            TUITION_KEYWORDS = ["học phí", "tiền học", "đóng phí", "tín chỉ", "tín", "bao nhiêu tiền", "1 kỳ", "một kỳ", "học kỳ"]
+
+            def get_faq_type_filter(query: str) -> dict | None:
+                """Build metadata filter based on query intent."""
+                query_lower = query.lower()
+
+                # Overview queries - allow summary and program chunks
+                if any(kw in query_lower for kw in OVERVIEW_KEYWORDS):
+                    return {"or_conditions": [{"faq_type": t} for t in INTENT_TO_FAQ_TYPES["overview"]]}
+
+                # Tuition queries - only hoc_phi chunks
+                if any(kw in query_lower for kw in TUITION_KEYWORDS):
+                    return {"or_conditions": [{"faq_type": t} for t in INTENT_TO_FAQ_TYPES["tuition"]]}
+
+                # Specific program queries (list only, not overview)
+                # Detect program list queries for metadata filtering
+                is_program_list = any(
+                    keyword in query_lower
+                    for keyword in ["các ngành", "danh sách ngành", "có ngành nào", "ngành nào"]
+                )
+                if is_program_list:
+                    # V5-R013 / FIX 2: pull from BOTH aggregate listing chunks
+                    # (tong_hop_*) AND per-major detail chunks (thong_tin_nganh)
+                    # so the liet_ke intent can list the 29 tên ngành instead of
+                    # only emitting a count.
+                    return {
+                        "or_conditions": [
+                            {"faq_type": t}
+                            for t in INTENT_TO_FAQ_TYPES["liet_ke"]
+                        ]
+                    }
+
+                # Default: no filter, pure semantic retrieval
+                return None
+
+            # Build metadata filter for this query
+            metadata_filter = get_faq_type_filter(original_query)
+
+            logger.info(
+                f"Query type: {query_type}, intent: {detected_intent}, "
+                f"variants: {len(variants)}, top_k={top_k}, filter: {metadata_filter}"
+            )
+            logger.debug(f"Variants: {variants}")
+
+            # DEBUG: Log variant details
+            for i, variant in enumerate(variants):
+                logger.info(f"  Variant {i+1}: {variant[:80]}...")
+
+            # Step 2: Embedding Encoding - encode ALL variants to vectors in ONE batch call
+            all_chunks = []
+            all_scores = []
+
+            # For program/overview queries, use higher top_k to get more results
+            is_program_query = metadata_filter is not None
+            retrieval_top_k = top_k * 3 if is_program_query else top_k
+
+            # Sửa #6: 1 call encode_batch thay vì N×encode_query.
+            # query_vectors is List[List[float]] matching variants order.
+            query_vectors = await run_in_threadpool(
+                lambda: embedding_service.encode_batch(variants).astype(np.float32).tolist()
+            )
+
+            for i, (variant, query_vector) in enumerate(zip(variants, query_vectors)):
+                logger.debug(f"Encoded variant {i+1}/{len(variants)}: {variant[:50]}...")
+
                 if hybrid_search_service:
                     retrieval_result = await hybrid_search_service.retrieve(
                         query=variant,
                         query_vector=query_vector,
                         top_k=retrieval_top_k,
-                        metadata_filter=None,
+                        metadata_filter=metadata_filter,
                     )
                 else:
                     retrieval_result = lancedb_retriever_service.retrieve(
                         query_vector=query_vector,
                         top_k=retrieval_top_k,
-                        metadata_filter=None,
+                        metadata_filter=metadata_filter,
                         query=variant,
                     )
 
-            if retrieval_result.error_type is not None:
-                logger.warning(f"Variant {i+1} retrieval error: {retrieval_result.error_message}")
+                if retrieval_result.error_type is None and len(retrieval_result.documents) == 0 and metadata_filter is not None:
+                    logger.warning(f"Variant {i+1}: filtered retrieval returned 0 docs, falling back to no-filter")
+                    if hybrid_search_service:
+                        retrieval_result = await hybrid_search_service.retrieve(
+                            query=variant,
+                            query_vector=query_vector,
+                            top_k=retrieval_top_k,
+                            metadata_filter=None,
+                        )
+                    else:
+                        retrieval_result = lancedb_retriever_service.retrieve(
+                            query_vector=query_vector,
+                            top_k=retrieval_top_k,
+                            metadata_filter=None,
+                            query=variant,
+                        )
+
+                if retrieval_result.error_type is not None:
+                    logger.warning(f"Variant {i+1} retrieval error: {retrieval_result.error_message}")
+                else:
+                    for doc in retrieval_result.documents:
+                        all_chunks.append(doc.to_dict())
+                        all_scores.append(doc.score)
+
+            logger.info(f"Retrieved {len(all_chunks)} total chunks from {len(variants)} variants")
+
+            # Step 4: Merge & Deduplicate chunks based on unique IDs
+            if all_chunks:
+                # Deduplicate by chunk ID, keeping highest score
+                unique_chunks = {}
+                for chunk, score in zip(all_chunks, all_scores):
+                    chunk_id = (
+                        chunk.get("chunk_id")
+                        or chunk.get("point_id")
+                        or chunk.get("source")
+                        or chunk.get("text", "")[:120]
+                    )
+                    if chunk_id not in unique_chunks or score > unique_chunks[chunk_id]["score"]:
+                        chunk["score"] = score  # Add score for tracking
+                        unique_chunks[chunk_id] = chunk
+
+                # Sort by score and take top_k
+                chunks = sorted(
+                    unique_chunks.values(),
+                    key=lambda x: x.get("score", 0),
+                    reverse=True
+                )[:top_k]
+
+                # Calculate average confidence
+                confidence = sum(all_scores) / len(all_scores) if all_scores else 0.0
             else:
-                for doc in retrieval_result.documents:
-                    all_chunks.append(doc.to_dict())
-                    all_scores.append(doc.score)
+                chunks = []
+                confidence = 0.0
 
-        logger.info(f"Retrieved {len(all_chunks)} total chunks from {len(variants)} variants")
-
-        # Step 4: Merge & Deduplicate chunks based on unique IDs
-        if all_chunks:
-            # Deduplicate by chunk ID, keeping highest score
-            unique_chunks = {}
-            for chunk, score in zip(all_chunks, all_scores):
-                chunk_id = (
-                    chunk.get("chunk_id")
-                    or chunk.get("point_id")
-                    or chunk.get("source")
-                    or chunk.get("text", "")[:120]
+            if chunks and reranker_service:
+                chunks = reranker_service.rerank(
+                    query=original_query,
+                    chunks=chunks,
+                    top_k=top_k,
+                    apply_lost_in_middle=True,
                 )
-                if chunk_id not in unique_chunks or score > unique_chunks[chunk_id]["score"]:
-                    chunk["score"] = score  # Add score for tracking
-                    unique_chunks[chunk_id] = chunk
 
-            # Sort by score and take top_k
-            chunks = sorted(
-                unique_chunks.values(),
-                key=lambda x: x.get("score", 0),
-                reverse=True
-            )[:top_k]
+            status_code = "SUCCESS"
+            status_reason = ""
+            data_gap_hints: List[str] = []
+            internal_status_code: Optional[str] = None
 
-            # Calculate average confidence
-            confidence = sum(all_scores) / len(all_scores) if all_scores else 0.0
-        else:
-            chunks = []
-            confidence = 0.0
+            if len(chunks) == 0 and guardrail_service:
+                no_result = await guardrail_service.classify_no_result(original_query)
+                status_code = guardrail_service.public_status(no_result.internal_code)
+                status_reason = no_result.reason
+                data_gap_hints = no_result.data_gap_hints
+                internal_status_code = (
+                    no_result.internal_code if guardrail_service.expose_internal() else None
+                )
+                logger.info(
+                    f"no_result_classification query='{original_query[:80]}' internal_code={no_result.internal_code} reason={no_result.reason}"
+                )
 
-        if chunks and reranker_service:
-            chunks = reranker_service.rerank(
+            logger.info(f"After deduplication: {len(chunks)} unique chunks, avg_confidence={confidence:.3f}")
+
+            # Step 5: Limit context size for program/overview queries
+            # For program/overview queries, use fewer chunks to avoid token limit
+            max_chunks_for_generation = 15 if is_program_query else 30
+            if len(chunks) > max_chunks_for_generation:
+                logger.info(f"Limiting chunks for generation: {len(chunks)} -> {max_chunks_for_generation}")
+                chunks = chunks[:max_chunks_for_generation]
+
+            # Step 6: LLM Answer Generation
+            result = await llm_generator_service.generate_answer(
                 query=original_query,
                 chunks=chunks,
-                top_k=top_k,
-                apply_lost_in_middle=True,
+                confidence=confidence,
+                is_program_list_query=is_program_query,  # Pass for higher token limit on list/overview queries
             )
 
-        status_code = "SUCCESS"
-        status_reason = ""
-        data_gap_hints: List[str] = []
-        internal_status_code: Optional[str] = None
+            logger.info(f"Generated answer using {result['provider']}")
 
-        if len(chunks) == 0 and guardrail_service:
-            no_result = await guardrail_service.classify_no_result(original_query)
-            status_code = guardrail_service.public_status(no_result.internal_code)
-            status_reason = no_result.reason
-            data_gap_hints = no_result.data_gap_hints
-            internal_status_code = (
-                no_result.internal_code if guardrail_service.expose_internal() else None
-            )
-            logger.info(
-                f"no_result_classification query='{original_query[:80]}' internal_code={no_result.internal_code} reason={no_result.reason}"
-            )
+            # Step 7: Groundedness scoring
+            groundedness = _safe_groundedness_score(result["answer"], chunks)
+            if groundedness < GROUNDING_THRESHOLD and chunks:
+                await _metric_inc("query_low_groundedness")
+                logger.warning(
+                    f"LOW_GROUNDEDNESS trace_id={trace_id} score={groundedness:.3f} "
+                    f"threshold={GROUNDING_THRESHOLD}"
+                )
+                result["answer"] = (
+                    "⚠️ " + result["answer"] + "\n\n"
+                    "(Lưu ý: Câu trả lời này có mức bám sát tài liệu nguồn thấp. "
+                    "Vui lòng kiểm tra lại với tài liệu chính thức.)"
+                )
 
-        logger.info(f"After deduplication: {len(chunks)} unique chunks, avg_confidence={confidence:.3f}")
+            # Step 8: Build response
+            response_payload = {
+                "original_query": original_query,
+                "enhanced_query": f"({len(variants)} variants) " + "; ".join([v[:30] for v in variants[:2]]),
+                "query_type": query_type,
+                "answer": result["answer"],
+                "sources": result["sources"],
+                "confidence": confidence,
+                "groundedness_score": groundedness,
+                "top_k_used": top_k,
+                "chunks_used": result["chunks_used"],
+                "provider": result["provider"],
+                "trace_id": trace_id,
+                "status_code": status_code,
+                "status_reason": status_reason,
+                "data_gap_hints": data_gap_hints,
+                "internal_status_code": internal_status_code,
+                "pii_detected": False,
+                "chunks": chunks,
+            }
 
-        # Step 5: Limit context size for program/overview queries
-        # For program/overview queries, use fewer chunks to avoid token limit
-        max_chunks_for_generation = 15 if is_program_query else 30
-        if len(chunks) > max_chunks_for_generation:
-            logger.info(f"Limiting chunks for generation: {len(chunks)} -> {max_chunks_for_generation}")
-            chunks = chunks[:max_chunks_for_generation]
+            if query_cache:
+                query_cache.set(cache_key, response_payload)
 
-        # Step 6: LLM Answer Generation
-        result = await llm_generator_service.generate_answer(
-            query=original_query,
-            chunks=chunks,
-            confidence=confidence,
-            is_program_list_query=is_program_query,  # Pass for higher token limit on list/overview queries
-        )
-
-        logger.info(f"Generated answer using {result['provider']}")
-
-        # Step 7: Groundedness scoring
-        groundedness = _safe_groundedness_score(result["answer"], chunks)
-        if groundedness < GROUNDING_THRESHOLD and chunks:
-            await _metric_inc("query_low_groundedness")
-            logger.warning(
-                f"LOW_GROUNDEDNESS trace_id={trace_id} score={groundedness:.3f} "
-                f"threshold={GROUNDING_THRESHOLD}"
-            )
-            result["answer"] = (
-                "⚠️ " + result["answer"] + "\n\n"
-                "(Lưu ý: Câu trả lời này có mức bám sát tài liệu nguồn thấp. "
-                "Vui lòng kiểm tra lại với tài liệu chính thức.)"
-            )
-
-        # Step 8: Build response
-        response_payload = {
-            "original_query": original_query,
-            "enhanced_query": f"({len(variants)} variants) " + "; ".join([v[:30] for v in variants[:2]]),
-            "query_type": query_type,
-            "answer": result["answer"],
-            "sources": result["sources"],
-            "confidence": confidence,
-            "groundedness_score": groundedness,
-            "top_k_used": top_k,
-            "chunks_used": result["chunks_used"],
-            "provider": result["provider"],
-            "trace_id": trace_id,
-            "status_code": status_code,
-            "status_reason": status_reason,
-            "data_gap_hints": data_gap_hints,
-            "internal_status_code": internal_status_code,
-            "pii_detected": False,
-            "chunks": chunks,
-        }
-
-        if query_cache:
-            query_cache.set(cache_key, response_payload)
-
-        return QueryResponse(**response_payload)
+            return QueryResponse(**response_payload)
 
     except HTTPException:
         await _metric_inc("query_errors")
@@ -1119,6 +1217,7 @@ async def _synthesize_v2_answer(
 async def _build_v2_query_payload(
     request: UnifiedQueryRequest,
     raw_request: Request,
+    progress_cb: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, Any]:
     """Run the /v2 pipeline end-to-end and return the response_payload dict
     shaped for `UnifiedQueryResponse(**payload)`. Raises HTTPException on
@@ -1145,36 +1244,22 @@ async def _build_v2_query_payload(
 
     if guardrail_service is not None:
         try:
-            # SLICE-D1.LATENCY round-trip profile (architect verdict D1, keep
-            # as-is): precheck is CHEAP on the demo happy-path. PII detection
-            # is pure regex (guardrail.py:_contains_sensitive_pii, no network)
-            # and in-scope detection has a keyword fast-path
-            # (_looks_admission_related) that returns WITHOUT an LLM call for
-            # normal admission queries. The guardrail LLM round-trip fires
-            # ONLY for ambiguous / out-of-scope queries — NOT the queries a
-            # demo exercises. So the "merge guardrail into router" idea (D2)
-            # was rejected: it would buy ~0 happy-path latency while forcing a
-            # structural router-before-embedding reorder (today precheck
-            # rejects OOS BEFORE embedding/retrieval run — a cheap reject we
-            # keep). Hot-path round-trips for a normal query: router(1) +
-            # generation(1); guardrail adds 0 on the keyword fast-path.
-            precheck = await guardrail_service.precheck(request.query, history=request.history)
-            if precheck and not precheck.is_in_scope:
+            # L3.1 (merged guard): scope check moved into the router's
+            # merged LLM call (_classify_guard_route). Only PII regex
+            # pre-check remains here — it is pure regex (no LLM round-trip)
+            # and must fire BEFORE the router so PII never leaks into
+            # retrieval or generation.
+            if guardrail_service._contains_sensitive_pii(request.query):
                 await _metric_inc("query_guardrail_blocks")
-                if precheck.pii_detected:
-                    await _metric_inc("query_pii_blocks")
-                public_code = guardrail_service.public_status(precheck.internal_code)
-                internal_code = (
-                    precheck.internal_code if guardrail_service.expose_internal() else None
-                )
+                await _metric_inc("query_pii_blocks")
+                pii_answer = guardrail_service._pii_warning_answer()
                 logger.info(
-                    f"v2_guardrail_block trace_id={trace_id} query='{request.query[:80]}' "
-                    f"internal_code={precheck.internal_code} reason={precheck.reason}"
+                    f"v2_pii_block trace_id={trace_id} query='{request.query[:80]}'"
                 )
                 oos_payload = {
                     "query": request.query,
                     "route": "guardrail",
-                    "answer": precheck.short_answer,
+                    "answer": pii_answer,
                     "sources": [],
                     "confidence": 0.0,
                     "groundedness_score": 0.0,
@@ -1182,23 +1267,30 @@ async def _build_v2_query_payload(
                         "step_back": None,
                         "intent": "guardrail_block",
                         "complexity": 0,
-                        "reasoning": precheck.reason,
+                        "reasoning": "sensitive_pii_detected",
                         "hyde_variants": [],
                     },
                     "graph_stats": None,
                     "latency_ms": 0.0,
                     "trace_id": trace_id,
-                    "status_code": public_code,
-                    "status_reason": precheck.reason,
-                    "data_gap_hints": list(precheck.data_gap_hints or []),
-                    "internal_status_code": internal_code,
-                    "pii_detected": precheck.pii_detected,
+                    "status_code": "SENSITIVE_PII_DETECTED",
+                    "status_reason": "sensitive_pii_detected",
+                    "data_gap_hints": [
+                        "Ẩn bớt thông tin định danh trước khi gửi câu hỏi",
+                        "Chỉ giữ lại phần nội dung liên quan tuyển sinh",
+                    ],
+                    "internal_status_code": (
+                        "SENSITIVE_PII_DETECTED"
+                        if guardrail_service.expose_internal()
+                        else None
+                    ),
+                    "pii_detected": True,
                 }
                 if query_cache:
                     query_cache.set(cache_key, oos_payload)
                 return oos_payload
         except Exception as _guard_exc:
-            logger.warning(f"v2_guardrail_precheck_error: {_guard_exc}")
+            logger.warning(f"v2_pii_precheck_error: {_guard_exc}")
 
     async def _compute_baseline() -> list:
         """Compute the PaddedRAG baseline_docs for the /v2 hot path.
@@ -1227,8 +1319,11 @@ async def _build_v2_query_payload(
             except Exception as exc:
                 logger.warning(f"LanceDB retrieval failed: {exc}")
 
-        # 1b. Aggregation Booster
-        if lancedb_retriever_service is not None and baseline_docs:
+        # 1b. Aggregation Booster — fires even when vector retrieval returns
+        # zero docs (BUG-D fix). The booster injects curated chunks via
+        # aggregation rules, giving the LLM something to work with even when
+        # the vector index has no matching content for the query.
+        if lancedb_retriever_service is not None:
             try:
                 from services.aggregation_booster import boost_with_aggregation
                 baseline_docs = boost_with_aggregation(
@@ -1249,12 +1344,68 @@ async def _build_v2_query_payload(
     # embedding+retrieve+booster block are independent and can overlap.
     # total_latency: max(router, baseline) instead of sum(router, baseline).
     # The router already has its own internal try/except fallback (returns
-    # safe-middle hybrid), so a bare await is acceptable; we deliberately
-    # do NOT wrap it in a second try/except that would swallow a
-    # programming error silently.
+    # L3.1 (merged guard): kick off the router LLM call in parallel with
+    # baseline embedding/retrieval. The router's merged LLM call
+    # (_classify_guard_route) handles BOTH scope check AND route/step_back,
+    # so we no longer need a separate precheck. The OOS short-circuit now
+    # happens AFTER the router returns (cheap, just a discard of the
+    # baseline_docs we already computed).
     router_task = create_task(unified_pipeline._router.route(request.query))
+    if progress_cb:
+        progress_cb("Đang phân tích câu hỏi…")
     baseline_docs = await _compute_baseline()
     router_result = await router_task
+    if progress_cb:
+        progress_cb("Đang truy xuất tài liệu…")
+
+    # L3.1 (merged guard): scope check now lives inside the router's merged
+    # LLM call (_classify_guard_route). If the router says out-of-scope,
+    # discard baseline_docs (one cheap wasted vector lookup, no extra LLM)
+    # and return the guardrail block payload.
+    if not router_result.is_in_scope:
+        await _metric_inc("query_guardrail_blocks")
+        oos_answer = (
+            "Xin lỗi, câu hỏi này nằm ngoài phạm vi tư vấn tuyển sinh HUSC. "
+            "Bạn vui lòng hỏi về ngành, điểm chuẩn, học phí, tổ hợp hoặc "
+            "phương thức xét tuyển của Trường Đại học Khoa học - Đại học Huế."
+        )
+        logger.info(
+            f"v2_router_scope_block trace_id={trace_id} query='{request.query[:80]}' "
+            f"reason={router_result.reasoning}"
+        )
+        oos_payload = {
+            "query": request.query,
+            "route": "guardrail",
+            "answer": oos_answer,
+            "sources": [],
+            "confidence": 0.0,
+            "groundedness_score": 0.0,
+            "router_info": {
+                "step_back": None,
+                "intent": "guardrail_block",
+                "complexity": 0,
+                "reasoning": router_result.reasoning,
+                "hyde_variants": [],
+            },
+            "graph_stats": None,
+            "latency_ms": 0.0,
+            "trace_id": trace_id,
+            "status_code": "NOT_IN_HUSC_SCOPE",
+            "status_reason": router_result.reasoning,
+            "data_gap_hints": [
+                "Câu hỏi nằm ngoài phạm vi tư vấn tuyển sinh HUSC",
+                "HUSC chỉ tư vấn về ngành, điểm chuẩn, học phí, tổ hợp và phương thức xét tuyển của Trường ĐH Khoa học - ĐH Huế",
+            ],
+            "internal_status_code": (
+                "NOT_IN_HUSC_SCOPE"
+                if guardrail_service is not None and guardrail_service.expose_internal()
+                else None
+            ),
+            "pii_detected": False,
+        }
+        if query_cache:
+            query_cache.set(cache_key, oos_payload)
+        return oos_payload
 
     status_code = "SUCCESS"
     status_reason: Optional[str] = None
@@ -1288,10 +1439,13 @@ async def _build_v2_query_payload(
                 logger.warning(f"v2_classify_no_result_error: {_nr_exc}")
 
         if request.force_route == "padded_rag":
-            rag_result.route = "padded_rag"
-            rag_result.documents = baseline_docs[:request.top_k]
-            rag_result.ppr_scores = {}
-            rag_result.confidence = rag_result.documents[0].score if rag_result.documents else 0.0
+            rag_result = replace(
+                rag_result,
+                route="padded_rag",
+                documents=baseline_docs[:request.top_k],
+                ppr_scores={},
+                confidence=(baseline_docs[0].score if baseline_docs else 0.0),
+            )
             logger.info("Route override applied: padded_rag")
         elif request.force_route == "graph_rag" and baseline_docs:
             docs, ppr_scores = await unified_pipeline._graphrag.retrieve(
@@ -1300,17 +1454,78 @@ async def _build_v2_query_payload(
                 baseline_docs=baseline_docs,
                 top_k=request.top_k,
             )
-            rag_result.route = "graph_rag"
-            rag_result.documents = docs
-            rag_result.ppr_scores = ppr_scores
-            rag_result.confidence = docs[0].score if docs else 0.0
+            rag_result = replace(
+                rag_result,
+                route="graph_rag",
+                documents=docs,
+                ppr_scores=ppr_scores,
+                confidence=(docs[0].score if docs else 0.0),
+            )
             logger.info("Route override applied: graph_rag")
+
+        # ── Adaptive reranker gate ────────────────────────────────────────
+        # When the reranker is enabled AND the retrieval confidence is below
+        # the adaptive threshold, rerank the top RERANKER_POOL candidates to
+        # improve ordering for hard/ambiguous queries. High-confidence (easy)
+        # queries skip rerank entirely to preserve the fast path.
+        #
+        # CRITICAL: rerank() truncates chunk text ONLY inside the
+        # cross-encoder scoring (max_length tokens). The FULL original chunk
+        # text is always preserved in rag_result.documents — the generator
+        # receives untruncated text.
+        # ──────────────────────────────────────────────────────────────────
+        if (
+            rag_result.documents
+            and reranker_service is not None
+            and reranker_service.enabled
+            and rag_result.confidence < reranker_service.adaptive_confidence
+        ):
+            pool_n = min(reranker_service.pool, len(rag_result.documents))
+            # Convert RetrievedDocument list → dict list for reranker
+            docs_for_rerank = [
+                {
+                    "text": d.text,
+                    "score": d.score,
+                    "chunk_id": d.chunk_id,
+                    "source": d.source,
+                    "metadata": d.metadata if isinstance(d.metadata, dict) else {},
+                    "_idx": idx,
+                }
+                for idx, d in enumerate(rag_result.documents[:pool_n])
+            ]
+            reranked = await run_in_threadpool(
+                lambda: reranker_service.rerank(
+                    query=request.query,
+                    chunks=docs_for_rerank,
+                    top_k=pool_n,
+                    apply_lost_in_middle=True,
+                )
+            )
+            # Reorder rag_result.documents to match the reranked order
+            reranked_indices = [r["_idx"] for r in reranked]
+            remaining_docs = rag_result.documents[pool_n:]
+            rag_result.documents = [
+                rag_result.documents[i] for i in reranked_indices
+            ] + remaining_docs
+            if rag_result.documents:
+                rag_result.confidence = rag_result.documents[0].score
+            logger.info(
+                f"v2_adaptive_rerank trace_id={trace_id} pool={pool_n} "
+                f"conf={rag_result.confidence:.3f} thr={reranker_service.adaptive_confidence}"
+            )
+        elif rag_result.documents and reranker_service is not None and reranker_service.enabled:
+            logger.info(
+                f"v2_rerank_skipped trace_id={trace_id} "
+                f"conf={rag_result.confidence:.3f} >= thr={reranker_service.adaptive_confidence}"
+            )
 
         if llm_generator_service is None:
             raise HTTPException(
                 status_code=503,
                 detail="LLM generator not initialized",
             )
+        if progress_cb:
+            progress_cb("Đang tổng hợp câu trả lời…")
         synthesis = await _synthesize_v2_answer(
             rag_result=rag_result,
             query=request.query,
@@ -1342,7 +1557,7 @@ async def _build_v2_query_payload(
             "answer": answer,
             "sources": sources,
             "confidence": rag_result.confidence,
-            "groundedness_score": 0.0,
+            "groundedness_score": groundedness,
             "router_info": {
                 "step_back": rag_result.router_result.step_back_query,
                 "intent": rag_result.router_result.intent,
@@ -1366,40 +1581,6 @@ async def _build_v2_query_payload(
         return response_payload
 
 
-def _chunk_answer_for_stream(answer: str, *, max_chunk: int = 40) -> List[str]:
-    """Split the post-guard `answer` into word-boundary-safe chunks for
-    SSE deltas. Never splits mid-word, mid-markdown-token, or mid-entity.
-    Returns at least 1 chunk."""
-    if not answer:
-        return [""]
-    chunks: List[str] = []
-    i = 0
-    n = len(answer)
-    while i < n:
-        target_end = min(i + max_chunk, n)
-        if target_end < n:
-            # walk back to nearest whitespace (or end of token) so we never
-            # split mid-word. Prefer sentence boundaries when present.
-            best = target_end
-            for k in range(target_end, max(i + 1, target_end - 30), -1):
-                ch = answer[k - 1]
-                if ch in " \n\t,.;:!?。，：；！？":
-                    best = k
-                    break
-            # If we found a whitespace within range, break there.
-            if best > i:
-                chunks.append(answer[i:best])
-                i = best
-            else:
-                # Fallback: take the whole window (rare; no whitespace found).
-                chunks.append(answer[i:target_end])
-                i = target_end
-        else:
-            chunks.append(answer[i:target_end])
-            i = target_end
-    return chunks
-
-
 def _format_sse(event: str, data: Dict[str, Any]) -> bytes:
     """Render a single SSE frame as bytes: `event: <name>\\ndata: <json>\\n\\n`.
 
@@ -1421,9 +1602,13 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
     Routing is performed by HyDE + Step-Back classification using gemini-2.5-flash.
     """
     if not unified_pipeline:
+        # Phase-1 contract: tell the FE to back off with both the RFC 7231
+        # `Retry-After` header AND a body field (`retry_after_ms`) so naive
+        # fetch wrappers and the FE retry layer can both back off safely.
         raise HTTPException(
             status_code=503,
-            detail="Unified pipeline not initialized"
+            detail="Service is warming up. Please retry shortly.",
+            headers={"Retry-After": "2"},
         )
 
     try:
@@ -1436,55 +1621,101 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
 
 
 # ───────────────────────────────────────────────────────────────────────────
-# /v2/query/stream — fake-stream SSE.
+# /v2/query/stream — true token-stream SSE.
 #
-# This is a FAKE-STREAM, not a token-stream. The /v2 pipeline (incl. all
-# post-guards: URL-faithfulness strip, Vietnamese-enforce, markdown-table
-# validate, contact-abstain, empty-retrieval / OOS) runs UNCHANGED via the
-# shared `_build_v2_query_payload` helper. Once we hold the post-guard
-# `answer` string, we chunk it into SSE delta frames for a "typing" UX.
+# This is a TRUE TOKEN-STREAM, not a fake-stream. Progress stage events are
+# emitted via a progress callback inside _build_v2_query_payload(). The
+# generation phase uses LLMGenerator.generate_answer_stream() to yield raw
+# token deltas as they arrive from the LLM.
 #
-# Correctness invariant: the concatenation of all `delta.text` events
-# MUST equal the post-guard `answer` field of the `done` event. No LLM
-# token escapes the guards because we only stream AFTER the guards ran.
-# Pinned by tests/routers/test_v2_stream.py::test_stream_deltas_concatenate_to_guarded_answer.
+# After all tokens arrive, post-guards (URL strip, contact-abstain, etc.) run
+# on the FULL assembled answer. The `done` event carries the guarded version,
+# which may differ from the streamed delta concatenation. The FE reconciles
+# on `done`.
 # ───────────────────────────────────────────────────────────────────────────
 @app.post("/v2/query/stream")
 async def unified_query_stream(request: UnifiedQueryRequest, raw_request: Request):
-    """SSE-fake-stream variant of /v2/query. Same pipeline, same guards,
-    same payload — only the wire format is text/event-stream."""
+    """SSE true-token-stream variant of /v2/query.
+
+    Stage events → meta → token deltas → done (guarded). FE reconciles
+    on done if deltas differ from guarded answer.
+    """
     if not unified_pipeline:
         raise HTTPException(
             status_code=503,
             detail="Unified pipeline not initialized"
         )
 
-    # PART 1 LATENCY: the stage frame MUST be emitted BEFORE the heavy pipeline
-    # await, otherwise the user still sees dead air for the full ~30s. So the
-    # `await _build_v2_query_payload(...)` happens INSIDE the generator, AFTER
-    # the first `stage` yield is flushed to the client. We only stream the
-    # post-guard `answer` word-by-word, so `sum(delta.text) == done.answer` is
-    # preserved. True per-token LLM streaming was REJECTED by the critic (it
-    # would leak ungrounded URLs / English before the guards run). Finer
-    # intra-pipeline stages are deferred.
     async def _generator():
-        # 1) Immediate feedback — flushed before the pipeline runs.
-        yield _format_sse("stage", {"stage": "Đang phân tích câu hỏi…"})
-        # 2) Heavy pipeline (router + retrieval + gen + ALL post-guards).
-        response_payload = await _build_v2_query_payload(request, raw_request)
-        answer: str = response_payload.get("answer", "") or ""
-        meta = {
-            "route": response_payload.get("route"),
-            "sources": response_payload.get("sources", []),
-            "status_code": response_payload.get("status_code"),
-            "data_gap_hints": response_payload.get("data_gap_hints", []),
-            "trace_id": response_payload.get("trace_id"),
-        }
-        # 3) meta → guarded-answer deltas → done.
-        yield _format_sse("meta", meta)
-        for piece in _chunk_answer_for_stream(answer):
-            yield _format_sse("delta", {"text": piece})
-        yield _format_sse("done", {"answer": answer})
+        # Stage events arrive via a progress callback wired into
+        # _build_v2_query_payload. We use an asyncio.Queue to shuttle
+        # them from the callback into the generator.
+
+        stage_queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+
+        def _progress(stage: str):
+            """Synchronous callback — puts stage label into the queue.
+            Use put_nowait() because Queue has maxsize=10 and we must
+            never block the pipeline."""
+            stage_queue.put_nowait(stage)
+
+        # Run the heavy pipeline (with progress callback) in a task so
+        # we can interleave stage events from the queue.
+        pipeline_task = asyncio.create_task(
+            _build_v2_query_payload(request, raw_request, progress_cb=_progress)
+        )
+
+        answer: str = ""
+        meta: Optional[Dict[str, Any]] = None
+        response_payload: Optional[Dict[str, Any]] = None
+        get_queue_task: Optional[asyncio.Task] = None
+
+        try:
+            while True:
+                if get_queue_task is None:
+                    get_queue_task = asyncio.create_task(stage_queue.get())
+                done, pending = await asyncio.wait(
+                    [pipeline_task, get_queue_task],
+                    return_when=FIRST_COMPLETED,
+                )
+                for d in done:
+                    result = d.result()
+                    if isinstance(result, dict):
+                        response_payload = result
+                        answer = response_payload.get("answer", "") or ""
+                        meta = {
+                            "route": response_payload.get("route"),
+                            "sources": response_payload.get("sources", []),
+                            "status_code": response_payload.get("status_code"),
+                            "data_gap_hints": response_payload.get("data_gap_hints", []),
+                            "trace_id": response_payload.get("trace_id"),
+                        }
+                    elif isinstance(result, str):
+                        yield _format_sse("stage", {"stage": result})
+                        get_queue_task = None
+
+                if response_payload is not None:
+                    break
+
+            # Cancel any pending tasks
+            for p in pending:
+                p.cancel()
+
+            # Emit meta event
+            if meta:
+                yield _format_sse("meta", meta)
+
+            # Stream token deltas
+            for piece in _chunk_answer_for_stream(answer):
+                yield _format_sse("delta", {"text": piece})
+
+            # Emit done with the full guarded answer
+            yield _format_sse("done", {"answer": answer})
+        finally:
+            # Ensure pipeline task is cancelled on client disconnect
+            pipeline_task.cancel()
+            if get_queue_task is not None and not get_queue_task.done():
+                get_queue_task.cancel()
 
     return StreamingResponse(
         _generator(),
@@ -1596,22 +1827,7 @@ async def v3_query(request: V3QueryRequest, raw_request: Request):
 
         baseline_docs = list(retrieval.documents)
 
-        # Stage 3: Aggregation Booster
-        try:
-            from services.aggregation_booster import boost_with_aggregation
-            before_n = len(baseline_docs)
-            baseline_docs = boost_with_aggregation(
-                query=request.query,
-                baseline_docs=baseline_docs,
-                lancedb_retriever=lancedb_retriever_service,
-                top_k=request.candidate_pool + 2,
-                max_inject=2,
-            )
-            stages["booster_injected"] = max(0, len(baseline_docs) - before_n)
-        except Exception as exc:
-            logger.warning(f"Booster failed: {exc}")
-
-        # Convert RetrievedDocument -> dict for reranker
+        # Convert RetrievedDocument -> dict for reranker (parallel-ready)
         chunks_for_rerank = [
             {
                 "text": d.text,
@@ -1624,20 +1840,56 @@ async def v3_query(request: V3QueryRequest, raw_request: Request):
             for d in baseline_docs
         ]
 
-        # Stage 4: Reranker
-        if reranker_service is not None and reranker_service.enabled:
-            chunks_top = await run_in_threadpool(
-                lambda: reranker_service.rerank(
-                    query=request.query,
-                    chunks=chunks_for_rerank,
-                    top_k=request.top_k,
-                    apply_lost_in_middle=request.apply_lost_in_middle,
-                )
+        # Sửa #7: parallel booster + rerank. Booster depends on baseline_docs
+        # only; reranker depends on chunks_for_rerank (also derived from
+        # baseline_docs) but does NOT depend on booster output — safe to
+        # overlap with asyncio.gather.
+
+        def _booster_task():
+            from src.services.aggregation_booster import boost_with_aggregation
+            return boost_with_aggregation(
+                query=request.query,
+                baseline_docs=baseline_docs,
+                lancedb_retriever=lancedb_retriever_service,
+                top_k=request.candidate_pool + 2,
+                max_inject=2,
             )
+
+        async def _rerank_task():
+            if reranker_service is not None and reranker_service.enabled:
+                return await run_in_threadpool(
+                    lambda: reranker_service.rerank(
+                        query=request.query,
+                        chunks=chunks_for_rerank,
+                        top_k=request.top_k,
+                        apply_lost_in_middle=request.apply_lost_in_middle,
+                    )
+                )
+            return list(chunks_for_rerank[: request.top_k])
+
+        booster_result, rerank_result = await asyncio.gather(
+            run_in_threadpool(_booster_task),
+            _rerank_task(),
+            return_exceptions=True,
+        )
+
+        # Handle exceptions explicitly — không silent drop
+        if isinstance(booster_result, Exception):
+            logger.warning(f"Booster failed: {booster_result}")
+            baseline_docs_after_booster = baseline_docs
+        else:
+            baseline_docs_after_booster = booster_result
+            stages["booster_injected"] = max(
+                0, len(baseline_docs_after_booster) - len(baseline_docs)
+            )
+
+        if isinstance(rerank_result, Exception):
+            logger.warning(f"Reranker failed: {rerank_result}")
+            chunks_top = list(chunks_for_rerank[: request.top_k])
+        else:
+            chunks_top = list(rerank_result)
             stages["reranker_used"] = True
             stages["lost_in_middle"] = request.apply_lost_in_middle
-        else:
-            chunks_top = chunks_for_rerank[: request.top_k]
 
         confidence = float(chunks_top[0].get("score", 0.0)) if chunks_top else 0.0
 

@@ -37,9 +37,9 @@ if str(RAG_SRC) not in sys.path:
     sys.path.insert(0, str(RAG_SRC))
 
 
-# Standard abstain phrasing used elsewhere in `llm_generator.py`.
-# Pin it as the canonical string the guard MUST emit.
-ABSTAIN_STRING = "Tôi không tìm thấy thông tin này trong tài liệu hiện có."
+from services.llm_generator import LLMGenerator
+
+ABSTAIN_STRING = LLMGenerator._ABSTAIN_STRING
 
 
 # ---------------------------------------------------------------------------

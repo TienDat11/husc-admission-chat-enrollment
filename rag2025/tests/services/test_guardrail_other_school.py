@@ -115,19 +115,16 @@ def _build_service_with_mock_groq_no_llm(monkeypatch=None):  # helper for prompt
 # --- 1. Other-school query must NOT take keyword fast-path; LLM is consulted ---
 
 def test_other_school_query_falls_through_to_llm_and_blocks(monkeypatch):
-    """'Điểm chuẩn ĐH Bách Khoa Hà Nội 2026?' contains both an admission keyword
-    AND a different-school marker. The fast-path guard must let it through to
-    the LLM, and the LLM is mocked to return is_in_scope=False → blocked.
-    """
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=False)
-    decision = asyncio.run(svc.precheck("Điểm chuẩn ĐH Bách Khoa Hà Nội năm 2026?"))
+    """Other-school query is blocked deterministically before any LLM call."""
+    svc, _ = _build_service_with_mock_groq(monkeypatch, is_in_scope=True)
+    svc._client.chat.completions.create = AsyncMock()
+
+    decision = asyncio.run(svc.precheck("ĐH Ngoại Thương tuyển sinh 2026 ngành nào?"))
+
     assert decision.is_in_scope is False
     assert decision.internal_code == "NOT_IN_HUSC_SCOPE"
-    # Must NOT be the keyword short-circuit reason.
-    assert decision.reason != "in_scope_keyword"
-    # Direct proof the fast-path guard fired (it would have blocked the keyword
-    # short-circuit). We assert it via the helper.
-    assert svc._mentions_other_school("Điểm chuẩn ĐH Bách Khoa Hà Nội năm 2026?") is True
+    assert decision.reason == "other_school_detected"
+    svc._client.chat.completions.create.assert_not_awaited()
 
 
 # --- 2. Pure HUSC query stays in_scope (zero regression) ---

@@ -33,21 +33,43 @@ import asyncio
 import json
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import re
 
 from loguru import logger
 
-from src.services.llm_client import UnifiedLLMClient, get_llm_client
+from src.services.llm_client import UnifiedLLMClient, get_llm_client, get_router_llm_client
 
 # Keywords that indicate enumeration/listing queries → always graph_rag
 _ENUMERATION_PATTERNS = re.compile(
     r"(bao\s+nhiêu\s+ngành|tất\s+cả\s+các\s+ngành|danh\s+sách\s+ngành|liệt\s+kê|"
-    r"các\s+ngành\s+có|ngành\s+nào\s+có|các\s+ngành\s+thuộc|bao\s+nhiêu\s+chương\s+trình|"
+    r"các\s+ngành\s+có|ngành\s+nào\s+có(?!\s+điểm)|các\s+ngành\s+thuộc|bao\s+nhiêu\s+chương\s+trình|"
     r"toàn\s+bộ\s+ngành|danh\s+sách\s+các\s+ngành|các\s+ngành\s+đào\s+tạo|"
-    r"ngành\s+nào\s+đào\s+tạo|có\s+mấy\s+ngành|có\s+bao\s+nhiêu\s+ngành)",
+    r"ngành\s+(?:nào|gì)\s+đào\s+tạo|có\s+mấy\s+ngành|có\s+bao\s+nhiêu\s+ngành|"
+    # V5-R013 / FIX 2: catch "Chi tiết các ngành năm nay tuyển sinh" /
+    # "chi tiết các ngành" / "thông tin các ngành đào tạo" — enumerate-style
+    # listing queries that the prior pattern set missed because of the
+    # leading modifier ("chi tiết", "thông tin", "tìm hiểu về").
+    r"chi\s+tiết\s+(?:các\s+)?ngành|thông\s+tin\s+(?:các\s+)?ngành|"
+    r"tìm\s+hiểu\s+về\s+(?:các\s+)?ngành|các\s+ngành.*tuyển\s+sinh|"
+    r"ngành.*đào\s+tạo|"
+    # FIX: catch semantic-equivalent enumeration queries that previously
+    # fell through to LLM classify and got non-graph routes:
+    # "tổng cộng mấy ngành", "tổng số ngành là bao nhiêu",
+    # "đào tạo những ngành nào", "tuyển sinh ngành nào",
+    # bare "mấy ngành" / "bao nhiêu ngành" without leading "có".
+    r"tổng\s+cộng\s+(?:mấy|bao\s+nhiêu)\s+ngành|"
+    r"tổng\s+số\s+ngành|"
+    r"đào\s+tạo\s+(?:những|các)\s+ngành\s+nào|"
+    r"tuyển\s+sinh\s+(?:\d+\s+)?(?:những\s+|các\s+)?ngành\s+nào|"
+    r"ngành\s+nào(?!\s+(?:dễ|thuộc|có\s+điểm))|"
+    r"(?:có\s+)?(?:những|các)\s+ngành\s+nào|"
+    r"(?:mấy|bao\s+nhiêu)\s+ngành|"
+    r"ngành\s+nào.*(?:tổ\s+hợp|khối)|"
+    r"(?:tổ\s+hợp|khối)\s+[A-Z]\d{2}|"
+    r"(?:có|xét)\s+(?:tổ\s+hợp|khối)\s+[A-Z]\d{2})",
     re.IGNORECASE,
 )
 
@@ -74,7 +96,15 @@ _COMPARISON_PATTERNS = re.compile(
 # hallucination previously emitted by HYDE_META_ANSWER_INTRO.
 _MAJOR_QUESTION_PATTERNS = re.compile(
     r"(trường\s+có\s+ngành\s+gì|trường\s+có\s+những\s+ngành|"
-    r"tìm\s+hiểu\s+(?:về\s+)?các\s+ngành|ngành\s+gì|có\s+những\s+ngành)",
+    r"tìm\s+hiểu\s+(?:về\s+)?các\s+ngành|ngành\s+gì|có\s+những\s+ngành|"
+    # V5-R013 / FIX 2: cover enumerate-style lead-ins that the prior
+    # set missed: "chi tiết các ngành", "thông tin các ngành đào tạo",
+    # "tìm hiểu về các ngành". These are contact/intro questions if
+    # there is no specific entity — but the prior check used
+    # ``is_contact and not is_major_question`` to gate, so we add the
+    # major-question trigger too.
+    r"chi\s+tiết\s+các\s+ngành|các\s+ngành.*tuyển\s+sinh|"
+    r"ngành.*đào\s+tạo|thông\s+tin\s+các\s+ngành)",
     re.IGNORECASE,
 )
 
@@ -91,10 +121,29 @@ _HYDE_CONTACT_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# Patterns signaling câu hỏi về TRƯỜNG KHÁC (other university) — deterministic block
+# before LLM classify. Mirrors the OTHER_SCHOOL_MARKERS list in guardrail.py.
+# Multiword markers only; do NOT match bare "??i h?c" that would block HUSC.
+# HUSC aliases present simultaneously → skip (comparison stays in scope).
+_OTHER_SCHOOL_PATTERNS = re.compile(
+    r"("
+    r"b[áa]ch\s+khoa|"           # Bách Khoa / Bach Khoa
+    r"\bfpt\b|"                   # FPT
+    r"y\s+h[àa]\s+n[ộo]i|"        # Y Hà Nội / Y Ha Noi
+    r"ngo[ạa]i\s+th[ưuu]ơng|"    # Ngoại thương / Ngoai thuong
+    r"kinh\s+t[ếe]\s+qu[ốo]c\s+d[aâ]n|"  # Kinh tế Quốc dân
+    r"t[ôo]n\s+đ[ứu]c\s+th[ăa]ng|"       # Tôn Đức Thắng
+    r"\brmit\b|"                  # RMIT
+    r"\buel\b|"                   # UEL
+    r"\bueh\b"                    # UEH
+    r")",
+    re.IGNORECASE,
+)
+
 # Patterns chỉ rõ câu hỏi QUÁ MƠ HỒ (≤2 token có nghĩa, placeholder, không entity) → reject
 _VAGUE_PLACEHOLDER_PATTERNS = re.compile(
     r"(\.{3,}|…|_{3,}|"
-    r"^(?:em|e|cho\s+e|cho\s+em|hỏi|cho\s+hỏi|ad)\s*[?.!]*\s*$|"
+    r"^(?:em|e|cho\s+e|cho\s+em|hỏi|cho\s+hỏi|ad|em\s+hỏi|cho\s+em\s+hỏi|cho\s+hỏi\s+em)\s*[?.!]*\s*$|"
     r"^(?:gì|cái\s+gì|sao|thế\s+nào|như\s+thế\s+nào)\s*[?]?\s*$|"
     r"^(?:hi|hello|chào|alo|test)\s*[?.!]*\s*$)",
     re.IGNORECASE,
@@ -224,6 +273,7 @@ class RouterResult:
         auto_answer: Static answer trả ngay (HyDE auto-answer / vague reject)
             khi pipeline có thể bỏ qua retrieval/generation. None = chạy full pipeline.
         skip_retrieval: True nếu auto_answer được set → main pipeline trả luôn.
+        is_in_scope: True nếu câu hỏi trong phạm vi tuyển sinh HUSC.
     """
     original_query: str
     step_back_query: str
@@ -235,6 +285,10 @@ class RouterResult:
     reasoning: str
     auto_answer: Optional[str] = None
     skip_retrieval: bool = False
+    is_in_scope: bool = True
+    sub_queries: Optional[List[str]] = None
+    guardrail_signals: Optional[Dict[str, Any]] = None
+    rewritten_query: Optional[str] = None
 
     @property
     def all_queries_for_embedding(self) -> List[str]:
@@ -297,7 +351,29 @@ Ví dụ:
 - Cụ thể: "Để học ngành Kỹ thuật phần mềm cần tổ hợp A00 năm <NĂM>?"
 - Tổng quát: "Các tổ hợp A00 xét tuyển vào ngành Kỹ thuật phần mềm năm <NĂM> tại các trường đại học Việt Nam thường bao gồm những gì?"
 
-CHỈ trả về câu hỏi tổng quát, không giải thích, không markdown."""
+CHỈ trả về câu hỏi tổng quát, không giải thích, không markdown.
+
+**PHÂN TÍCH ĐA ĐIỀU KIỆN**:
+Nếu câu hỏi chứa ≥2 điều kiện độc lập (ví dụ "ngành A khối B và ngành C khối D", "học phí ngành X năm <NĂM> và ngành Y năm <NĂM>"), tách thành list `sub_queries` — mỗi phần tử là một sub-query nguyên tử để retrieval song song. Nếu câu hỏi chỉ có 1 điều kiện, `sub_queries` rỗng.
+
+**GUARDRAIL SIGNALS**:
+Emit object `guardrail_signals`:
+- `vague` (bool): true nếu câu hỏi quá ngắn (<4 từ), generic ("hỏi", "gì", "..."), thiếu thực thể ràng buộc
+- `abusive` (bool): true nếu có ngôn ngữ xúc phạm, chửi bới, đe dọa
+- `off_topic` (bool): true nếu không liên quan đến giáo dục/tuyển sinh ĐẠI HỌC
+- `abbreviation_detected` (list[str]): các từ viết tắt phát hiện được
+- `rewritten_query` (str): phiên bản đã giải nghĩa viết tắt + viết lại rõ ràng hơn
+
+**GIẢI NGHĨA VIẾT TẮT**:
+Mở rộng các từ viết tắt phổ biến: hp→học phí, sv→sinh viên, nganh→ngành, dh→đại học, ts→tuyển sinh, ctdt→chương trình đào tạo, tinhchi→tín chỉ, totnghiep→tốt nghiệp, dcm/dct→điểm chuẩn, nganhhoc→ngành học, husc→HUSC (Trường Đại học Khoa học - Đại học Huế).
+
+**REWRITE VAGUE QUERY**:
+Nếu `vague=true`, đề xuất `rewritten_query` rõ ràng hơn (giữ intent gốc, thêm context HUSC).
+
+**OUTPUT FORMAT** (BẮT BUỘC — JSON thuần, không markdown):
+{"step_back": "...", "sub_queries": [], "guardrail_signals": {"vague": false, "abusive": false, "off_topic": false, "abbreviation_detected": [], "rewritten_query": "..."}}
+
+CHỈ trả về JSON object, không giải thích, không markdown code fence."""
 
 
 # Pattern for short single-fact lookups (≤5 word "tokens" with a major signal).
@@ -428,6 +504,123 @@ Ví dụ:
 CHỈ trả về JSON hợp lệ, không có text bên ngoài. KHÔNG bịa thêm field ngoài schema."""
 
 
+_MERGED_CLASSIFY_GUARD_SYSTEM = """Bạn là hệ thống phân loại câu hỏi tuyển sinh đại học Việt Nam (HUSC - Đại học Khoa học Huế).
+
+Phân tích câu hỏi và trả về JSON DUY NHẤT với cấu trúc:
+{
+  "is_in_scope": true | false,
+  "route": "padded" | "hybrid" | "graph",
+  "complexity": 1-5,
+  "intent": "diem_chuan" | "hoc_phi" | "nganh_hoc" | "to_hop" | "chinh_sach" | "thu_tuc" | "so_sanh" | "da_hop" | "liet_ke" | "general",
+  "reasoning": "lý do ngắn gọn (≤20 từ)",
+  "step_back": "câu hỏi đã được trừu tượng hóa về nguyên lý/khái niệm nền tảng (tiếng Việt). Nếu câu hỏi đã là single-fact lookup cụ thể (đã có NGÀNH + NĂM ràng buộc), echo nguyên câu hỏi."
+}
+
+QUY TẮC is_in_scope:
+- false CHỈ khi câu hỏi RÕ RÀNG về trường khác (Bách Khoa, FPT, Y Hà Nội, Ngoại thương, Kinh tế Quốc dân…), ngành HUSC CHƯA BAO GIỜ đào tạo (Y khoa, Dược, Luật, Kinh tế, QTKD…), hoặc hoàn toàn ngoài phạm vi (thời tiết, y tế, giải trí).
+- Câu hỏi tuyển sinh chung (không có ngành cụ thể) → in_scope = true.
+- SO SÁNH trường khác với HUSC → in_scope = true (HUSC là chủ thể so sánh).
+- HUSC có tên: Trường Đại học Khoa học — Đại học Huế (cũng gọi 'Đại học Khoa học Huế', 'Khoa học Huế', 'Trường Khoa học').
+
+QUY TẮC ROUTE (theo thứ tự ưu tiên):
+1) SO SÁNH / ĐA-THỰC-THỂ / QUAN HỆ / LIỆT KÊ nhiều ngành → route = "graph", complexity = 4-5
+2) TRA CỨU 1 THỰC THỂ + 1 THUỘC TÍNH (1-hop đơn giản) → route = "padded", complexity = 1
+3) MỌI TRƯỜNG HỢP KHÁC → route = "hybrid", complexity = 2-3
+
+COMPLEXITY:
+1 = tra cứu 1 thông tin         4 = liên kết 3+ thực thể
+2 = tra cứu 2 thông tin         5 = so sánh / phân tích đa chiều / liệt kê nhiều thực thể
+3 = liên kết 2 thực thể
+
+QUY TẮC STEP_BACK (BẮT BUỘC — bảo toàn ràng buộc):
+- PHẢI giữ nguyên các thực thể ràng buộc: MÃ NGÀNH (7 chữ số bắt đầu bằng 7), NĂM (20xx), TỔ HỢP (A00, B00, C01…), ĐỐI TƯỢNG.
+- CHỈ trừu tượng hóa Ý ĐỊNH (intent), KHÔNG trừu tượng hóa ràng buộc.
+- Nếu câu hỏi đã là single-fact lookup (1 NGÀNH + 1 NĂM) → echo nguyên câu hỏi, KHÔNG trừu tượng.
+
+VÍ DỤ FEW-SHOT:
+- "Điểm chuẩn ngành CNTT HUSC năm 2026?" → {"is_in_scope":true,"route":"padded","complexity":1,"intent":"diem_chuan","reasoning":"1 ngành, 1 thuộc tính","step_back":"Điểm chuẩn ngành CNTT HUSC năm 2026?"}
+- "Trường FPT có ngành gì?" → {"is_in_scope":false,"route":"hybrid","complexity":1,"intent":"nganh_hoc","reasoning":"trường FPT — ngoài HUSC","step_back":"Trường FPT có ngành gì?"}
+- "Học phí ngành Dược HUSC?" → {"is_in_scope":false,"route":"hybrid","complexity":1,"intent":"hoc_phi","reasoning":"Dược — ngành HUSC không đào tạo","step_back":"Học phí ngành Dược HUSC?"}
+- "HUSC so với Bách Khoa ngành CNTT?" → {"is_in_scope":true,"route":"graph","complexity":4,"intent":"so_sanh","reasoning":"so sánh đa thực thể, HUSC là chủ thể","step_back":"So sánh ngành CNTT giữa HUSC và Bách Khoa về tiêu chí đào tạo và cơ hội nghề nghiệp"}
+- "Cách xét học bạ và thời gian xét tuyển?" → {"is_in_scope":true,"route":"hybrid","complexity":2,"intent":"chinh_sach","reasoning":"2 thuộc tính policy","step_back":"Quy trình và thời gian xét tuyển bằng học bạ tại đại học Việt Nam"}
+
+CHỈ trả về JSON hợp lệ, không có text bên ngoài. KHÔNG bịa thêm field ngoài schema."""
+
+
+def _parse_step_back_response(raw: str) -> Tuple[str, List[str], Dict[str, Any]]:
+    """Parse the step-back LLM response (JSON or plain text).
+
+    Returns (step_back_str, sub_queries, guardrail_signals).
+    On parse failure or missing keys, falls back to plain-text mode.
+    """
+    default_signals: Dict[str, Any] = {
+        "vague": False,
+        "abusive": False,
+        "off_topic": False,
+        "abbreviation_detected": [],
+        "rewritten_query": "",
+    }
+    # Strip markdown code fences if present
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        # Remove first and last lines (fences)
+        lines = cleaned.split("\n")
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
+
+    try:
+        data = json.loads(cleaned)
+    except (json.JSONDecodeError, ValueError):
+        # Not JSON — plain text fallback
+        return raw.strip(), [], default_signals
+
+    if not isinstance(data, dict):
+        return raw.strip(), [], default_signals
+
+    step_back = data.get("step_back", "")
+    if not step_back:
+        step_back = raw.strip()
+
+    sub_queries = data.get("sub_queries", [])
+    if not isinstance(sub_queries, list):
+        sub_queries = []
+
+    gs = data.get("guardrail_signals", {})
+    if not isinstance(gs, dict):
+        gs = {}
+
+    guardrail_signals = {
+        "vague": bool(gs.get("vague", False)),
+        "abusive": bool(gs.get("abusive", False)),
+        "off_topic": bool(gs.get("off_topic", False)),
+        "abbreviation_detected": gs.get("abbreviation_detected", []) if isinstance(gs.get("abbreviation_detected"), list) else [],
+        "rewritten_query": str(gs.get("rewritten_query", "")),
+    }
+
+    return step_back, sub_queries, guardrail_signals
+
+
+_REDIRECT_ANSWER = (
+    "Mình chỉ hỗ trợ tư vấn tuyển sinh HUSC. "
+    "Bạn vui lòng hỏi về thông tin tuyển sinh của "
+    "Trường Đại học Khoa học - Đại học Huế nhé!"
+)
+
+
+_HUSC_LIKE_RE = re.compile(
+    r"(husc|khoa\s+học\s+h[ưu]ế|đhkh|đại\s+học\s+khoa\s+học)",
+    re.IGNORECASE,
+)
+
+
+def _mentions_husc_like(query: str) -> bool:
+    """Fast heuristic: does the query reference HUSC or its aliases?"""
+    return bool(_HUSC_LIKE_RE.search(query))
+
+
 class SmartQueryRouter:
     """Routes queries to PaddedRAG or GraphRAG using HyDE + Step-Back.
 
@@ -448,7 +641,7 @@ class SmartQueryRouter:
         llm: Optional[UnifiedLLMClient] = None,
         simple_complexity_threshold: int = 2,
     ) -> None:
-        self._llm = llm or get_llm_client()
+        self._llm = llm or get_router_llm_client()
         self._threshold = simple_complexity_threshold
 
     async def _classify_combined(self, query: str) -> Dict:
@@ -466,11 +659,14 @@ class SmartQueryRouter:
         """
         user_msg = f"Câu hỏi gốc: {query}"
         try:
-            data = await self._llm.chat_json(
-                user_message=user_msg,
-                system_message=_CLASSIFY_STEPBACK_SYSTEM,
-                temperature=0.1,
-                max_tokens=512,
+            data = await asyncio.wait_for(
+                self._llm.chat_json(
+                    user_message=user_msg,
+                    system_message=_CLASSIFY_STEPBACK_SYSTEM,
+                    temperature=0.1,
+                    max_tokens=512,
+                ),
+                timeout=8.0,
             )
             return data
         except Exception as exc:
@@ -483,6 +679,49 @@ class SmartQueryRouter:
                 "complexity": 2,
                 "intent": "general",
                 "reasoning": "classification failed — default hybrid (S16.2)",
+                "step_back": query,
+            }
+
+    async def _classify_guard_route(self, query: str) -> Dict:
+        """Single LLM call: scope guard + classify + step_back in one JSON.
+
+        Merged replacement for _classify_combined + external guardrail scope
+        check. The prompt emits is_in_scope alongside the existing route/
+        complexity/intent/reasoning/step_back fields so one LLM round-trip
+        replaces what was two separate calls (guardrail precheck LLM +
+        router classify LLM) for ambiguous queries.
+
+        On failure returns safe default with is_in_scope=True (fail-toward
+        in-scope — never block on LLM error).
+        """
+        user_msg = f"Câu hỏi gốc: {query}"
+        try:
+            data = await asyncio.wait_for(
+                self._llm.chat_json(
+                    user_message=user_msg,
+                    system_message=_MERGED_CLASSIFY_GUARD_SYSTEM,
+                    temperature=0.1,
+                    max_tokens=512,
+                ),
+                timeout=8.0,
+            )
+            # Ensure is_in_scope is present and boolean
+            if "is_in_scope" not in data:
+                data["is_in_scope"] = True
+            else:
+                data["is_in_scope"] = bool(data["is_in_scope"])
+            return data
+        except Exception as exc:
+            logger.warning(
+                f"Merged classify+guard failed: {exc} – defaulting to "
+                f"in-scope hybrid (fail-toward-in-scope)"
+            )
+            return {
+                "is_in_scope": True,
+                "route": "hybrid",
+                "complexity": 2,
+                "intent": "general",
+                "reasoning": "classification failed — default in-scope hybrid",
                 "step_back": query,
             }
 
@@ -500,25 +739,37 @@ class SmartQueryRouter:
         `asyncio.gather`. Behaviour is identical to the pre-L2 inline chain
         — only the scheduling changes.
         """
-        step_back = await self._step_back(query)
+        step_back, _sq, _gs = await self._step_back(query)
         hyde_doc = await self._generate_hyde_doc(query, step_back)
         return step_back, hyde_doc
 
-    async def _step_back(self, query: str) -> str:
-        """Generate a step-back (abstracted) version of the query."""
+    async def _step_back(self, query: str) -> Tuple[str, List[str], Dict[str, Any]]:
+        """Generate a step-back (abstracted) version of the query.
+
+        Returns (step_back_str, sub_queries, guardrail_signals).
+        Falls back to (query, [], default_signals) on failure.
+        """
+        default_signals: Dict[str, Any] = {
+            "vague": False,
+            "abusive": False,
+            "off_topic": False,
+            "abbreviation_detected": [],
+            "rewritten_query": "",
+        }
         try:
             resp = await self._llm.chat(
                 user_message=f"Câu hỏi cụ thể: {query}",
                 system_message=_STEP_BACK_SYSTEM,
                 temperature=0.2,
-                max_tokens=128,
+                max_tokens=256,
             )
-            step_back = resp.content.strip()
-            logger.debug(f"Step-back: {step_back[:80]}")
-            return step_back
+            raw = resp.content.strip()
+            logger.debug(f"Step-back raw: {raw[:120]}")
+            step_back, _, _ = _parse_step_back_response(raw)
+            return step_back, [], default_signals
         except Exception as exc:
             logger.warning(f"Step-back failed: {exc}")
-            return query  # fallback: use original
+            return query, [], default_signals  # fallback: use original
 
     async def _generate_hyde_doc(self, query: str, step_back: str) -> str:
         """Generate hypothetical document for HyDE embedding.
@@ -635,6 +886,37 @@ class SmartQueryRouter:
                 reasoning="Câu hỏi quá mơ hồ, không xác định được ý định cụ thể",
                 auto_answer=HYDE_REJECT_VAGUE,
                 skip_retrieval=True,
+                sub_queries=[],
+                guardrail_signals={"vague": True, "abusive": False, "off_topic": False, "abbreviation_detected": [], "rewritten_query": query},
+            )
+            cache.put(query, result)
+            return result
+
+        # ─── Pre-routing 2a: Other-school deterministic block ──────────────
+        # Câu hỏi thuần về trường khác (Bách Khoa, FPT, Y Hà Nội...) và KHÔNG
+        # đề cập HUSC → is_in_scope=False, zero LLM calls. HUSC-vs-other
+        # comparison (HUSC mentioned) stays in scope.
+        is_other_school = bool(_OTHER_SCHOOL_PATTERNS.search(normalized_query))
+        mentions_husc = _mentions_husc_like(normalized_query)
+        if is_other_school and not mentions_husc:
+            logger.info(
+                f"Other-school query detected (no HUSC mention) → redirecting. "
+                f"query={normalized_query[:60]}"
+            )
+            result = RouterResult(
+                original_query=query,
+                step_back_query=query,
+                hypothetical_doc="",
+                hyde_variants=[query],
+                route=QueryRoute.PADDED_RAG,
+                complexity=1,
+                intent="other_school",
+                reasoning="Câu hỏi về trường khác — ngoài phạm vi HUSC",
+                auto_answer=_REDIRECT_ANSWER,
+                skip_retrieval=True,
+                is_in_scope=False,
+                sub_queries=[],
+                guardrail_signals={"vague": False, "abusive": False, "off_topic": True, "abbreviation_detected": [], "rewritten_query": query},
             )
             cache.put(query, result)
             return result
@@ -671,6 +953,8 @@ class SmartQueryRouter:
                 reasoning="Câu contact/intro thuần — trả CONTACT_BLOCK year-agnostic",
                 auto_answer=CONTACT_BLOCK,
                 skip_retrieval=True,
+                sub_queries=[],
+                guardrail_signals={"vague": False, "abusive": False, "off_topic": False, "abbreviation_detected": [], "rewritten_query": query},
             )
             cache.put(query, result)
             return result
@@ -701,18 +985,40 @@ class SmartQueryRouter:
                 reasoning="Fast-path: khớp pattern liệt kê/so sánh → graph (bỏ qua LLM classify)",
                 auto_answer=None,
                 skip_retrieval=False,
+                sub_queries=[],
+                guardrail_signals={"vague": False, "abusive": False, "off_topic": False, "abbreviation_detected": [], "rewritten_query": query},
             )
             cache.put(query, result)
             return result
 
         # L3: replace the pre-L3 `asyncio.gather(chain_task, classify_task)`
         # block with a SINGLE `await self._classify_combined(query)` call.
-        # This drops HyDE entirely and folds step_back into the classify
-        # prompt — net: ONE LLM round-trip per query (was 3: step_back,
-        # hyde, classify) instead of 2 concurrent, saving ~one gateway
-        # round-trip (~7s on weak net) without re-bundling HyDE into
-        # classify (which caused the S16 over-routing regression).
-        classification = await self._classify_combined(query)
+        # L3.1 (merged guard): _classify_guard_route embeds the scope guard
+        # (is_in_scope) alongside route/step_back in one call, replacing the
+        # separate guardrail precheck LLM round-trip.
+        #
+        # REVERTED L3.2 ("enhanced step_back" pre-call): a later change
+        # inserted `await self._step_back(query)` here to derive
+        # vague/abusive/off_topic signals before classification. That
+        # re-introduced the exact second LLM round-trip (`llm.chat`) that
+        # the L3 rewrite eliminated — see test_router_concurrency.py's
+        # pinned contract: "route() makes EXACTLY ONE chat_json call, ZERO
+        # chat calls". Vague-placeholder and contact/intro detection are
+        # already handled by dedicated zero-LLM regex fast-paths
+        # (Pre-routing 1/2 above), so the extra call added no coverage —
+        # only ~5s of wasted latency per non-fast-path query. Kept
+        # `sub_queries`/`guardrail_signals` as RouterResult fields with
+        # safe defaults so downstream consumers are unaffected.
+        sub_queries: List[str] = []
+        guardrail_signals: Dict[str, Any] = {
+            "vague": False,
+            "abusive": False,
+            "off_topic": False,
+            "abbreviation_detected": [],
+            "rewritten_query": "",
+        }
+
+        classification = await self._classify_guard_route(query)
 
         # S16.2 / CMF-2: parse the 3-way classify output. The schema accepts
         # both new tokens (padded|hybrid|graph) and the legacy
@@ -802,6 +1108,9 @@ class SmartQueryRouter:
             reasoning=classification.get("reasoning", ""),
             auto_answer=None,
             skip_retrieval=False,
+            is_in_scope=classification.get("is_in_scope", True),
+            sub_queries=sub_queries,
+            guardrail_signals=guardrail_signals,
         )
 
         logger.info(

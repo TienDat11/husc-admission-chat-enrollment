@@ -1,6 +1,15 @@
-import { useState, useCallback } from 'react';
+// @spec(plan-warmup-ux-20260705-111031 §3.2)
+// useChatStream — integrates the classified QueryError from api.ts so
+// MessageBubble can render localized Vietnamese copy on transport failure.
+import { useState, useCallback, useRef } from 'react';
 import type { Message, Source } from '@/lib/chat-types';
-import { sendChatMessage, queryStream } from '@/lib/api';
+import {
+  sendChatMessage,
+  queryStream,
+  classifyFetchError,
+  type QueryError,
+  type QueryErrorKind,
+} from '@/lib/api';
 import { mapSources, decorateAnswer } from '@/lib/chat-helpers';
 
 export interface UseChatStreamResult {
@@ -38,6 +47,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
   const { messages, onMessagesChange, generateId = defaultGenerateId } = options;
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -50,6 +60,13 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
 
   const send = useCallback(
     async (content: string) => {
+      // Abort any previous in-flight request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
+
       const userMessage: Message = {
         id: generateId(),
         role: 'user',
@@ -69,7 +86,8 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
       const placeholder: Message = {
         id: assistantId,
         role: 'assistant',
-        content: '⏳ Đang phân tích câu hỏi…',
+        content: '',
+        stage: 'Dang phan tich cau hoi…',
         timestamp: new Date(),
       };
 
@@ -103,7 +121,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
               onStage: (stage) => {
                 replacePlaceholder((list) =>
                   list.map((m) =>
-                    m.id === assistantId ? { ...m, content: `⏳ ${stage}` } : m,
+                    m.id === assistantId ? { ...m, stage, content: m.content.startsWith('⏳ ') ? '' : m.content } : m,
                   ),
                 );
               },
@@ -112,9 +130,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
                 replacePlaceholder((list) =>
                   list.map((m) => {
                     if (m.id !== assistantId) return m;
-                    const wasStage = m.content.startsWith('⏳ ');
-                    const base = wasStage ? '' : m.content;
-                    return { ...m, content: base + text };
+                    return { ...m, stage: null, content: (m.content || '') + text };
                   }),
                 );
               },
@@ -123,6 +139,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
               },
             },
             historyWindow,
+            signal,
           );
 
           const decorated = decorateAnswer(
@@ -189,14 +206,20 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
         setIsTyping(false);
       } catch (err) {
         setIsTyping(false);
-        const errorMessage =
-          err instanceof Error ? err.message : 'Không thể kết nối đến máy chủ';
-        setError(errorMessage);
+        // Classify the error so MessageBubble (below) can render the
+        // correct Vietnamese copy. The `queryStream` retry loop already
+        // ran its backoff; this is the final classified QueryError.
+        const qe: QueryError = classifyFetchError(err);
+        setError(qe.message);
 
         const errorMessageBot: Message = {
           id: assistantId,
           role: 'assistant',
-          content: `⚠️ Có lỗi xảy ra: ${errorMessage}\n\nVui lòng kiểm tra kết nối hoặc thử lại sau.`,
+          // content is kept minimal — MessageBubble uses `errorKind` to
+          // render the full localized copy. The raw `err.message` (e.g.
+          // "Failed to fetch") is NEVER displayed to the user.
+          content: '',
+          errorKind: qe.kind,
           timestamp: new Date(),
         };
         replacePlaceholder((list) =>

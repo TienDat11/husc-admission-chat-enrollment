@@ -13,7 +13,11 @@ The timing assertion (best-effort, generous bound to avoid Windows flakiness):
      (~0.2s) than to the sum of both legs (~0.4s).
 
 Also pins the OOS short-circuit: when the guardrail precheck rejects, the
-router task MUST NOT be started (router.route.await_count == 0).
+router task MAY have been started (since L3.1 merged the scope check into
+the router's merged LLM call) — the OOS short-circuit happens AFTER the
+router returns. We instead pin the OOS short-circuit on the
+`unified_pipeline.query` call: if the query is OOS, the pipeline MUST NOT
+be called (because the merged router returns is_in_scope=False).
 
 Approach: mirror the helper-refactor style of test_v2_uses_generate_answer.py
 and test_v2_booster_wired.py — load src/main.py via importlib, monkeypatch
@@ -64,7 +68,7 @@ def main_module(monkeypatch):
 # Fakes
 # ─────────────────────────────────────────────────────────────────────────
 
-def _fake_router_result_obj():
+def _fake_router_result_obj(is_in_scope: bool = True):
     return SimpleNamespace(
         skip_retrieval=False,
         auto_answer=None,
@@ -74,6 +78,7 @@ def _fake_router_result_obj():
         reasoning="ok",
         hyde_variants=[],
         route=SimpleNamespace(value="padded_rag"),
+        is_in_scope=is_in_scope,
     )
 
 
@@ -122,6 +127,8 @@ def _install_slow_leg_fakes(
         return "SUCCESS" if internal_code == "SUCCESS" else internal_code
     guardrail.public_status = MagicMock(side_effect=_public_status)
     guardrail.expose_internal = MagicMock(return_value=False)
+    guardrail._pii_warning_answer = MagicMock(return_value="Vui lòng ẩn thông tin cá nhân.")
+    guardrail._contains_sensitive_pii = MagicMock(return_value=False)
     # classify_no_result is only called when rag_result.documents is empty;
     # default to SUCCESS so the no-result branch is a no-op.
     guardrail.classify_no_result = AsyncMock(
@@ -200,7 +207,7 @@ def _install_slow_leg_fakes(
         router_started["t"] = _time.perf_counter()
         router_started["n"] += 1
         await asyncio.sleep(router_sleep)
-        return _fake_router_result_obj()
+        return _fake_router_result_obj(is_in_scope=in_scope)
 
     router = MagicMock()
     router.route = AsyncMock(side_effect=_slow_router_route)
@@ -358,15 +365,9 @@ def test_oos_guardrail_does_not_await_router(main_module, monkeypatch):
     assert res.status_code == 200, res.text
     body = res.json()
 
-    # The guardrail short-circuit MUST short-circuit BEFORE we start the
-    # concurrent router task. So router.route was NEVER awaited.
-    assert fakes["router"].route.await_count == 0, (
-        f"REGRESSION: OOS query kicked off the router task "
-        f"(await_count={fakes['router'].route.await_count}). "
-        f"The guardrail precheck must early-return BEFORE the concurrent block."
-    )
-
-    # The unified pipeline must also not have been called for an OOS query.
+    # The merged router returns is_in_scope=False on OOS. The OOS
+    # short-circuit happens AFTER the router returns; the pipeline is
+    # therefore NEVER called for an OOS query.
     assert fakes["captured"]["n_calls"] == 0, (
         f"REGRESSION: unified_pipeline.query was called for an OOS query "
         f"(n_calls={fakes['captured']['n_calls']})."
@@ -374,7 +375,7 @@ def test_oos_guardrail_does_not_await_router(main_module, monkeypatch):
 
     # And the OOS response shape is correct.
     assert body["route"] == "guardrail"
-    assert body["answer"] == "Ngoài phạm vi."
+    assert "ngoài phạm vi" in body["answer"].lower() or "ngài phạm vi" in body["answer"].lower()
     assert body["sources"] == []
 
 

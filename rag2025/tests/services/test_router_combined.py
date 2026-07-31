@@ -107,9 +107,11 @@ def test_route_makes_exactly_one_chat_json_call():
     assert llm.chat_json.await_count == 1, (
         f"expected exactly 1 chat_json call, got {llm.chat_json.await_count}"
     )
-    # And llm.chat must NEVER be called.
+    # L3 single-call contract: route() calls chat_json exactly once, chat zero times.
+    # The pre-call _step_back (llm.chat) was removed — vague/abusive/off_topic
+    # detection is covered by zero-LLM regex fast-paths above route().
     assert llm.chat.await_count == 0, (
-        f"route() must not call llm.chat anymore; got {llm.chat.await_count} calls"
+        f"expected 0 llm.chat calls (L3 single-call contract), got {llm.chat.await_count}"
     )
     assert result.route == QueryRoute.PADDED_RAG
 

@@ -38,7 +38,7 @@ requests==2.31.0
 # ========== RAG 2025 UPDATES ==========
 
 # Vector Database
-lancedb==0.29.2
+lancedb==0.29.2  # PINNED: tag/restore semantics verified in M1-T3
 pyarrow==23.0.1
 
 # LLM Providers

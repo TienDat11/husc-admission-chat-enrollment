@@ -1,18 +1,36 @@
 """
 NER Service – Named Entity Recognition & Triple Extraction
 
+@spec(S22.A) NER disk cache (data/graph/ner_cache.jsonl) — keyed by
+    (chunk_id, text_hash=sha256(text)[:16]). Cache hit → no LLM call.
+    Successful (non-empty) extractions are PERSISTED incrementally so a
+    crash / quota cutoff mid-run still preserves the work and lets the
+    next run resume free. Failed/empty extractions are NOT cached.
+
+@spec(S22.B) Groq fallback ladder — when the primary ramclouds NER fails
+    (quota 403, 404, etc.) AND the configured fallback model is a
+    ramclouds-only name (gemini* / minimax* / deepseek* / mimo* / gpt-*),
+    the service drops to a Groq client configured with Groq's NATIVE
+    llama-3.1-8b-instant model (free). The old code passed force_model=
+    ramclouds_name to Groq, which 404s "model does not exist".
+
 Uses UnifiedLLMClient (gemini-2.5-flash via ramclouds.me/v1) as primary.
-Auto-fallback to Groq if primary fails.
+Auto-fallback to Groq (native llama) if primary fails.
 
 DDD: Application service that depends on domain entities, not infrastructure.
 Scalable: Adding entity types = extend EntityType enum + update prompt only.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import sys
+import threading
+import unicodedata
+from pathlib import Path
+import tempfile
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
@@ -28,6 +46,213 @@ from src.domain.entities import (
     Triple,
 )
 from src.services.llm_client import UnifiedLLMClient, get_llm_client
+
+# @spec(S22.A) — NER cache default location
+DEFAULT_NER_CACHE_PATH = Path(
+    os.getenv("NER_CACHE_PATH", "data/graph/ner_cache.jsonl")
+)
+
+# @spec(S22.B) — model names that ramclouds serves but Groq does NOT.
+# If the configured fallback model matches one of these prefixes, we must
+# not pass it to Groq (404). Drop to Groq's native llama-3.1-8b-instant.
+_GROQ_UNSUPPORTED_MODEL_PREFIXES = (
+    "gemini-",
+    "minimax-",
+    "deepseek-",
+    "mimo-",
+    "gpt-",
+    "gpt_",
+)
+
+
+def _text_hash(text: str) -> str:
+    """Stable short hash for NER cache key. NFC-normalized so NFC/NFD forms match."""
+    return hashlib.sha256(unicodedata.normalize("NFC", text).encode("utf-8")).hexdigest()[:16]
+
+
+# Module-level per-path locks so two NERCache instances sharing the same
+# file (same process) serialize put/compact operations, preventing lost
+# updates from concurrent os.replace compaction.
+_PATH_LOCKS: Dict[str, threading.Lock] = {}
+_REGISTRY_LOCK = threading.Lock()
+
+
+def _path_lock_for(path: Path) -> threading.Lock:
+    """Return shared per-absolute-path lock for cross-instance concurrency."""
+    abs_path = str(path.resolve())
+    with _REGISTRY_LOCK:
+        if abs_path not in _PATH_LOCKS:
+            _PATH_LOCKS[abs_path] = threading.Lock()
+        return _PATH_LOCKS[abs_path]
+
+
+class NERCache:
+    """@spec(S22.A) Persistent JSONL cache for NER results.
+
+    Format: one JSON object per line:
+      {"chunk_id": str, "text_hash": str, "entities": [...], "triples": [...], "model": str}
+
+    Keying: (chunk_id, text_hash). The text_hash guard ensures we
+    re-extract if a chunk's text is edited (id stays, content changes).
+
+    Concurrency: writes (append + compaction) are serialized via
+    threading.Lock — not by OS append atomicity.
+    Bounded eviction: optional max_entries evicts oldest entries
+    (dict insertion order) with atomic compaction on overflow.
+    """
+
+    def __init__(self, path: Path = DEFAULT_NER_CACHE_PATH, max_entries: Optional[int] = None) -> None:
+        assert max_entries is None or max_entries >= 1
+        self._path = Path(path)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._index: Dict[str, Dict[str, Any]] = {}
+        self._max_entries = max_entries
+        self._lock = _path_lock_for(self._path)  # shared per-path lock
+        self._load()
+
+    def _load(self) -> None:
+        if not self._path.exists():
+            return
+        try:
+            with self._path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(rec, dict):
+                        continue  # skip non-dict JSON (null, [], string)
+                    cid = rec.get("chunk_id")
+                    if cid:
+                        self._index[cid] = rec
+        except OSError as exc:
+            logger.warning(f"NERCache: failed to load {self._path}: {exc}")
+            return
+
+        # @spec(S22.A) enforce max_entries after load
+        if self._max_entries is not None and len(self._index) > self._max_entries:
+            candidate = dict(self._index)
+            excess = len(candidate) - self._max_entries
+            for key in list(candidate.keys())[:excess]:
+                del candidate[key]
+            if self._compact(candidate):
+                self._index = candidate
+            # else: compact failed — keep full loaded index & file, no eviction
+
+    def get(self, chunk_id: str, text: str) -> Optional[Dict[str, Any]]:
+        """Return cached record if (chunk_id, text_hash, pattern_version) matches, else None."""
+        rec = self._index.get(chunk_id)
+        if rec is None:
+            return None
+        expected = _text_hash(text)  # current NFC hash
+        actual = rec.get("text_hash")
+        if actual != expected:
+            # Backward compat: legacy entries stored raw/NFD hash.
+            legacy_nfd = hashlib.sha256(
+                unicodedata.normalize("NFD", text).encode("utf-8")
+            ).hexdigest()[:16]
+            if actual != legacy_nfd:
+                return None
+        # Accept legacy cache entries (pattern_version is None) as valid —
+        # otherwise ALL 1712 legacy entries get rejected and re-extracted.
+        pv = rec.get("pattern_version")
+        if pv is not None and pv != _PATTERN_VERSION:
+            return None
+        return rec
+
+    def put(self, chunk_id: str, text: str, entities: List[Dict[str, Any]],
+            triples: List[Dict[str, Any]], model: str) -> None:
+        """Persist a successful NER result. Skip if entities is empty."""
+        if not entities:
+            return
+        rec = {
+            "chunk_id": chunk_id,
+            "text_hash": _text_hash(text),
+            "pattern_version": _PATTERN_VERSION,
+            "entities": entities,
+            "triples": triples,
+            "model": model,
+        }
+        with self._lock:
+            # @spec(S22.C) Reload canonical disk state under shared path lock
+            # so two NERCache instances (same process, same path) don't
+            # independently compact and lose each other's entries via
+            # os.replace collision.
+            self._load()
+            is_new_key = chunk_id not in self._index
+
+            # At/over capacity with a NEW key: build candidate (incl. new record),
+            # compact atomically, then publish index.
+            if (
+                is_new_key
+                and self._max_entries is not None
+                and len(self._index) >= self._max_entries
+            ):
+                candidate = dict(self._index)
+                candidate[chunk_id] = rec
+                # Evict oldest (dict insertion order)
+                excess = len(candidate) - self._max_entries
+                for key in list(candidate.keys())[:excess]:
+                    del candidate[key]
+                if self._compact(candidate):
+                    self._index = candidate
+                # else: candidate not published; index unchanged; file not written.
+                # The append to disk is skipped too — caller can retry.
+                return
+
+            # Below capacity OR same-key update: append then compact if needed.
+            try:
+                with self._path.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            except OSError as exc:
+                logger.warning(f"NERCache: failed to persist {chunk_id}: {exc}")
+                return
+            self._index[chunk_id] = rec
+            if self._max_entries is not None and len(self._index) > self._max_entries:
+                candidate = dict(self._index)
+                excess = len(candidate) - self._max_entries
+                for key in list(candidate.keys())[:excess]:
+                    del candidate[key]
+                if self._compact(candidate):
+                    self._index = candidate
+                # else: index still has the entry (appended to file already).
+                # The file has one extra un-compacted line — acceptable stale
+                # data that _load can handle (oldest entry in file wins on reload).
+
+    def _compact(self, candidate: Dict[str, Dict[str, Any]]) -> bool:
+        """Atomically write candidate dict to disk via temp + os.replace.
+        Never mutates self._index or self._path.
+        Uses tempfile.NamedTemporaryFile with unique name in the canonical
+        directory so multiple cache instances (same dir) don't collide.
+        Returns True on success, False on failure.
+        """
+        tmp_path: Optional[str] = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", delete=False,
+                dir=str(self._path.parent),
+                prefix=".ner_cache_", suffix=".tmp",
+            ) as f:
+                tmp_path = f.name
+                for rec in candidate.values():
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, str(self._path))
+            tmp_path = None  # consumed — no longer needs cleanup
+            return True
+        except OSError as exc:
+            logger.warning(f"NERCache: compaction failed: {exc}")
+            return False
+        finally:
+            if tmp_path is not None:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
 
 # --- Regex Fallback Patterns ---
@@ -88,7 +313,12 @@ _MA_NGANH_PATTERN = re.compile(
     r'\b(722|729|731|732|742|744|746|748|751|758|760|761|776|785|831)\d{4}(?:VJ|TD)?\b'
 )
 
-_TO_HOP_PATTERN = re.compile(r'\b(A00|A01|A02|A15|B00|C00|C01|C02|C03|C19|D01|D07|D09|D10|D14)\b', re.IGNORECASE)
+# Pattern version for cache invalidation: when TO_HOP_PATTERN changes,
+# cached NER entries from the old pattern are no longer valid.
+from src.data.to_hop_codes import TO_HOP_PATTERN_RE as _TO_HOP_PATTERN
+_PATTERN_VERSION = hashlib.md5(str(_TO_HOP_PATTERN.pattern).encode()).hexdigest()[:8]
+# WARNING: This pattern is auto-generated from src/data/to_hop_codes.py.
+# Do NOT edit manually — update the canonical list there instead.
 
 _DIEM_PATTERN = re.compile(r'(\d{1,2}[.,]\d{1,2})\s*(điểm|đ|diem|d)\b', re.IGNORECASE)
 
@@ -222,8 +452,9 @@ class NERService:
         self,
         llm: Optional[UnifiedLLMClient] = None,
         fallback_llm: Optional[UnifiedLLMClient] = None,
+        cache_path: Optional[Path] = None,
     ) -> None:
-        # NER ladder: primary LLM → fallback LLM → regex.
+        # NER ladder: primary LLM → fallback LLM → groq llama → regex.
         # The fallback model is sourced (in priority order) from
         # RAMCLOUDS_NER_FALLBACK_MODEL, then RAMCLOUDS_GEN_FALLBACK_MODEL.
         # Reason (2026-06-10): the primary NER model can degrade on the
@@ -245,14 +476,33 @@ class NERService:
         self._llm = llm
         self._fallback_llm = fallback_llm
 
+        # @spec(S22.B) — Groq native ladder. Built UNCONDITIONALLY so we
+        # can recover when ramclouds is out of quota. We do NOT pass
+        # force_model=ramclouds_name (which makes Groq 404); we let the
+        # UnifiedLLMClient fall through to its own groq provider with the
+        # default llama-3.1-8b-instant.
+        self._groq_fallback_llm: Optional[UnifiedLLMClient] = None
+        if os.getenv("GROQ_API_KEY"):
+            self._groq_fallback_llm = UnifiedLLMClient(force_model=None)
+            logger.info("NER: groq native fallback ladder (llama-3.1-8b-instant) enabled")
+
+        # @spec(S22.A) — disk cache for NER results (idempotent, incremental).
+        self._cache = NERCache(path=cache_path or DEFAULT_NER_CACHE_PATH)
+
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(min=1, max=5))
     async def extract(self, chunk: Chunk) -> ExtractionResult:
         """Extract entities and triples from a single chunk.
 
-        Ladder: primary LLM → fallback LLM (if configured) → regex.
+        Ladder: cache → primary LLM → fallback LLM → groq llama → regex.
         The primary is retried per the decorator; a primary that raises or
-        returns ZERO entities hands off to the fallback LLM, and only if that
-        also fails/empties do we drop to the regex extractor.
+        returns ZERO entities hands off to the fallback LLM, then groq
+        llama, and only if that also fails/empties do we drop to the
+        regex extractor.
+
+        @spec(S22.A) Cache hit short-circuits ALL LLM calls.
+        @spec(S22.A) Successful (non-empty) results are persisted BEFORE return.
+        @spec(S22.B) Groq llama is invoked when primary + configured fallback
+            both fail (typically when ramclouds is out of quota).
 
         Args:
             chunk: Domain Chunk object.
@@ -260,8 +510,18 @@ class NERService:
         Returns:
             ExtractionResult with entities and triples, or error info.
         """
+        # @spec(S22.A) — cache hit short-circuits everything.
+        cached = self._cache.get(chunk.chunk_id, chunk.text)
+        if cached is not None:
+            logger.debug(f"NER cache HIT: {chunk.chunk_id} (model={cached.get('model', '?')})")
+            return self._parse(
+                {"entities": cached.get("entities", []), "triples": cached.get("triples", [])},
+                chunk.chunk_id,
+            )
+
         primary = await self._extract_with_llm(self._llm, chunk, label="primary")
         if primary is not None and primary.entities:
+            self._cache_put(chunk, primary, model_label="primary")
             return primary
 
         # Primary failed or returned empty → try the fallback LLM if present.
@@ -272,15 +532,62 @@ class NERService:
                     f"NER fallback LLM recovered {len(fb.entities)} entities "
                     f"for {chunk.chunk_id} (primary empty/failed)"
                 )
+                self._cache_put(chunk, fb, model_label="fallback")
                 return fb
 
-        # Both LLMs failed/empty → regex extractor (lower recall, never raises).
+        # @spec(S22.B) — Groq native ladder. force_model is NOT passed here,
+        # so the UnifiedLLMClient routes to Groq with its native
+        # llama-3.1-8b-instant (free). This recovers NER when ramclouds
+        # is out of quota.
+        if self._groq_fallback_llm is not None:
+            groq_fb = await self._extract_with_llm(
+                self._groq_fallback_llm, chunk, label="groq_llama"
+            )
+            if groq_fb is not None and groq_fb.entities:
+                logger.info(
+                    f"NER groq-llama recovered {len(groq_fb.entities)} entities "
+                    f"for {chunk.chunk_id} (ramclouds quota/404 exhausted)"
+                )
+                self._cache_put(chunk, groq_fb, model_label="groq_llama")
+                return groq_fb
+
+        # All LLMs failed/empty → regex extractor (lower recall, never raises).
         regex_result = self._regex_fallback(chunk)
         if regex_result.entities:
+            # Regex results ARE persisted (they're deterministic for the
+            # entities they find — ma_nganh/A00/diem/hoc_phi).
+            self._cache_put(chunk, regex_result, model_label="regex")
             return regex_result
         # Nothing recovered anywhere: return the primary result if we have one
-        # (preserves prior shape), else the empty regex result.
+        # (preserves prior shape), else the empty regex result. NOT cached.
         return primary if primary is not None else regex_result
+
+    def _cache_put(self, chunk: Chunk, result: ExtractionResult, *, model_label: str) -> None:
+        """@spec(S22.A) Persist result to disk cache (skips empty/failed)."""
+        try:
+            self._cache.put(
+                chunk.chunk_id,
+                chunk.text,
+                entities=[
+                    {
+                        "text": e.text,
+                        "type": e.entity_type.value,
+                        "normalized": e.normalized,
+                    }
+                    for e in result.entities
+                ],
+                triples=[
+                    {
+                        "head": t.head,
+                        "relation": t.relation.value,
+                        "tail": t.tail,
+                    }
+                    for t in result.triples
+                ],
+                model=model_label,
+            )
+        except Exception as exc:
+            logger.warning(f"NER cache persist failed for {chunk.chunk_id}: {exc}")
 
     async def _extract_with_llm(
         self, llm: UnifiedLLMClient, chunk: Chunk, *, label: str

@@ -72,6 +72,15 @@ class RAGSettings(BaseSettings):
     )
     RERANKER_ENABLED: bool = Field(default=True, description="Enable reranker layer")
     RERANKER_WEIGHT: float = Field(default=0.35, description="Weight of reranker score in fusion")
+    RERANKER_MAX_LENGTH: int = Field(
+        default=128, description="Max tokens fed to cross-encoder for scoring (truncation is scoring-only, not answer text)"
+    )
+    RERANKER_POOL: int = Field(
+        default=5, description="Number of top candidates to rerank in adaptive mode"
+    )
+    RERANKER_ADAPTIVE_CONFIDENCE: float = Field(
+        default=0.5, description="Confidence threshold below which adaptive reranker activates"
+    )
 
     # ========== Chunking Parameters ==========
     CHUNK_SIZE_TOKENS: int = Field(default=350, description="Default chunk size in tokens")
@@ -146,17 +155,17 @@ class RAGSettings(BaseSettings):
         default=False, description="Disable LLM fallback (RAG-only mode)"
     )
 
-    # ========== RamClouds / OpenAI-compat Primary Provider ==========
+    # ========== AI Box / OpenAI-compatible Primary Provider ==========
     RAMCLOUDS_API_KEY: Optional[str] = Field(
         default=None,
-        description="API key for ramclouds.me (primary LLM provider, gemini-2.5-flash)"
+        description="API key for AI Box (primary OpenAI-compatible LLM provider)"
     )
     RAMCLOUDS_BASE_URL: str = Field(
-        default="https://ramclouds.me/v1",
+        default="https://api.ai-box.vn/v1",
         description="Base URL for OpenAI-compatible primary provider"
     )
     RAMCLOUDS_MODEL: str = Field(
-        default="gemini-2.5-flash",
+        default="deepseek-v4-flash",
         description="Model name at the primary provider (NER + fallback)"
     )
     RAMCLOUDS_NER_MODEL: str = Field(
@@ -164,16 +173,16 @@ class RAGSettings(BaseSettings):
         description="Model for NER/graph extraction at ramclouds.me (needs speed + JSON)"
     )
     RAMCLOUDS_HYDE_MODEL: str = Field(
-        default="gemini-3-flash",
-        description="Model for HYDE query enhancement at ramclouds.me (needs creativity)"
+        default="deepseek-v4-flash",
+        description="Model for HYDE query enhancement at AI Box (needs creativity)"
     )
     RAMCLOUDS_GEN_MODEL: str = Field(
-        default="mimo-v2.5-pro",
-        description="Model for final answer generation at ramclouds.me (needs quality)"
+        default="deepseek-v4-pro",
+        description="Model for final answer generation at AI Box (needs quality)"
     )
     RAMCLOUDS_GEN_FALLBACK_MODEL: str = Field(
-        default="gpt-5.4",
-        description="Fallback generation model at ramclouds.me"
+        default="deepseek-v4-flash",
+        description="Fallback generation model at AI Box"
     )
     RAMCLOUDS_ROUTER_MODEL: str = Field(
         default="",
@@ -186,6 +195,14 @@ class RAGSettings(BaseSettings):
         ),
     )
     GROQ_API_KEY: Optional[str] = Field(default=None, description="Groq API key (LLM fallback)")
+    GROQ_ROUTER_MODEL: str = Field(
+        default="llama-3.3-70b-versatile",
+        description="Groq model for the router classify/step-back calls (fast path)",
+    )
+    GROQ_NER_MODEL: str = Field(
+        default="llama-3.1-8b-instant",
+        description="Groq model for NER extraction (needs speed, free-tier)",
+    )
     QWEN_API_KEY: Optional[str] = Field(default=None, description="Qwen API key (NER fallback)")
 
     # ========== GraphRAG Configuration ==========
@@ -221,8 +238,8 @@ class RAGSettings(BaseSettings):
     # ========== Guardrail & Error Exposure ==========
     GUARDRAIL_ENABLED: bool = Field(default=True, description="Enable out-of-scope guardrail")
     GUARDRAIL_MODEL: str = Field(
-        default="llama-3.1-8b-instant",
-        description="Small Groq model used for scope/no-result classification",
+        default="llama-3.3-70b-versatile",
+        description="Groq model used for scope/no-result classification",
     )
     ERROR_EXPOSURE_MODE: Literal["dev", "prod"] = Field(
         default="dev",

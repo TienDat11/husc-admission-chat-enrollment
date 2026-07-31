@@ -64,8 +64,8 @@ def test_ppr_cache_reuses_results_and_clear_caches():
     seeds_ab = ["TO_HOP:a00", "NGANH:cntt"]
     seeds_ba = ["NGANH:cntt", "TO_HOP:a00"]
 
-    first = kg.personalized_pagerank(seeds_ab, alpha=0.85)
-    second = kg.personalized_pagerank(seeds_ba, alpha=0.85)
+    first = asyncio.run(kg.personalized_pagerank(seeds_ab, alpha=0.85))
+    second = asyncio.run(kg.personalized_pagerank(seeds_ba, alpha=0.85))
 
     assert first == second
     assert len(kg._ppr_cache) == 1
@@ -84,7 +84,7 @@ def test_ppr_returns_empty_when_convergence_fails(monkeypatch):
 
     monkeypatch.setattr(graph_module.nx, "pagerank", _raise)
 
-    scores = kg.personalized_pagerank(["NGANH:cntt"], alpha=0.85)
+    scores = asyncio.run(kg.personalized_pagerank(["NGANH:cntt"], alpha=0.85))
     assert scores == {}
 
 

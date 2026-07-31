@@ -135,9 +135,11 @@ async def test_zai_fallback_is_nonblocking(monkeypatch):
     zai_start = text.find("elif self.zai_client")
     assert zai_start != -1
     zai_block = text[zai_start : text.find("\n            else:", zai_start)]
-    assert "await asyncio.to_thread" in zai_block, (
+    assert "asyncio.to_thread" in zai_block, (
         "Z.AI fallback must be wrapped in asyncio.to_thread"
     )
+    assert "asyncio.shield" in zai_block
+    assert "await asyncio.wait_for" in zai_block
     assert "self.zai_client.chat.completions.create" in zai_block
 
 

@@ -29,9 +29,39 @@ import pytest
 
 
 # Mirror the import convention from test_season.py / test_booster_tag.py.
+# NOTE: The test_booster_year_durability module uses `from services.X import Y`
+# pattern which creates a separate module namespace from `src.services.X`.
+# The autouse _restore_year_modules fixture reloads BOTH namespaces to ensure
+# year-state is clean across all tests. Do not change these imports without
+# updating the fixture accordingly.
 RAG_SRC = Path(__file__).resolve().parents[2] / "src"
 if str(RAG_SRC) not in sys.path:
     sys.path.insert(0, str(RAG_SRC))
+
+
+@pytest.fixture(autouse=True)
+def _restore_year_modules():
+    """Reload temporal_authority + aggregation_rules + aggregation_booster
+    AFTER each test so the module-level `_YEAR` snapshot does NOT leak the
+    2027 value (set by the year=2027 tests) into other test files that run
+    later in the same session. monkeypatch auto-undoes the env var, but the
+    module constant is computed once at import — it must be re-derived.
+
+    Reloads BOTH `src.services.*` and `services.*` namespaces to prevent
+    dual-module-pollution (the two sys.modules keys resolve to different
+    module objects when both are loaded).
+    """
+    yield
+    import importlib
+    import sys as _sys
+    import os as _os
+    _os.environ.pop("CURRENT_ADMISSION_YEAR", None)
+    _os.environ.pop("APP_ENV", None)
+    for ns in ("src.services", "services"):
+        for mod in ("temporal_authority", "aggregation_rules", "aggregation_booster"):
+            full = f"{ns}.{mod}"
+            if full in _sys.modules:
+                importlib.reload(_sys.modules[full])
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +223,7 @@ def test_none_fetch_emits_warn_and_increments_booster_chunk_miss(monkeypatch, ca
     monkeypatch.delenv("APP_ENV", raising=False)
 
     import importlib
-    from services import aggregation_rules, aggregation_booster
+    from src.services import aggregation_rules, aggregation_booster
     importlib.reload(aggregation_rules)
     importlib.reload(aggregation_booster)  # ensure year is read fresh
 
@@ -205,7 +235,7 @@ def test_none_fetch_emits_warn_and_increments_booster_chunk_miss(monkeypatch, ca
     # propagation; loguru's logger sinks may bypass it. We use a sink
     # monkeypatch instead — see below.)
     try:
-        from services.aggregation_booster import (
+        from src.services.aggregation_booster import (
             boost_with_aggregation,
             BOOSTER_CHUNK_MISS,
         )

@@ -71,3 +71,41 @@ def test_filter_uses_int_year_no_string_interpolation(tf_module, ti_module):
     # Output must NOT contain quotes around the year (proves int interpolation).
     assert "'" not in out
     assert '"' not in out
+
+
+def test_flat_schema_generates_correct_clause(tf_module, ti_module):
+    out = tf_module.apply_temporal_filter(
+        ti_module.TemporalIntent.current, 2026, schema_mode="flat", as_of=20260729
+    )
+    assert "data_year = 2026" in out
+    assert "status = 'current'" in out
+    assert "effective_from <= 20260729" in out
+    assert "effective_to >= 20260729" in out
+    assert "is_tombstone = false" in out
+
+
+def test_nested_json_returns_none(tf_module, ti_module):
+    out = tf_module.apply_temporal_filter(
+        ti_module.TemporalIntent.current, 2026, schema_mode="nested_json"
+    )
+    assert out is None
+
+
+def test_current_clause_four_conditions(tf_module):
+    clause = tf_module.current_clause(20260729)
+    assert "status = 'current'" in clause
+    assert "effective_from <= 20260729" in clause
+    assert "effective_to >= 20260729" in clause
+    assert "is_tombstone = false" in clause
+
+
+def test_crash_free_on_both_schemas(tf_module, ti_module):
+    # Cả 2 mode không raise
+    r1 = tf_module.apply_temporal_filter(
+        ti_module.TemporalIntent.current, 2026, schema_mode="flat"
+    )
+    r2 = tf_module.apply_temporal_filter(
+        ti_module.TemporalIntent.current, 2026, schema_mode="nested_json"
+    )
+    assert r1 is not None  # flat trả string
+    assert r2 is None      # nested trả None

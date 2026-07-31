@@ -1,20 +1,50 @@
+// @spec(plan-warmup-ux-20260705-111031 §3.2)
+// MessageBubble — renders one chat bubble. Plan §3.2 last section:
+// when an error bubble carries an `errorKind` we render the localized
+// Vietnamese message corresponding to that kind and DROP the raw
+// `err.message` (especially "Failed to fetch") from the user-visible text.
 import { motion } from 'framer-motion';
 import { Copy, ThumbsUp, ThumbsDown, Check, ExternalLink } from 'lucide-react';
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Message, Source } from '@/lib/chat-types';
+import type { QueryErrorKind } from '@/lib/api';
 
 interface MessageBubbleProps {
   message: Message;
+  /** When set, the bubble renders the localized Vietnamese error copy
+   *  for this kind instead of any user-provided content. Used by
+   *  useChatStream to surface api.ts' classified QueryError. */
+  errorKind?: QueryErrorKind;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+const LOCALIZED_ERROR_COPY: Record<QueryErrorKind, string> = {
+  network: 'Không kết nối được máy chủ. Vui lòng kiểm tra mạng và thử lại.',
+  warming: 'Máy chủ đang khởi động, vui lòng đợi trong giây lát...',
+  unauthorized: 'Phiên đăng nhập hết hạn, vui lòng tải lại trang.',
+  server: 'Máy chủ gặp sự cố. Vui lòng thử lại sau ít phút.',
+  unknown: '⚠️ Có lỗi xảy ra',
+};
+
+function localizedErrorBody(kind: QueryErrorKind): string {
+  const copy = LOCALIZED_ERROR_COPY[kind];
+  if (kind === 'unknown') return copy;
+  return `⚠️ ${copy}`;
+}
+
+export function MessageBubble({ message, errorKind }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [liked, setLiked] = useState<'like' | 'dislike' | null>(null);
 
+  // Plan §3.2: when caller passes an `errorKind`, swap the rendered body
+  // to the localized Vietnamese copy and DROP the raw `err.message`
+  // (e.g. "Failed to fetch"). We never let the raw engine string reach
+  // the user.
+  const renderedContent = errorKind ? localizedErrorBody(errorKind) : message.content;
+
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(message.content);
+    await navigator.clipboard.writeText(renderedContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -26,7 +56,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.3, type: 'spring', bounce: 0.4 }}
-      className={`flex gap-3 ${isBot ? 'justify-start' : 'justify-end'}`}
+      className={`flex min-w-0 max-w-full gap-3 ${isBot ? 'justify-start' : 'justify-end'}`}
     >
       {/* Bot Avatar - Locket style */}
       {isBot && (
@@ -40,7 +70,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         </motion.div>
       )}
 
-      <div className={`flex flex-col ${isBot ? 'items-start' : 'items-end'} max-w-[85%]`}>
+      <div className={`flex min-w-0 max-w-full flex-col ${isBot ? 'items-start' : 'items-end'}`}>
         {/* Message Bubble */}
         <div className={isBot ? 'chat-bubble-bot' : 'chat-bubble-user'}>
           {/* Status banner */}
@@ -55,81 +85,94 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             </div>
           )}
 
-          {isBot ? (
-            <div className="message-content prose prose-sm max-w-none">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  p: ({ children }) => (
-                    <p className="mb-3 last:mb-0 text-[15px] leading-[1.7] font-medium">
-                      {children}
-                    </p>
-                  ),
-                  h3: ({ children }) => (
-                    <h3 className="text-base font-bold mt-4 mb-2">
-                      {children}
-                    </h3>
-                  ),
-                  ul: ({ children }) => (
-                    <ul className="list-none pl-0 my-3 space-y-2">
-                      {children}
-                    </ul>
-                  ),
-                  li: ({ children }) => (
-                    <li className="relative pl-7 text-[15px] leading-[1.7] font-medium">
-                      <span className="absolute left-0 top-0 text-primary font-bold">→</span>
-                      {children}
-                    </li>
-                  ),
-                  strong: ({ children }) => (
-                    <strong className="font-bold text-primary">{children}</strong>
-                  ),
-                  a: ({ href, children }) => {
-                    const safeHref =
-                      href && (/^(https?:|mailto:)/i.test(href) || href.startsWith('/'))
-                        ? href
-                        : '#';
-                    return (
-                      <a
-                        href={safeHref}
-                        className="text-primary underline underline-offset-2 hover:text-secondary transition-colors font-semibold"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {children}
-                      </a>
-                    );
-                  },
-                  code: ({ children }) => (
-                    <code className="px-2 py-1 rounded-lg bg-muted text-sm font-mono font-semibold">
-                      {children}
-                    </code>
-                  ),
-                  table: ({ children }) => (
-                    <div className="overflow-x-auto my-3 -mx-2 px-2">
-                      <table className="min-w-full text-sm border-collapse">
-                        {children}
-                      </table>
-                    </div>
-                  ),
-                  thead: ({ children }) => (
-                    <thead className="bg-muted/50">{children}</thead>
-                  ),
-                  th: ({ children }) => (
-                    <th className="border border-border px-2 py-1.5 text-left font-bold text-xs">
-                      {children}
-                    </th>
-                  ),
-                  td: ({ children }) => (
-                    <td className="border border-border px-2 py-1.5 text-xs">
-                      {children}
-                    </td>
-                  ),
-                }}
-              >
-                {message.content}
-              </ReactMarkdown>
+          {/* Stage pill — shown while the assistant is processing */}
+          {isBot && message.stage && (
+            <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl bg-primary/10 border border-primary/20">
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <span className="text-sm font-semibold text-primary">{message.stage}</span>
             </div>
+          )}
+
+          {isBot ? (
+            <>
+              {/* content may be empty when errorKind drives the text */}
+              {(message.content || errorKind) && (
+                <div className="message-content prose prose-sm min-w-0 max-w-full">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => (
+                        <p className="mb-3 last:mb-0 text-[15px] leading-[1.7] font-medium">
+                          {children}
+                        </p>
+                      ),
+                      h3: ({ children }) => (
+                        <h3 className="text-base font-bold mt-4 mb-2">
+                          {children}
+                        </h3>
+                      ),
+                      ul: ({ children }) => (
+                        <ul className="list-none pl-0 my-3 space-y-2">
+                          {children}
+                        </ul>
+                      ),
+                      li: ({ children }) => (
+                        <li className="relative pl-7 text-[15px] leading-[1.7] font-medium">
+                          <span className="absolute left-0 top-0 text-primary font-bold">→</span>
+                          {children}
+                        </li>
+                      ),
+                      strong: ({ children }) => (
+                        <strong className="font-bold text-primary">{children}</strong>
+                      ),
+                      a: ({ href, children }) => {
+                        const safeHref =
+                          href && (/^(https?:|mailto:)/i.test(href) || href.startsWith('/'))
+                            ? href
+                            : '#';
+                        return (
+                          <a
+                            href={safeHref}
+                            className="text-primary underline underline-offset-2 hover:text-secondary transition-colors font-semibold"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {children}
+                          </a>
+                        );
+                      },
+                      code: ({ children }) => (
+                        <code className="px-2 py-1 rounded-lg bg-muted text-sm font-mono font-semibold">
+                          {children}
+                        </code>
+                      ),
+                      table: ({ children }) => (
+                        <div className="my-3 w-full max-w-full overflow-x-auto">
+                          <table className="min-w-max text-sm border-collapse">
+                            {children}
+                          </table>
+                        </div>
+                      ),
+                      thead: ({ children }) => (
+                        <thead className="bg-muted/50">{children}</thead>
+                      ),
+                      th: ({ children }) => (
+                        <th className="border border-border px-2 py-1.5 text-left font-bold text-xs">
+                          {children}
+                        </th>
+                      ),
+                      td: ({ children }) => (
+                        <td className="border border-border px-2 py-1.5 text-xs">
+                          {children}
+                        </td>
+                      ),
+                    }}
+                  >
+                    {renderedContent}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </>
           ) : (
             <p className="text-[15px] leading-[1.7] font-semibold">{message.content}</p>
           )}

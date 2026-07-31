@@ -28,6 +28,20 @@ function makeMessage(content: string, overrides: Partial<Message> = {}): Message
 // (a) Valid GFM table
 // ---------------------------------------------------------------------------
 describe('MessageBubble — GFM table rendering', () => {
+  it('keeps wide tables scrollable inside a shrinkable bubble', () => {
+    const content = `| Ngành | Điểm chuẩn |
+| ----- | ---------- |
+| Công nghệ thông tin | 22.5 |`;
+    const { container } = render(<MessageBubble message={makeMessage(content)} />);
+    const table = container.querySelector('table');
+    const tableWrapper = table?.parentElement;
+    const bubbleColumn = container.querySelector('.flex-col');
+
+    expect(table).toHaveClass('min-w-max');
+    expect(tableWrapper).toHaveClass('w-full', 'max-w-full', 'overflow-x-auto');
+    expect(bubbleColumn).toHaveClass('min-w-0', 'max-w-full');
+  });
+
   it('(a) renders a valid GFM table without throwing', () => {
     const content = `| Ngành | Điểm chuẩn |
 | ----- | ---------- |

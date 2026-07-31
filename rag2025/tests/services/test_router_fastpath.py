@@ -180,3 +180,78 @@ def test_vague_placeholder_still_wins_over_fast_path():
     assert result.route != QueryRoute.GRAPH_RAG, (
         "vague query must short-circuit before fast-path; got GRAPH_RAG"
     )
+
+
+# ---------------------------------------------------------------------------
+# 6. Other-school deterministic block: is_in_scope=False, zero LLM calls.
+#    Phase A: three exact out-of-scope queries.
+# ---------------------------------------------------------------------------
+
+def test_other_school_bach_khoa_blocked_is_in_scope_false():
+    """Pure Bách Khoa query (no HUSC) → is_in_scope=False, zero LLM calls."""
+    llm = _make_mock_llm()
+    router = SmartQueryRouter(llm=llm)
+    result = _run(router.route("Điểm chuẩn Đại học Bách Khoa Hà Nội 2026?"))
+    assert result.is_in_scope is False
+    assert result.skip_retrieval is True
+    assert result.auto_answer is not None
+    assert "HUSC" in result.auto_answer or "husc" in result.auto_answer.lower()
+    assert llm.chat_json.await_count == 0, (
+        f"other-school block must not call llm.chat_json; got {llm.chat_json.await_count}"
+    )
+    assert llm.chat.await_count == 0, (
+        f"other-school block must not call llm.chat; got {llm.chat.await_count}"
+    )
+
+
+def test_other_school_fpt_blocked_is_in_scope_false():
+    """Pure FPT query (no HUSC) → is_in_scope=False, zero LLM calls."""
+    llm = _make_mock_llm()
+    router = SmartQueryRouter(llm=llm)
+    result = _run(router.route("Học phí trường FPT là bao nhiêu?"))
+    assert result.is_in_scope is False
+    assert result.skip_retrieval is True
+    assert result.auto_answer is not None
+    assert "HUSC" in result.auto_answer or "husc" in result.auto_answer.lower()
+    assert llm.chat_json.await_count == 0
+    assert llm.chat.await_count == 0
+
+
+def test_other_school_y_ha_noi_blocked_is_in_scope_false():
+    """Pure Y Hà Nội query (no HUSC) → is_in_scope=False, zero LLM calls."""
+    llm = _make_mock_llm()
+    router = SmartQueryRouter(llm=llm)
+    result = _run(router.route("Trường Y Hà Nội có ngành gì?"))
+    assert result.is_in_scope is False
+    assert result.skip_retrieval is True
+    assert result.auto_answer is not None
+    assert "HUSC" in result.auto_answer or "husc" in result.auto_answer.lower()
+    assert llm.chat_json.await_count == 0
+    assert llm.chat.await_count == 0
+
+
+# ---------------------------------------------------------------------------
+# 7. HUSC-vs-other comparison stays in scope (fast-path → graph, no regression).
+# ---------------------------------------------------------------------------
+
+def test_husc_comparison_with_bach_khoa_stays_in_scope():
+    """HUSC-vs-Bách Khoa comparison must remain is_in_scope=True (graph fast-path)."""
+    llm = _make_mock_llm()
+    router = SmartQueryRouter(llm=llm)
+    result = _run(router.route("HUSC so với Bách Khoa ngành CNTT?"))
+    assert result.is_in_scope is True
+    # Comparison fast-path → graph, zero LLM calls.
+    assert result.route == QueryRoute.GRAPH_RAG
+    assert llm.chat_json.await_count == 0
+    assert llm.chat.await_count == 0
+
+
+def test_pure_husc_query_unchanged():
+    """Pure HUSC query (no other school) passes through unchanged (one LLM call)."""
+    llm = _make_mock_llm()
+    router = SmartQueryRouter(llm=llm)
+    result = _run(router.route("học phí ngành CNTT?"))
+    assert result.is_in_scope is True
+    assert llm.chat_json.await_count == 1, (
+        f"pure HUSC query must call LLM once; got {llm.chat_json.await_count}"
+    )

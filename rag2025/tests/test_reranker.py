@@ -26,7 +26,9 @@ def _make_service(max_rerank: int = 50, weight: float = 0.35) -> RerankerService
     svc._model_name = "dummy"
     svc._weight = weight
     svc._max_rerank = max_rerank
+    svc._max_length = 512
     svc._model = MagicMock()
+    svc._adaptive_confidence = 0.5
     return svc
 
 

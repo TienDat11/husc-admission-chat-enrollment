@@ -249,6 +249,49 @@ def test_pipeline_dedup_skips():
     assert result["skipped_duplicates"] == 1
 
 
+def test_pipeline_nonempty_crawl_requires_chunk_and_embed_callbacks():
+    pipeline = IngestPipeline(CrawlerState())
+    pipeline._hash_log = {}
+
+    result = pipeline.run(crawl_fn=lambda: [("http://example.com/1", "new content")])
+
+    assert result["status"] == "failed at step 3"
+    assert "chunk_fn" in result["error"]
+
+
+def test_pipeline_chunks_require_embed_callback():
+    pipeline = IngestPipeline(CrawlerState())
+    pipeline._hash_log = {}
+
+    result = pipeline.run(
+        crawl_fn=lambda: [("http://example.com/1", "new content")],
+        chunk_fn=lambda content, meta: [{"id": "c1", "text": content, "metadata": meta}],
+    )
+
+    assert result["status"] == "failed at step 6"
+    assert "embed_fn" in result["error"]
+
+
+def test_pipeline_chunks_require_embed_callback_before_supersession(monkeypatch):
+    pipeline = IngestPipeline(CrawlerState())
+    pipeline._hash_log = {}
+    supersession_called = False
+
+    def mark_supersession(chunks):
+        nonlocal supersession_called
+        supersession_called = True
+        return chunks
+
+    monkeypatch.setattr(pipeline, "_step_supersession", mark_supersession)
+    result = pipeline.run(
+        crawl_fn=lambda: [("http://example.com/1", "new content")],
+        chunk_fn=lambda content, meta: [{"id": "c1", "text": content, "metadata": meta}],
+    )
+
+    assert result["status"] == "failed at step 6"
+    assert supersession_called is False
+
+
 def test_pipeline_step_error():
     def failing_crawl():
         raise ConnectionError("Network down")
@@ -267,8 +310,11 @@ def test_pipeline_metadata_assigned():
     def mock_chunk(content, meta):
         return [{"id": "c1", "text": content, "metadata": meta}]
 
+    def mock_embed(chunks):
+        return len(chunks)
+
     pipeline = IngestPipeline(CrawlerState())
-    result = pipeline.run(crawl_fn=mock_crawl, chunk_fn=mock_chunk)
+    result = pipeline.run(crawl_fn=mock_crawl, chunk_fn=mock_chunk, embed_fn=mock_embed)
 
     assert result["status"] == "success"
     assert "metadata" in result["steps"]
@@ -284,9 +330,9 @@ def test_pipeline_step_error_class():
 
 
 def test_resume_no_checkpoint():
-    with patch("src.infrastructure.auto_crawl.CHECKPOINT_PATH", "/nonexistent/ckpt.json"):
+    with patch("src.infrastructure.auto_crawl.Checkpoint.load", return_value=None):
         result = resume_pipeline()
-        assert result is None
+    assert result is None
 
 
 # --- Scheduler ---

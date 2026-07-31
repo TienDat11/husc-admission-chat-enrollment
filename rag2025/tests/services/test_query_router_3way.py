@@ -335,8 +335,8 @@ async def test_classify_padded_with_two_nganh_entities_demotes_to_hybrid():
 
 
 @pytest.mark.asyncio
-async def test_classify_padded_with_two_tohop_entities_demotes_to_hybrid():
-    """2 TO_HOP entities + classify=padded → demoted to hybrid."""
+async def test_enum_fast_path_with_two_tohop_entities_routes_graph():
+    """Enumeration pattern is terminal before classify/entity demotion."""
     llm = _make_mock_llm(
         classify_payload={
             "route": "padded_rag",
@@ -348,7 +348,7 @@ async def test_classify_padded_with_two_tohop_entities_demotes_to_hybrid():
     )
     router = SmartQueryRouter(llm=llm)
     result = await router.route("tổ hợp A00 và tổ hợp B00 cho ngành CNTT")
-    assert result.route == QueryRoute.HYBRID
+    assert result.route == QueryRoute.GRAPH_RAG
 
 
 @pytest.mark.asyncio

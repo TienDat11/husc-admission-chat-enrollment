@@ -1,5 +1,6 @@
 // @spec(S13.7) Frontend banner showing current admission year + freshness
 import { useEffect, useState } from "react";
+import { getApiBaseUrl } from "@/lib/api";
 
 export interface MetaResponse {
   current_admission_year: number;
@@ -48,7 +49,7 @@ function formatDate(iso: string | null, locale: "vi" | "en"): string | null {
 }
 
 
-export function YearBanner({ apiUrl = "/api/meta", locale = "vi" }: YearBannerProps) {
+export function YearBanner({ apiUrl = `${getApiBaseUrl()}/api/meta`, locale = "vi" }: YearBannerProps) {
   const [meta, setMeta] = useState<MetaResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const t = STRINGS[locale];

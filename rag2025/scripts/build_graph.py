@@ -95,6 +95,15 @@ def load_all_chunks(limit: int = 0) -> list[Chunk]:
         CHUNKED_DIR / "husc_2026_canonical_v2.jsonl",
         CHUNKED_DIR / "nganh_detail_2026.jsonl",
     ]
+    # S18.6-T7: T1-T4 surgical fix JSONL + T6 yearly auto-ingest outputs.
+    # These carry the new chunks (dkxt.hueuni, VneID, lệ phí 30k, 2.079,
+    # yearly_*). Keep parity with the rag2025 table.
+    t7_fix_jsonl = [
+        CHUNKED_DIR / "husc_thongbao_fix_2026.jsonl",
+        CHUNKED_DIR / "husc_canonical_fix_2026.jsonl",
+    ]
+    t6_yearly_jsonl = sorted(CHUNKED_DIR.glob("husc_yearly_*.jsonl"))
+    extra = extra + [p for p in t7_fix_jsonl if p.exists()] + t6_yearly_jsonl
     jsonl_files += [f for f in extra if f.exists()]
 
     n_noise = 0
@@ -179,11 +188,13 @@ def merge_entity_indexes(old: dict, new: dict) -> dict:
     return merged
 
 
-async def main(dry_run: bool, limit: int, incremental: bool, concurrency: int = 1) -> None:
+async def main(dry_run: bool, limit: int, incremental: bool, concurrency: int = 1,
+               force_reextract: bool = False) -> None:
     logger.info("=== Graph Builder: Starting ===")
     logger.info(
         f"  Mode: {'incremental' if incremental else 'full'} | dry_run={dry_run} | "
-        f"limit={limit or 'all'} | concurrency={concurrency}"
+        f"limit={limit or 'all'} | concurrency={concurrency} | "
+        f"force_reextract={force_reextract}"
     )
 
     GRAPH_DIR.mkdir(parents=True, exist_ok=True)
@@ -193,8 +204,8 @@ async def main(dry_run: bool, limit: int, incremental: bool, concurrency: int = 
         logger.error("No chunks found. Check data/chunked/ directory.")
         return
 
-    # Incremental: skip chunks already in entity index
-    if incremental and ENTITY_INDEX_PATH.exists():
+    # Incremental: skip chunks already in entity index (unless force-reextract)
+    if incremental and not force_reextract and ENTITY_INDEX_PATH.exists():
         existing_index = load_entity_index()
         processed_chunks = {
             cid
@@ -212,6 +223,13 @@ async def main(dry_run: bool, limit: int, incremental: bool, concurrency: int = 
     else:
         existing_index = {}
         chunks = all_chunks
+        # --force-reextract: clear NER disk cache so every chunk re-executes NER.
+        if force_reextract:
+            ner_cache = Path(
+                __file__).parent.parent / "data" / "graph" / "ner_cache.jsonl"
+            if ner_cache.exists():
+                ner_cache.unlink()
+                logger.info("--force-reextract: deleted ner_cache.jsonl")
 
     if dry_run:
         logger.info(f"[DRY RUN] Would process {len(chunks)} chunks. Exiting.")
@@ -235,6 +253,7 @@ async def main(dry_run: bool, limit: int, incremental: bool, concurrency: int = 
     logger.info("Step 2: Building knowledge graph...")
     if incremental and GRAPH_PATH.exists():
         existing_graph = KnowledgeGraph.load(GRAPH_PATH)
+        existing_graph.clear_caches()  # M3-N3a: eager cache invalidation
         builder = KnowledgeGraphBuilder.from_graph(existing_graph)
         logger.info(f"  Incremental: starting from {existing_graph.node_count} nodes")
     else:
@@ -289,6 +308,10 @@ if __name__ == "__main__":
         "--concurrency", type=int, default=1,
         help="NER concurrent requests (default 1 — gentle on gateway/quota)"
     )
+    parser.add_argument(
+        "--force-reextract", action="store_true",
+        help="Force re-extraction of all chunks even if in entity_index"
+    )
     args = parser.parse_args()
 
     asyncio.run(main(
@@ -296,4 +319,5 @@ if __name__ == "__main__":
         limit=args.limit,
         incremental=args.incremental,
         concurrency=args.concurrency,
+        force_reextract=args.force_reextract,
     ))

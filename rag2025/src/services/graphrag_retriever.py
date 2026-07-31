@@ -16,6 +16,7 @@ Scalability:
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from dataclasses import dataclass, field
@@ -238,6 +239,7 @@ class GraphRAGRetriever:
         baseline_docs: List[RetrievedDocument],
         top_k: int = 5,
         expander_m: Optional[int] = None,
+        sub_queries: Optional[List[str]] = None,
     ) -> Tuple[List[RetrievedDocument], Dict[str, float]]:
         """Fuse baseline PaddedRAG docs with PPR graph scores.
 
@@ -275,7 +277,7 @@ class GraphRAGRetriever:
         """
         seed_entities = await self._seed_entities_from_query(query, router_result)
         ppr_scores = (
-            self._graph.ppr_scores_by_chunk(seed_entities, alpha=self._ppr_alpha)
+            await self._graph.ppr_scores_by_chunk(seed_entities, alpha=self._ppr_alpha)
             if seed_entities
             else {}
         )
@@ -446,6 +448,74 @@ class GraphRAGRetriever:
         )
         return reranked, ppr_scores
 
+    async def _parallel_subq_retrieve(
+        self,
+        sub_queries: List[str],
+        router_result: RouterResult,
+        baseline_docs: List[RetrievedDocument],
+        top_k: int,
+    ) -> Tuple[List[RetrievedDocument], Dict[str, float]]:
+        """Run retrieval for each sub-query in parallel, merge by doc ID.
+
+        PPR scores are averaged across sub-queries for documents that appear
+        in multiple result sets. Limit to first 3 sub-queries to bound cost.
+        """
+        capped = sub_queries[:3]
+        per_q_k = max(1, top_k // len(capped))
+        tasks = [
+            self.retrieve(sq, router_result, baseline_docs, per_q_k)
+            for sq in capped
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Merge: aggregate fused scores by doc_id, average PPR scores
+        merged_docs: Dict[str, RetrievedDocument] = {}
+        merged_scores: Dict[str, float] = {}
+        ppr_accum: Dict[str, List[float]] = {}
+        doc_count: Dict[str, int] = {}
+
+        for res in results:
+            if isinstance(res, Exception):
+                logger.warning(f"Parallel sub-query retrieve failed: {res}")
+                continue
+            docs_list, ppr = res
+            for doc in docs_list:
+                cid = doc.chunk_id
+                if not cid:
+                    continue
+                if cid not in merged_docs or doc.score > merged_scores.get(cid, 0.0):
+                    merged_docs[cid] = doc
+                    merged_scores[cid] = doc.score
+                doc_count[cid] = doc_count.get(cid, 0) + 1
+            for cid, score in ppr.items():
+                ppr_accum.setdefault(cid, []).append(score)
+
+        # Average PPR scores across sub-queries
+        avg_ppr: Dict[str, float] = {}
+        for cid, scores in ppr_accum.items():
+            avg_ppr[cid] = sum(scores) / len(scores)
+
+        # Sort by fused score descending, take top_k
+        sorted_ids = sorted(merged_scores, key=merged_scores.__getitem__, reverse=True)
+        reranked = [
+            RetrievedDocument(
+                text=merged_docs[cid].text,
+                source=merged_docs[cid].source,
+                chunk_id=cid,
+                metadata=merged_docs[cid].metadata,
+                score=merged_scores[cid],
+                point_id=merged_docs[cid].point_id,
+            )
+            for cid in sorted_ids[:top_k]
+            if cid in merged_docs
+        ]
+
+        logger.info(
+            f"Parallel sub-query retrieval: {len(reranked)} merged results "
+            f"from {len(capped)} sub-queries"
+        )
+        return reranked, avg_ppr
+
     def update_graph(self, new_graph: KnowledgeGraph) -> None:
         """Hot-swap graph (for incremental updates without restart)."""
         old_stats = self._graph.stats()
@@ -606,13 +676,19 @@ class UnifiedRAGPipeline:
         ppr_scores: Dict[str, float] = {}
 
         if router_result.route == QueryRoute.GRAPH_RAG and docs:
-            docs, ppr_scores = await self._graphrag.retrieve(
-                query=user_query,
-                router_result=router_result,
-                baseline_docs=docs,
-                top_k=top_k,
-                expander_m=8,
-            )
+            sqs = getattr(router_result, 'sub_queries', None) or []
+            if sqs and len(sqs) >= 2:
+                docs, ppr_scores = await self._graphrag._parallel_subq_retrieve(
+                    sqs, router_result, docs, top_k,
+                )
+            else:
+                docs, ppr_scores = await self._graphrag.retrieve(
+                    query=user_query,
+                    router_result=router_result,
+                    baseline_docs=docs,
+                    top_k=top_k,
+                    expander_m=8,
+                )
             # GraphRAG.retrieve() already applied its own effective_top_k
             # (may be top_k + 3 on comparison-detection — ADR-B/CF-4). Do NOT
             # re-slice with [:top_k] here, which would undo the comparison

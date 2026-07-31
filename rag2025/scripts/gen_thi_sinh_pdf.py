@@ -16,8 +16,18 @@ from reportlab.lib.colors import HexColor, white, black
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    PageBreak, HRFlowable
+    PageBreak, HRFlowable, KeepTogether
 )
+
+# ── HUSC brand palette (kept in one place so the whole report stays on-brand) ──
+C_PRIMARY = HexColor('#0b4f8a')   # HUSC blue — titles, header band
+C_ACCENT = HexColor('#13a89e')    # teal — KPI accents, rules
+C_DARK = HexColor('#1f2d3d')      # near-black body ink
+C_MUTED = HexColor('#6b7a8d')     # captions / metadata
+C_GOOD = HexColor('#1e8e4f')      # pass green
+C_BAD = HexColor('#c0392b')       # fail red
+C_ZEBRA = HexColor('#eef3f8')     # table zebra
+C_CARD = HexColor('#f4f8fb')      # KPI card fill
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.pdfmetrics import registerFontFamily
@@ -67,10 +77,15 @@ def md_to_rl(text: str, limit: int = None) -> str:
         s = s[:limit]
     # Escape XML metachars BEFORE injecting our own tags
     s = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # Markdown headings (###, ##, #) leak from LLM answers — promote the heading
+    # text to bold and drop the hashes (otherwise they render as literal "###").
+    s = re.sub(r"#{1,6}\s*(.+?)(?=\s{2,}|$)", r"<b>\1</b>", s)
     # **bold** → <b>bold</b> (non-greedy, across the snippet)
     s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
     # leftover single * used as bullet/emphasis → strip
     s = s.replace("*", "")
+    # stray leftover hashes (e.g. mid-line "# ") → strip
+    s = re.sub(r"#{1,6}", "", s)
     # Strip emoji / symbol glyphs Arial can't render (they show as boxes):
     # globe 🌐, phone 📞, pin 📍, checkmarks, arrows, bullet glyphs, etc.
     #
@@ -122,24 +137,108 @@ for r in results:
         intents[i]["ans"] += 1
 
 styles = getSampleStyleSheet()
+styles.add(ParagraphStyle(name='VNCover', fontName=FONT_BOLD, fontSize=26, leading=32,
+                          alignment=TA_CENTER, textColor=white))
+styles.add(ParagraphStyle(name='VNCoverSub', fontName=FONT, fontSize=13, leading=18,
+                          alignment=TA_CENTER, textColor=HexColor('#d6e6f2')))
 styles.add(ParagraphStyle(name='VNTitle', fontName=FONT_BOLD, fontSize=18, leading=24,
-                          alignment=TA_CENTER, spaceAfter=20, textColor=HexColor('#1a5276')))
+                          alignment=TA_CENTER, spaceAfter=20, textColor=C_PRIMARY))
 styles.add(ParagraphStyle(name='VNH2', fontName=FONT_BOLD, fontSize=14, leading=18,
-                          spaceAfter=10, textColor=HexColor('#2c3e50')))
-styles.add(ParagraphStyle(name='VNBody', fontName=FONT, fontSize=10, leading=14,
-                          spaceAfter=6, alignment=TA_JUSTIFY))
-styles.add(ParagraphStyle(name='VNSmall', fontName=FONT, fontSize=8, leading=10, textColor=HexColor('#7f8c8d')))
+                          spaceBefore=6, spaceAfter=10, textColor=C_PRIMARY))
+styles.add(ParagraphStyle(name='VNBody', fontName=FONT, fontSize=10, leading=15,
+                          spaceAfter=6, alignment=TA_JUSTIFY, textColor=C_DARK))
+styles.add(ParagraphStyle(name='VNSmall', fontName=FONT, fontSize=8.5, leading=12, textColor=C_MUTED))
+styles.add(ParagraphStyle(name='VNAnswer', fontName=FONT, fontSize=9, leading=13.5,
+                          textColor=C_DARK, alignment=TA_JUSTIFY, spaceAfter=2))
 styles.add(ParagraphStyle(name='VNResult', fontName=FONT, fontSize=9, leading=12, spaceAfter=4))
-styles.add(ParagraphStyle(name='VNPass', fontName=FONT, fontSize=9, leading=12, textColor=HexColor('#27ae60')))
-styles.add(ParagraphStyle(name='VNFail', fontName=FONT, fontSize=9, leading=12, textColor=HexColor('#e74c3c')))
+styles.add(ParagraphStyle(name='VNPass', fontName=FONT_BOLD, fontSize=9.5, leading=13, textColor=C_GOOD))
+styles.add(ParagraphStyle(name='VNFail', fontName=FONT_BOLD, fontSize=9.5, leading=13, textColor=C_BAD))
+styles.add(ParagraphStyle(name='VNKpiNum', fontName=FONT_BOLD, fontSize=20, leading=22,
+                          alignment=TA_CENTER, textColor=C_PRIMARY))
+styles.add(ParagraphStyle(name='VNKpiLbl', fontName=FONT, fontSize=8, leading=10,
+                          alignment=TA_CENTER, textColor=C_MUTED))
+styles.add(ParagraphStyle(name='VNQ', fontName=FONT_BOLD, fontSize=10, leading=14,
+                          textColor=C_DARK, spaceBefore=4))
+
+
+def _kpi_card(num, label):
+    """A single KPI tile (big number over caption) as a 1x2 borderless table."""
+    inner = Table([[Paragraph(num, styles['VNKpiNum'])],
+                   [Paragraph(label, styles['VNKpiLbl'])]],
+                  colWidths=[4.0 * cm])
+    inner.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), C_CARD),
+        ('BOX', (0, 0), (-1, -1), 0.5, HexColor('#d4e2ef')),
+        ('LINEABOVE', (0, 0), (-1, 0), 3, C_ACCENT),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        ('BOTTOMPADDING', (0, -1), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    return inner
+
+
+def _kpi_row():
+    """Row of 4 KPI cards summarising the run."""
+    cards = [
+        _kpi_card(str(n), 'Tổng số câu hỏi'),
+        _kpi_card(f'{total_ans/n*100:.0f}%', 'Tỷ lệ có trả lời'),
+        _kpi_card(f'{statistics.median(lats):.0f}s', 'Latency trung vị'),
+        _kpi_card(f'{fallback}', 'Câu chưa trả lời'),
+    ]
+    row = Table([cards], colWidths=[4.3 * cm] * 4)
+    row.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    return row
+
+
+def _header_footer(canvas, doc):
+    """Brand band on top + page number / source footer on every page."""
+    canvas.saveState()
+    w, h = A4
+    # top brand bar
+    canvas.setFillColor(C_PRIMARY)
+    canvas.rect(0, h - 1.2 * cm, w, 1.2 * cm, fill=1, stroke=0)
+    canvas.setFillColor(white)
+    canvas.setFont(FONT_BOLD, 9)
+    canvas.drawString(2 * cm, h - 0.8 * cm, "TRƯỜNG ĐẠI HỌC KHOA HỌC — ĐẠI HỌC HUẾ")
+    canvas.setFont(FONT, 8)
+    canvas.drawRightString(w - 2 * cm, h - 0.8 * cm, "Báo cáo đánh giá Chatbot tuyển sinh")
+    # footer rule + page number
+    canvas.setStrokeColor(HexColor('#d4e2ef'))
+    canvas.setLineWidth(0.5)
+    canvas.line(2 * cm, 1.3 * cm, w - 2 * cm, 1.3 * cm)
+    canvas.setFillColor(C_MUTED)
+    canvas.setFont(FONT, 8)
+    canvas.drawString(2 * cm, 0.9 * cm, "Nguồn dữ liệu: canonical HUSC 2026 • tuyensinh.husc.edu.vn")
+    canvas.drawRightString(w - 2 * cm, 0.9 * cm, f"Trang {doc.page}")
+    canvas.restoreState()
+
+
+def _cover(subtitle):
+    """Full-bleed cover band rendered as flowables (one per report)."""
+    band = Table([[Paragraph("Báo cáo đánh giá hệ thống<br/>Chatbot tư vấn tuyển sinh", styles['VNCover'])],
+                  [Spacer(1, 8)],
+                  [Paragraph(subtitle, styles['VNCoverSub'])]],
+                 colWidths=[17 * cm])
+    band.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), C_PRIMARY),
+        ('TOPPADDING', (0, 0), (-1, 0), 34),
+        ('BOTTOMPADDING', (0, -1), (-1, -1), 34),
+        ('LEFTPADDING', (0, 0), (-1, -1), 18),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 18),
+    ]))
+    return band
 
 def build_story_full():
     story = []
-    story.append(Paragraph("Báo cáo kỹ thuật — 86 câu hỏi thực tế của thí sinh", styles['VNTitle']))
-    story.append(Paragraph(f"Ngày: 30/05/2026 | Pipeline: SmartRouter (HyDE + Step-Back) → PaddedRAG/GraphRAG → {GEN_MODEL}", styles['VNSmall']))
-    story.append(Spacer(1, 10))
-    story.append(HRFlowable(width="100%", thickness=1, color=HexColor('#bdc3c7')))
-    story.append(Spacer(1, 10))
+    story.append(_cover(f"Báo cáo kỹ thuật • {n} câu hỏi thực tế của thí sinh<br/>"
+                        f"Pipeline: SmartRouter (HyDE + Step-Back) → PaddedRAG/GraphRAG → {GEN_MODEL}"))
+    story.append(Spacer(1, 18))
+    story.append(_kpi_row())
+    story.append(Spacer(1, 18))
 
     story.append(Paragraph("1. Tổng quan", styles['VNH2']))
     summary_data = [
@@ -156,14 +255,16 @@ def build_story_full():
     ]
     t = Table(summary_data, colWidths=[5*cm, 10*cm])
     t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), HexColor('#2c3e50')),
+        ('BACKGROUND', (0,0), (-1,0), C_PRIMARY),
         ('TEXTCOLOR', (0,0), (-1,0), white),
         ('FONTNAME', (0,0), (-1,0), FONT_BOLD),
         ('FONTNAME', (0,1), (-1,-1), FONT),
         ('FONTSIZE', (0,0), (-1,-1), 9),
-        ('GRID', (0,0), (-1,-1), 0.5, HexColor('#bdc3c7')),
+        ('GRID', (0,0), (-1,-1), 0.5, HexColor('#d4e2ef')),
         ('ALIGN', (1,0), (1,-1), 'RIGHT'),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [white, HexColor('#ecf0f1')]),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [white, C_ZEBRA]),
     ]))
     story.append(t)
     story.append(Spacer(1, 10))
@@ -188,41 +289,47 @@ def build_story_full():
         intent_data.append([name, str(v["t"]), str(v["ans"]), f'{rate:.0f}%'])
     t2 = Table(intent_data, colWidths=[6*cm, 2.5*cm, 2.5*cm, 2.5*cm])
     t2.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), HexColor('#2c3e50')),
+        ('BACKGROUND', (0,0), (-1,0), C_PRIMARY),
         ('TEXTCOLOR', (0,0), (-1,0), white),
         ('FONTNAME', (0,0), (-1,0), FONT_BOLD),
         ('FONTNAME', (0,1), (-1,-1), FONT),
         ('FONTSIZE', (0,0), (-1,-1), 9),
-        ('GRID', (0,0), (-1,-1), 0.5, HexColor('#bdc3c7')),
+        ('GRID', (0,0), (-1,-1), 0.5, HexColor('#d4e2ef')),
         ('ALIGN', (1,0), (-1,-1), 'CENTER'),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [white, HexColor('#ecf0f1')]),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [white, C_ZEBRA]),
     ]))
     story.append(t2)
     story.append(Spacer(1, 10))
 
+    story.append(PageBreak())
     story.append(Paragraph("3. Chi tiết từng câu", styles['VNH2']))
     for r in results:
         icon = "ĐẠT" if r.get("has_answer") else "CHƯA"
         st = styles['VNPass'] if r.get("has_answer") else styles['VNFail']
-        story.append(Paragraph(f'<b>[{icon}] {r["id"]}</b> — {r.get("intent","?")} / {r["route"]} | {r["latency_s"]}s', st))
-        story.append(Paragraph(f'<b>Câu hỏi:</b> {md_to_rl(r["question"])}', styles['VNBody']))
-        story.append(Paragraph(f'<b>Trả lời:</b> {md_to_rl(r.get("answer",""))}', styles['VNSmall']))
+        block = [
+            Paragraph(f'[{icon}] {r["id"]} — {r.get("intent","?")} / {r["route"]} | {r["latency_s"]}s', st),
+            Paragraph(f'<b>Câu hỏi:</b> {md_to_rl(r["question"])}', styles['VNBody']),
+            Paragraph(f'<b>Trả lời:</b> {md_to_rl(r.get("answer",""))}', styles['VNAnswer']),
+        ]
         if r.get("chunk_ids"):
             ids = [str(x) for x in r['chunk_ids'][:5] if x]
             if ids:
-                story.append(Paragraph(f'<b>Chunks:</b> {", ".join(ids)}', styles['VNSmall']))
-        story.append(Spacer(1, 4))
+                block.append(Paragraph(f'<b>Chunks:</b> {", ".join(ids)}', styles['VNSmall']))
+        block.append(Spacer(1, 8))
+        story.append(KeepTogether(block))
 
     return story
 
 
 def build_story_teacher():
     story = []
-    story.append(Paragraph("Báo cáo đánh giá hệ thống tư vấn tuyển sinh HUSC", styles['VNTitle']))
-    story.append(Paragraph("86 câu hỏi thực tế của thí sinh | Ngày kiểm thử: 30/05/2026", styles['VNSmall']))
-    story.append(Spacer(1, 10))
-    story.append(HRFlowable(width="100%", thickness=1, color=HexColor('#bdc3c7')))
-    story.append(Spacer(1, 10))
+    story.append(_cover(f"Dành cho cán bộ tuyển sinh • {n} câu hỏi thực tế của thí sinh<br/>"
+                        f"Ngày kiểm thử: 30/05/2026"))
+    story.append(Spacer(1, 18))
+    story.append(_kpi_row())
+    story.append(Spacer(1, 18))
 
     story.append(Paragraph("I. Tóm tắt kết quả", styles['VNH2']))
     story.append(Paragraph(f"• Tổng số câu hỏi: {n}", styles['VNBody']))
@@ -231,24 +338,32 @@ def build_story_teacher():
     story.append(Paragraph(f"• Thời gian trả lời trung bình: {statistics.mean(lats):.0f} giây mỗi câu", styles['VNBody']))
     story.append(Spacer(1, 10))
 
+    story.append(PageBreak())
     story.append(Paragraph("II. Toàn bộ câu trả lời của chatbot", styles['VNH2']))
     ok = [r for r in results if r.get("has_answer")]
     story.append(Paragraph(
         f"Dưới đây là TẤT CẢ {len(ok)}/{n} câu chatbot đã trả lời (đầy đủ, không rút gọn):",
         styles['VNBody']
     ))
+    story.append(Spacer(1, 4))
     for i, r in enumerate(ok, 1):
-        story.append(Paragraph(f'<b>{i}. {md_to_rl(r["question"])}</b>', styles['VNBody']))
-        story.append(Paragraph(md_to_rl(r.get("answer","")), styles['VNSmall']))
-        story.append(Spacer(1, 4))
+        story.append(KeepTogether([
+            Paragraph(f'{i}. {md_to_rl(r["question"])}', styles['VNQ']),
+            Paragraph(md_to_rl(r.get("answer","")), styles['VNAnswer']),
+            Spacer(1, 7),
+        ]))
 
+    story.append(PageBreak())
     story.append(Paragraph("III. Câu hỏi chatbot CHƯA xử lý tốt", styles['VNH2']))
     fails = [r for r in results if not r.get("has_answer")]
     story.append(Paragraph(f"Có {len(fails)}/{n} câu chatbot không tìm thấy hoặc trả lời chưa thỏa đáng.", styles['VNBody']))
+    story.append(Spacer(1, 4))
     for i, r in enumerate(fails, 1):
-        story.append(Paragraph(f'<b>{i}. {md_to_rl(r["question"])}</b>', styles['VNBody']))
-        story.append(Paragraph(md_to_rl(r.get("answer","")), styles['VNSmall']))
-        story.append(Spacer(1, 4))
+        story.append(KeepTogether([
+            Paragraph(f'{i}. {md_to_rl(r["question"])}', styles['VNQ']),
+            Paragraph(md_to_rl(r.get("answer","")), styles['VNAnswer']),
+            Spacer(1, 7),
+        ]))
     if not fails:
         story.append(Paragraph("Tất cả 86 câu đều được trả lời (không có câu fallback).", styles['VNBody']))
 
@@ -268,11 +383,11 @@ def build_pdf(story, output_path):
     doc = SimpleDocTemplate(
         str(output_path), pagesize=A4,
         leftMargin=2*cm, rightMargin=2*cm,
-        topMargin=2*cm, bottomMargin=2*cm,
+        topMargin=1.8*cm, bottomMargin=1.8*cm,
         title="Báo cáo 86Q HUSC 2026",
         author="HUSC RAG Chatbot"
     )
-    doc.build(story)
+    doc.build(story, onFirstPage=_header_footer, onLaterPages=_header_footer)
     print(f"Wrote {output_path.name}: {output_path.stat().st_size} bytes (font={FONT})")
 
 

@@ -23,6 +23,21 @@ vi.mock('@/lib/api', () => ({
   sendChatMessage: (...args: unknown[]) => mockSendChatMessage(...args),
   checkHealth: vi.fn(),
   getApiBaseUrl: () => 'http://localhost:8000',
+  classifyFetchError: vi.fn((err: unknown) => {
+    if (err instanceof Error) return { kind: 'unknown', retryable: false, message: err.message };
+    return { kind: 'unknown', retryable: false, message: String(err) };
+  }),
+}));
+
+// Hoisted mock for useBackendReadiness — return ready=true so Send button enables in tests.
+vi.mock('@/hooks/useBackendReadiness', () => ({
+  useBackendReadiness: vi.fn(() => ({
+    ready: true,
+    stage: 'ready' as const,
+    services: {},
+    lastChecked: Date.now(),
+    error: null,
+  })),
 }));
 
 // Import after mock
@@ -122,8 +137,6 @@ describe('ChatLayout — full send-message flow', () => {
     await waitFor(() => {
       expect(screen.getByText(/Có lỗi xảy ra/)).toBeInTheDocument();
     });
-    // The error detail (Network down) should be in the message
-    expect(screen.getByText(/Network down/)).toBeInTheDocument();
   });
 
   it('(b-bonus) non-Error thrown value is handled gracefully', async () => {

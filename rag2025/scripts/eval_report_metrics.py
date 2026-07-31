@@ -29,7 +29,7 @@ import json
 import math
 import pathlib
 import sys
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 
 # ---------- Paths ----------
@@ -826,6 +826,11 @@ def _read_gt_by_id(path: pathlib.Path) -> Dict[str, Dict[str, Any]]:
     return {e["id"]: e for e in data if isinstance(e, dict) and "id" in e}
 
 
+def has_failed_gates(gates: Mapping[str, Any]) -> bool:
+    """Return whether any report gate has a failing verdict."""
+    return any(row.get("verdict") == "FAIL" for row in gates.values() if isinstance(row, Mapping))
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """CLI entrypoint — load JSON inputs, write JSON + Markdown report."""
     parser = argparse.ArgumentParser(
@@ -862,6 +867,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "Override output dir (default: "
             "rag2025/results/eval_harness/metrics_report/<run_id>/)."
         ),
+    )
+    parser.add_argument(
+        "--enforce-gates",
+        action="store_true",
+        help="Exit non-zero when one or more report gates fail.",
     )
     args = parser.parse_args(argv)
 

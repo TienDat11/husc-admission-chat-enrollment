@@ -1,13 +1,368 @@
-/**
- * API Service for RAG Backend
- *
- * Connects to FastAPI backend running on port 8000
- * Endpoints:
- * - POST /v2/query - Main RAG query endpoint (enriched contract; carries status_code / data_gap_hints / etc.)
- * - GET /health - Health check
- */
-
+// @spec(plan-warmup-ux-20260705-111031 §3.2)
+// api.ts — RAG API client + retry wrapper + error classification.
 import type { GraphStats, RouterInfo, SourceChip } from './api-types';
+
+// ─────────────────────────────────────────────────────────────────────────
+// QueryError — typed error surface for the FE resilience layer
+//
+// Plan §3.2 / §4. Mirrors the BE 503 contract: warming is retryable, 5xx
+// is not (per Risk 3 — don't mask server bugs). The FE renders a
+// Vietnamese message per kind (MessageBubble.tsx). Callers (e.g. retry
+// loop) read `retryable` + `retryAfterMs` to decide whether to back off.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type QueryErrorKind =
+  | 'network'
+  | 'warming'
+  | 'unauthorized'
+  | 'server'
+  | 'unknown';
+
+export interface QueryError {
+  kind: QueryErrorKind;
+  retryable: boolean;
+  retryAfterMs?: number;
+  message: string;
+}
+
+const DEFAULT_WARMING_RETRY_MS = 2000;
+const RETRY_BASE_MS = 1000;
+const RETRY_MAX_MS = 30_000;
+const MAX_ATTEMPTS = 2; // 1 initial + 1 retry (N3: bounded retry)
+
+/**
+ * Classify an unknown error (typically thrown by fetch or a wrapped
+ * `throw new Error('Stream unavailable: …')` from queryStream) into a
+ * QueryError the FE can branch on.
+ *
+ * Rules (plan §3.2):
+ *   - TypeError('Failed to fetch') / AbortError → network, retryable
+ *   - HTTP 503 with Retry-After → warming, retryable, retryAfterMs
+ *   - HTTP 401/403 → unauthorized, NOT retryable
+ *   - HTTP 5xx (not 503) → server, NOT retryable (Risk 3)
+ *   - other → unknown, NOT retryable
+ *
+ * The function inspects:
+ *   - err.name === 'AbortError' / DOMException with that name
+ *   - err.message for the TypeError('Failed to fetch') shape
+ *   - an optional `.status` field (assigned by api.ts before throwing)
+ *   - an optional `.headers` field (Response.headers from api.ts)
+ */
+export function classifyFetchError(err: unknown): QueryError {
+  // 1. AbortError — fetch was cancelled. Treated as network/retryable so
+  //    that the caller's own retry loop (e.g. queryStreamWithRetry) does
+  //    not try to retry; a user-initiated abort is a separate case and
+  //    should be handled by the caller before reaching classify.
+  if (err instanceof Error) {
+    if (err.name === 'AbortError') {
+      return {
+        kind: 'network',
+        retryable: true,
+        message: err.message || 'Request aborted',
+      };
+    }
+    // TypeError('Failed to fetch') — the canonical browser signal for
+    // network-level failures (offline, CORS, DNS, connection refused).
+    if (err.name === 'TypeError' && /Failed to fetch/i.test(err.message)) {
+      return {
+        kind: 'network',
+        retryable: true,
+        message: 'Không kết nối được máy chủ',
+      };
+    }
+  }
+  if (
+    typeof DOMException !== 'undefined' &&
+    err instanceof DOMException &&
+    err.name === 'AbortError'
+  ) {
+    return { kind: 'network', retryable: true, message: err.message || 'Request aborted' };
+  }
+
+  // 2. Tagged QueryError — pass through (re-throws preserve classification).
+  if (isQueryError(err)) {
+    return err;
+  }
+
+  // 3. Structured status — we tag fetch failures in sendChatMessage/queryStream
+  //    with `.status` (number) and `.headers` (Headers | Record) before
+  //    throwing, so the classifier can read them.
+  const status = (err as { status?: unknown } | null)?.status;
+  if (typeof status === 'number') {
+    const headers =
+      (err as { headers?: Headers | Record<string, string> | null }).headers ?? undefined;
+    if (status === 503) {
+      return {
+        kind: 'warming',
+        retryable: true,
+        retryAfterMs: parseRetryAfter(headers) ?? DEFAULT_WARMING_RETRY_MS,
+        message: 'Máy chủ đang khởi động',
+      };
+    }
+    if (status === 401 || status === 403) {
+      return { kind: 'unauthorized', retryable: false, message: `HTTP ${status}` };
+    }
+    if (status >= 500) {
+      return { kind: 'server', retryable: false, message: `HTTP ${status}` };
+    }
+  }
+
+  // 4. Fallback — opaque error, do not retry.
+  const message = err instanceof Error ? err.message : 'Unknown error';
+  return { kind: 'unknown', retryable: false, message };
+}
+
+function isQueryError(value: unknown): value is QueryError {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.kind === 'string' &&
+    typeof v.retryable === 'boolean' &&
+    typeof v.message === 'string'
+  );
+}
+
+function parseRetryAfter(headers?: Headers | Record<string, string>): number | undefined {
+  if (!headers) return undefined;
+  let raw: string | null = null;
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+    raw = headers.get('Retry-After');
+  } else if (typeof headers === 'object') {
+    const v = (headers as Record<string, string>)['Retry-After'];
+    raw = v ?? null;
+  }
+  if (!raw) return undefined;
+  const seconds = parseInt(raw, 10);
+  if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+  return undefined;
+}
+
+/**
+ * Sleep that aborts when the AbortSignal fires. Returns true if the sleep
+ * completed normally; false if it was aborted (caller should stop retrying).
+ */
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(true);
+    }, ms);
+    const onAbort = () => {
+      cleanup();
+      resolve(false);
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener?.('abort', onAbort);
+    };
+    signal?.addEventListener?.('abort', onAbort);
+  });
+}
+
+/**
+ * Inner core of queryStream: a single attempt that returns the assembled
+ * answer. Throws on transport error (caller may classify + retry).
+ */
+async function queryStreamOnce(
+  query: string,
+  handlers: StreamHandlers,
+  history: ChatTurn[] | undefined,
+  signal: AbortSignal | undefined,
+): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/v2/query/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify({
+      query,
+      ...(history && history.length > 0 ? { history } : {}),
+    }),
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    // Tag the error with .status + .headers so classifyFetchError can
+    // recover the HTTP surface (503 warming vs 5xx server vs 401).
+    const tagged = new Error(
+      `Stream unavailable: ${response.status} ${response.statusText}`,
+    ) as Error & { status: number; headers: Headers };
+    tagged.status = response.status;
+    tagged.headers = response.headers;
+    throw tagged;
+  }
+  const reader = response.body.getReader();
+  let fullAnswer = '';
+  for await (const frame of parseSseStream(reader)) {
+    if (frame.event === 'meta') {
+      try {
+        const meta = JSON.parse(frame.data) as StreamMeta;
+        handlers.onMeta?.(meta);
+      } catch (e) {
+        // malformed meta JSON — ignore, continue streaming
+      }
+    } else if (frame.event === 'stage') {
+      try {
+        const firstLine = frame.data.split('\n')[0];
+        const payload = JSON.parse(firstLine) as { stage?: string };
+        if (typeof payload.stage === 'string' && payload.stage.length > 0) {
+          handlers.onStage?.(payload.stage);
+        }
+      } catch (e) {
+        // malformed stage JSON — ignore, continue streaming
+      }
+    } else if (frame.event === 'delta') {
+      try {
+        const firstLine = frame.data.split('\n')[0];
+        const payload = JSON.parse(firstLine) as { text?: string };
+        const text = payload.text ?? '';
+        fullAnswer += text;
+        handlers.onDelta?.(text);
+      } catch (e) {
+        // malformed delta JSON — skip this chunk
+      }
+    } else if (frame.event === 'done') {
+      try {
+        const firstLine = frame.data.split('\n')[0];
+        const payload = JSON.parse(firstLine) as { answer?: string };
+        if (typeof payload.answer === 'string') fullAnswer = payload.answer;
+      } catch (e) {
+        // malformed done JSON — fall back to the concatenated deltas
+      }
+      handlers.onDone?.(fullAnswer);
+      return fullAnswer;
+    }
+  }
+  // Stream ended without a `done` frame — still surface what we have.
+  handlers.onDone?.(fullAnswer);
+  return fullAnswer;
+}
+
+/**
+ * Bounded retry wrapper for `queryStream` (plan §3.2 G4).
+ *  - max 2 attempts (1 initial + 1 retry)
+ *  - exponential backoff: 1000ms → 2000ms (cap 30s)
+ *  - retry only on `network` and `warming` (per Risk 3)
+ *  - on retryable=false OR final attempt: throw classified QueryError
+ *  - on abort: stop immediately, do not retry
+ */
+export async function queryStream(
+  query: string,
+  handlers: StreamHandlers,
+  history?: ChatTurn[],
+  signal?: AbortSignal,
+): Promise<string> {
+  let attempt = 0;
+  let backoffMs = RETRY_BASE_MS;
+  let lastError: unknown = null;
+  while (attempt < MAX_ATTEMPTS) {
+    if (signal?.aborted) {
+      throw classifyFetchError(new DOMException('aborted', 'AbortError'));
+    }
+    try {
+      return await queryStreamOnce(query, handlers, history, signal);
+    } catch (err) {
+      lastError = err;
+      const classified = classifyFetchError(err);
+      if (!classified.retryable) {
+        throw classified;
+      }
+      if (attempt + 1 >= MAX_ATTEMPTS) {
+        // Bounded retry exhausted. Surface a final, non-retryable copy so
+        // callers (e.g. useChatStream) read a stable shape.
+        throw {
+          ...classified,
+          retryable: false,
+          message: `${classified.message} (đã thử lại ${attempt} lần)`,
+        } satisfies QueryError;
+      }
+      // Use Retry-After from BE if present (warming), else our schedule.
+      const sleepMs = classified.retryAfterMs ?? backoffMs;
+      const slept = await abortableSleep(sleepMs, signal);
+      if (!slept) {
+        // Aborted during backoff — surface network/aborted.
+        throw classifyFetchError(new DOMException('aborted', 'AbortError'));
+      }
+      backoffMs = Math.min(backoffMs * 2, RETRY_MAX_MS);
+      attempt += 1;
+    }
+  }
+  // Unreachable — the loop always returns or throws — but TS requires it.
+  throw classifyFetchError(lastError);
+}
+
+/**
+ * Bounded retry wrapper for `sendChatMessage` (plan §3.2 G4). Returns the
+ * `QueryResponse` on success or throws a classified `QueryError` on the
+ * final failure.
+ */
+export async function sendChatMessageWithRetry(
+  query: string,
+  history?: ChatTurn[],
+  signal?: AbortSignal,
+): Promise<QueryResponse> {
+  let attempt = 0;
+  let backoffMs = RETRY_BASE_MS;
+  let lastError: unknown = null;
+  while (attempt < MAX_ATTEMPTS) {
+    if (signal?.aborted) {
+      throw classifyFetchError(new DOMException('aborted', 'AbortError'));
+    }
+    try {
+      return await sendChatMessageOnce(query, history, signal);
+    } catch (err) {
+      lastError = err;
+      const classified = classifyFetchError(err);
+      if (!classified.retryable) {
+        throw classified;
+      }
+      if (attempt + 1 >= MAX_ATTEMPTS) {
+        throw {
+          ...classified,
+          retryable: false,
+          message: `${classified.message} (đã thử lại ${attempt} lần)`,
+        } satisfies QueryError;
+      }
+      const sleepMs = classified.retryAfterMs ?? backoffMs;
+      const slept = await abortableSleep(sleepMs, signal);
+      if (!slept) {
+        throw classifyFetchError(new DOMException('aborted', 'AbortError'));
+      }
+      backoffMs = Math.min(backoffMs * 2, RETRY_MAX_MS);
+      attempt += 1;
+    }
+  }
+  throw classifyFetchError(lastError);
+}
+
+async function sendChatMessageOnce(
+  query: string,
+  history: ChatTurn[] | undefined,
+  signal: AbortSignal | undefined,
+): Promise<QueryResponse> {
+  const response = await fetch(`${API_BASE_URL}/v2/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query,
+      ...(history && history.length > 0 ? { history } : {}),
+    }),
+    signal,
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const message = errorData.detail || `API error: ${response.status} ${response.statusText}`;
+    const tagged = new Error(message) as Error & {
+      status: number;
+      headers: Headers;
+    };
+    tagged.status = response.status;
+    tagged.headers = response.headers;
+    throw tagged;
+  }
+  return (await response.json()) as QueryResponse;
+}
 
 /**
  * Base URL for the RAG backend API.
@@ -87,38 +442,19 @@ export interface HealthResponse {
 }
 
 /**
- * Send a chat message to the RAG backend
- *
- * Targets POST /v2/query (enriched UnifiedQueryResponse contract).
- * The /v2 payload is `{query, top_k?, force_route?}` — `force_rag_only` is
- * NOT used on /v2; we send only `{query}` and let the BE route by its own rules.
+ * /health readiness probe — thin wrapper used by useBackendReadiness.
+ * The hook itself does its own fetch so this stays free of retry policy.
  */
-export async function sendChatMessage(query: string, history?: ChatTurn[]): Promise<QueryResponse> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/v2/query`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-        ...(history && history.length > 0 ? { history } : {}),
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.detail || `API error: ${response.status} ${response.statusText}`
-      );
-    }
-
-    const data: QueryResponse = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Failed to send chat message:', error);
-    throw error;
+export async function getReadiness(): Promise<HealthResponse & {
+  ready?: boolean;
+  stage?: string;
+  services?: Record<string, boolean>;
+}> {
+  const response = await fetch(`${API_BASE_URL}/health`);
+  if (!response.ok) {
+    throw new Error(`Health check failed: ${response.status} ${response.statusText}`);
   }
+  return response.json();
 }
 
 /**
@@ -257,79 +593,38 @@ async function* parseSseStream(
   }
 }
 /**
- * Fire a /v2/query/stream request and pipe the SSE frames to the
- * supplied handlers. The promise resolves once the `done` frame is
- * received (with the full answer) or rejects on transport / parse error.
- *
- * Callers should fall back to `sendChatMessage()` on rejection.
+ * Bounded retry wrapper for `sendChatMessage` (plan §3.2 G4). Returns the
+ * `QueryResponse` on success or throws a classified `QueryError` on the
+ * final failure. The legacy `sendChatMessage` below is preserved as a
+ * thin alias so existing callers / tests keep working — the retry loop is
+ * now the canonical entry point.
  */
-export async function queryStream(
-  query: string,
-  handlers: StreamHandlers,
-  history?: ChatTurn[],
-): Promise<string> {
-  const response = await fetch(`${API_BASE_URL}/v2/query/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify({
-      query,
-      ...(history && history.length > 0 ? { history } : {}),
-    }),
-  });
-  if (!response.ok || !response.body) {
-    throw new Error(
-      `Stream unavailable: ${response.status} ${response.statusText}`,
-    );
+export async function sendChatMessage(query: string, history?: ChatTurn[]): Promise<QueryResponse> {
+  try {
+    return await sendChatMessageWithRetry(query, history);
+  } catch (error) {
+    // Legacy callers do not yet consume QueryError. Log for now and
+    // re-throw so the caller's existing error path (useChatStream) gets
+    // the typed error and can surface `err.kind` to MessageBubble.
+    console.error('Failed to send chat message:', error);
+    throw error;
   }
-  const reader = response.body.getReader();
-  let fullAnswer = '';
-  for await (const frame of parseSseStream(reader)) {
-    if (frame.event === 'meta') {
-      try {
-        const meta = JSON.parse(frame.data) as StreamMeta;
-        handlers.onMeta?.(meta);
-      } catch (e) {
-        // malformed meta JSON — ignore, continue streaming
-      }
-    } else if (frame.event === 'stage') {
-      // PART 1 LATENCY: pass through the BE's early progress label.
-      try {
-        const firstLine = frame.data.split('\n')[0];
-        const payload = JSON.parse(firstLine) as { stage?: string };
-        if (typeof payload.stage === 'string' && payload.stage.length > 0) {
-          handlers.onStage?.(payload.stage);
-        }
-      } catch (e) {
-        // malformed stage JSON — ignore, continue streaming
-      }
-    } else if (frame.event === 'delta') {
-      try {
-        // SSE allows multi-line `data:` fields concatenated with `\n`.
-        // The BE only ever sends a single line, so we take the first.
-        const firstLine = frame.data.split('\n')[0];
-        const payload = JSON.parse(firstLine) as { text?: string };
-        const text = payload.text ?? '';
-        fullAnswer += text;
-        handlers.onDelta?.(text);
-      } catch (e) {
-        // malformed delta JSON — skip this chunk
-      }
-    } else if (frame.event === 'done') {
-      try {
-        const firstLine = frame.data.split('\n')[0];
-        const payload = JSON.parse(firstLine) as { answer?: string };
-        if (typeof payload.answer === 'string') fullAnswer = payload.answer;
-      } catch (e) {
-        // malformed done JSON — fall back to the concatenated deltas
-      }
-      handlers.onDone?.(fullAnswer);
-      return fullAnswer;
-    }
-  }
-  // Stream ended without a `done` frame — still surface what we have.
-  handlers.onDone?.(fullAnswer);
-  return fullAnswer;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// /v2/query/stream — SLICE-B.LATENCY fake-stream SSE
+//
+// The backend runs the FULL /v2 pipeline (router → booster → graph →
+// LLMGenerator with all post-guards) and emits the post-guard answer as
+// a text/event-stream. The first frame is `event: meta` (route + sources
+// + status), then one or more `event: delta` frames carrying chunks of
+// the answer text, then a final `event: done` carrying the full answer
+// (so the caller can reconcile). The concatenation of all `delta.text`
+// fields equals the `done.answer` value — guaranteed by the BE tests.
+//
+// The FE uses this to render a "typing" UX. If parsing/streaming fails
+// for any reason, callers fall back to `sendChatMessage()` (non-stream).
+// ─────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────
 // /v2/recommend + /v2/whatif — deterministic, pure-arithmetic, single-digit ms.

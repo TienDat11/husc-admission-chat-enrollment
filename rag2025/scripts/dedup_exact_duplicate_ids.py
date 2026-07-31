@@ -42,13 +42,29 @@ class _TableLike(Protocol):
     def to_pandas(self): ...
 
 
+_PROVENANCE_META_KEYS = frozenset({"ingest_file"})
+
+
 def _fingerprint(row: Dict[str, Any]) -> str:
     """Identity of a row for dup-detection: text + metadata_json only.
 
     Vector/source/faq_type are derived/embedding artifacts; two rows with the
     same text+metadata are the same chunk for retrieval purposes.
+
+    metadata_json is compared as a normalized dict (sorted keys, provenance-only
+    keys dropped) rather than a raw string. Otherwise two byte-identical chunks
+    read as "divergent" merely because one predates `ingest_file`, and dedup
+    refuses them forever. Unparseable metadata falls back to raw comparison.
     """
-    return f"{row.get('text','')}\x00{row.get('metadata_json','')}"
+    raw = row.get("metadata_json", "")
+    try:
+        meta = json.loads(raw) if raw else {}
+    except (json.JSONDecodeError, TypeError):
+        meta = None
+    if isinstance(meta, dict):
+        stripped = {k: v for k, v in meta.items() if k not in _PROVENANCE_META_KEYS}
+        raw = json.dumps(stripped, sort_keys=True, ensure_ascii=False, default=str)
+    return f"{row.get('text','')}\x00{raw}"
 
 
 def dedup_exact_duplicates(table: _TableLike) -> Dict[str, Dict[str, Any]]:

@@ -89,10 +89,11 @@ def test_primary_success_skips_fallback():
 # ---------------------------------------------------------------------------
 # 2. Primary RAISES → fallback LLM is used and its entities win.
 # ---------------------------------------------------------------------------
-def test_primary_raises_uses_fallback_llm():
+def test_primary_raises_uses_fallback_llm(tmp_path, monkeypatch):
     primary = FakeLLM(raises=RuntimeError("gateway 503"))
     fallback = FakeLLM(returns=_good_payload())
-    ner = NERService(llm=primary, fallback_llm=fallback)
+    # Use a per-test cache path so test order doesn't matter
+    ner = NERService(llm=primary, fallback_llm=fallback, cache_path=tmp_path / "ner_cache.jsonl")
 
     result = _run(ner.extract(_chunk()))
 
@@ -103,10 +104,10 @@ def test_primary_raises_uses_fallback_llm():
 # ---------------------------------------------------------------------------
 # 3. Primary returns EMPTY entities → fallback LLM is tried.
 # ---------------------------------------------------------------------------
-def test_primary_empty_uses_fallback_llm():
+def test_primary_empty_uses_fallback_llm(tmp_path, monkeypatch):
     primary = FakeLLM(returns={"entities": [], "triples": []})
     fallback = FakeLLM(returns=_good_payload())
-    ner = NERService(llm=primary, fallback_llm=fallback)
+    ner = NERService(llm=primary, fallback_llm=fallback, cache_path=tmp_path / "ner_cache.jsonl")
 
     result = _run(ner.extract(_chunk()))
 

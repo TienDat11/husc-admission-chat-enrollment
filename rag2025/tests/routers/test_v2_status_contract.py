@@ -80,6 +80,8 @@ def _make_fake_guardrail(*, is_in_scope: bool, internal_code: str,
     svc.classify_no_result = AsyncMock(return_value=decision)
     svc.public_status = MagicMock(side_effect=lambda code: "SUCCESS" if code == "SUCCESS" else code)
     svc.expose_internal = MagicMock(return_value=True)
+    svc._pii_warning_answer = MagicMock(return_value="Vui lòng ẩn thông tin cá nhân trước khi gửi.")
+    svc._contains_sensitive_pii = MagicMock(return_value=False)
     return svc
 
 
@@ -157,6 +159,7 @@ def env(monkeypatch):
             complexity=1,
             reasoning="ok",
             hyde_variants=[],
+            is_in_scope=True,
         ),
         ppr_scores={},
         latency_ms=12.5,
@@ -181,8 +184,8 @@ def test_v2_out_of_scope_query_returns_non_success_status(env):
     """@spec(G2) — Out-of-scope query must short-circuit on guardrail and
     return a non-SUCCESS status_code with populated data_gap_hints.
 
-    RED today: the /v2 handler does not call guardrail_service.precheck, so
-    the field is the default SUCCESS and data_gap_hints is empty.
+    L3.1 (merged router): the OOS short-circuit now happens AFTER the
+    router returns is_in_scope=False, NOT via a separate guardrail precheck.
     """
     env.guardrail = _make_fake_guardrail(
         is_in_scope=False,
@@ -192,6 +195,21 @@ def test_v2_out_of_scope_query_returns_non_success_status(env):
     )
     env.pipeline, env.retriever = _make_fake_pipeline_and_retriever(env.rag_result)
     env.generator = _make_fake_generator()
+
+    # L3.1: force the merged router to return is_in_scope=False so the
+    # OOS short-circuit fires after the router LLM call.
+    env.pipeline._router.route = AsyncMock(
+        return_value=SimpleNamespace(
+            skip_retrieval=False,
+            auto_answer=None,
+            step_back_query="step",
+            intent="general",
+            complexity=1,
+            reasoning="trường khác — ngoài HUSC",
+            hyde_variants=[],
+            is_in_scope=False,
+        )
+    )
 
     main_module = env.main_module
     app = _build_app_with_handler(
@@ -212,8 +230,41 @@ def test_v2_out_of_scope_query_returns_non_success_status(env):
     assert body["status_code"] == "NOT_IN_HUSC_SCOPE"
     assert isinstance(body["data_gap_hints"], list)
     assert len(body["data_gap_hints"]) >= 1
-    assert body["status_reason"] == "out_of_scope_fake"
+    assert body["status_reason"] == "trường khác — ngoài HUSC"
     # The pipeline was NOT called for the OOS path.
+    env.pipeline.query.assert_not_awaited()
+
+
+def test_v2_pii_detection_propagates_to_response(env):
+    """@spec(G2) — PII detection must short-circuit BEFORE the router
+    (so PII never reaches the LLM), returning a SENSITIVE_PII_DETECTED
+    status with the PII warning answer."""
+    env.guardrail = MagicMock()
+    env.guardrail._contains_sensitive_pii = MagicMock(return_value=True)
+    env.guardrail._pii_warning_answer = MagicMock(return_value="Vui lòng ẩn thông tin cá nhân.")
+    env.guardrail.expose_internal = MagicMock(return_value=False)
+    env.pipeline, env.retriever = _make_fake_pipeline_and_retriever(env.rag_result)
+    env.generator = _make_fake_generator()
+
+    main_module = env.main_module
+    app = _build_app_with_handler(
+        main_module,
+        guardrail=env.guardrail,
+        pipeline=env.pipeline,
+        retriever=env.retriever,
+        embedding=env.embedding,
+        generator=env.generator,
+    )
+
+    client = TestClient(app)
+    res = client.post("/v2/query", json={"query": "tôi có số CCCD 012345678901, xin tư vấn", "top_k": 5})
+
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["status_code"] == "SENSITIVE_PII_DETECTED"
+    assert body["pii_detected"] is True
+    assert body["route"] == "guardrail"
+    # Pipeline must NOT have been called for PII short-circuit.
     env.pipeline.query.assert_not_awaited()
 
 
@@ -331,13 +382,10 @@ def test_v2_pii_detection_propagates_to_response(env):
     """@spec(G2) — pii_detected=True on the precheck must propagate to the
     /v2 response (FE may mask/redact accordingly).
     """
-    env.guardrail = _make_fake_guardrail(
-        is_in_scope=False,
-        internal_code="SENSITIVE_PII_DETECTED",
-        reason="pii_fake",
-        hints=["Ẩn bớt thông tin định danh trước khi gửi câu hỏi"],
-        pii=True,
-    )
+    env.guardrail = MagicMock()
+    env.guardrail._contains_sensitive_pii = MagicMock(return_value=True)
+    env.guardrail._pii_warning_answer = MagicMock(return_value="Vui lòng ẩn thông tin cá nhân.")
+    env.guardrail.expose_internal = MagicMock(return_value=False)
     env.pipeline, env.retriever = _make_fake_pipeline_and_retriever(env.rag_result)
     env.generator = _make_fake_generator()
 

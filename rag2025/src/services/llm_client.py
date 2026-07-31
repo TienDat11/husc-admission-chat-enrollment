@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 import httpx
 from loguru import logger
@@ -71,11 +72,102 @@ def _is_retryable_llm_error(exc: BaseException) -> bool:
     return False
 
 
+# ── G2: DeepSeek think-tag sanitization ──
+# Strip <think>...</think> reasoning blocks from model output.
+# deepseek-v4-flash may wrap reasoning in think tags AND/OR use the
+# reasoning_content SSE field.  Pure function + hook in LLMResponse covers all
+# paths (stream, non-stream, JSON mode).  Idempotent — safe to call twice.
+
+_THINK_PAIR_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_LONE_OPEN_RE = re.compile(r"<think>", re.IGNORECASE)
+_LONE_CLOSE_RE = re.compile(r"</think>", re.IGNORECASE)
+
+
+class _StreamThinkSanitizer:
+    """Stateful streaming sanitizer for DeepSeek think tags.
+
+    Tags can split across chunks.  Buffers across chunk boundaries to suppress
+    everything between <think> and </think> (case-insensitive) while flushing
+    safe visible text incrementally.  Handles unmatched opening tag at stream
+    end via flush().
+
+    ponytail: If ramclouds adds native think-tag filtering at the SSE level,
+    remove this class and the hook in _call_provider_stream.
+    """
+
+    _OPEN = re.compile(r"<think>", re.IGNORECASE)
+    _CLOSE = re.compile(r"</think>", re.IGNORECASE)
+
+    def __init__(self) -> None:
+        self._buf = ""
+        self._in_think = False
+
+    def process(self, chunk: str) -> str:
+        """Feed a chunk; return safe visible text to emit (may be empty)."""
+        self._buf += chunk
+        out: list[str] = []
+        while True:
+            if self._in_think:
+                m = self._CLOSE.search(self._buf)
+                if m is None:
+                    break
+                self._buf = self._buf[m.end() :]
+                self._in_think = False
+                continue
+            m = self._OPEN.search(self._buf)
+            if m is None:
+                out.append(self._buf)
+                self._buf = ""
+                break
+            out.append(self._buf[: m.start()])
+            self._buf = self._buf[m.start() :]
+            cm = self._CLOSE.search(self._buf)
+            if cm is not None:
+                self._buf = self._buf[cm.end() :]
+                continue
+            self._in_think = True
+            self._buf = self._buf[m.end() :]
+            break
+        return "".join(out)
+
+    def flush(self) -> str:
+        """Finalize: return any remaining safe text; suppress open think."""
+        if not self._buf:
+            return ""
+        remaining = self._buf
+        self._buf = ""
+        if self._in_think:
+            return ""
+        return strip_reasoning(remaining)
+
+
+def strip_reasoning(text: str) -> str:
+    """Strip DeepSeek think-tag reasoning blocks from model output.
+
+    Handles:
+    - Matched <think>...</think> blocks (content between is removed)
+    - Unmatched opening <think (stream-fragment safe)
+    - Unmatched closing </think>
+    - Multiple tags in one string
+
+    Normal non-think text, empty string, JSON bodies: all survive unchanged.
+    Idempotent — applying twice yields the same result as once.
+
+    ponytail: Provider-level stripping.  If ramclouds adds native think-tag
+    filtering, remove this function and the hook in LLMResponse.__init__.
+    """
+    text = _THINK_PAIR_RE.sub("", text)
+    text = _LONE_OPEN_RE.sub("", text)
+    text = _LONE_CLOSE_RE.sub("", text)
+    return text
+
+
 class LLMResponse:
     """Typed wrapper for LLM chat completion response."""
 
     def __init__(self, content: str, model: str, provider: str) -> None:
-        self.content = content
+        # G2: strip DeepSeek think tags — single chokepoint for all paths
+        self.content = strip_reasoning(content)
         self.model = model
         self.provider = provider
 
@@ -120,10 +212,10 @@ def _build_providers() -> List[ProviderConfig]:
     """
     providers: List[ProviderConfig] = []
 
-    # Primary: ramclouds.me (configurable model — highest quality for NER/GraphRAG)
+    # Primary: AI Box (configurable model — highest quality for NER/GraphRAG)
     ramclouds_key = os.getenv("RAMCLOUDS_API_KEY")
-    ramclouds_url = os.getenv("RAMCLOUDS_BASE_URL", "https://ramclouds.me/v1")
-    ramclouds_model = os.getenv("RAMCLOUDS_MODEL", "gemini-2.5-flash")
+    ramclouds_url = os.getenv("RAMCLOUDS_BASE_URL", "https://api.ai-box.vn/v1")
+    ramclouds_model = os.getenv("RAMCLOUDS_MODEL", "deepseek-v4-flash")
     if ramclouds_key:
         providers.append(ProviderConfig(
             name="ramclouds",
@@ -140,7 +232,7 @@ def _build_providers() -> List[ProviderConfig]:
             name="groq",
             api_key=groq_key,
             base_url="https://api.groq.com/openai/v1",
-            model="llama-3.1-8b-instant",
+            model=os.getenv("GROQ_NER_MODEL", "llama-3.1-8b-instant"),
             priority=1,
         ))
 
@@ -173,8 +265,8 @@ class UnifiedLLMClient:
         data = await client.chat_json("Extract JSON from: ...", system="...")
     """
 
-    def __init__(self, force_model: Optional[str] = None) -> None:
-        self._providers = _build_providers()
+    def __init__(self, force_model: Optional[str] = None, providers: Optional[List[ProviderConfig]] = None) -> None:
+        self._providers = providers if providers is not None else _build_providers()
         self._force_model = force_model
 
         # @spec(S10.B5) — persistent HTTP connection pool
@@ -265,7 +357,9 @@ class UnifiedLLMClient:
         json_mode: bool,
     ) -> LLMResponse:
         client = self._get_client(provider)
-        model = self._force_model or provider.model
+        # force_model is provider-scoped to ramclouds so a DeepSeek force_model
+        # never bleeds into Groq (which would 404 on a non-Groq model name).
+        model = self._force_model if provider.name == "ramclouds" and self._force_model else provider.model
 
         kwargs: Dict[str, Any] = {
             "model": model,
@@ -309,6 +403,72 @@ class UnifiedLLMClient:
         content = response.choices[0].message.content or ""
         return LLMResponse(content=content, model=model, provider=provider.name)
 
+    async def _call_provider_stream(
+        self,
+        provider: ProviderConfig,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+    ) -> AsyncIterator[str]:
+        """Core streaming call — always uses stream=True, yields token pieces.
+
+        Does NOT apply retry; retry is handled by chat_stream's per-provider
+        fallback loop. Each piece is a raw delta content string.
+        """
+        client = self._get_client(provider)
+        # force_model is provider-scoped to ramclouds (see _call_provider).
+        model = self._force_model if provider.name == "ramclouds" and self._force_model else provider.model
+
+        kwargs: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+
+        sanitizer = _StreamThinkSanitizer()
+        stream = await client.chat.completions.create(**kwargs)
+        async for ev in stream:
+            if not ev.choices:
+                continue
+            choice = ev.choices[0]
+            delta = getattr(choice, "delta", None)
+            piece = getattr(delta, "content", None) if delta else None
+            if piece:
+                cleaned = sanitizer.process(piece)
+                if cleaned:
+                    yield cleaned
+        remaining = sanitizer.flush()
+        if remaining:
+            yield remaining
+
+    @retry(
+        stop=stop_after_attempt(CHAT_MAX_ATTEMPTS),
+        wait=wait_exponential(min=1, max=8),
+        retry=retry_if_exception(_is_retryable_llm_error),
+        reraise=True,
+    )
+    async def _call_provider_stream_retry(
+        self,
+        provider: ProviderConfig,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+    ) -> List[str]:
+        """Streaming call with retry — accumulates and returns token pieces.
+
+        Same retry budget as _call_provider_chat (CHAT_MAX_ATTEMPTS=4).
+        Returns the list of token strings so the caller can replay them
+        after a provider fallback switch without losing earlier tokens.
+        """
+        pieces: List[str] = []
+        async for piece in self._call_provider_stream(
+            provider, messages, temperature, max_tokens
+        ):
+            pieces.append(piece)
+        return pieces
+
     async def chat(
         self,
         user_message: str,
@@ -346,6 +506,40 @@ class UnifiedLLMClient:
                 logger.warning(f"LLM [{provider.name}] failed: {exc}")
 
         raise RuntimeError("All LLM providers failed")
+
+    async def chat_stream(
+        self,
+        user_message: str,
+        system_message: Optional[str] = None,
+        temperature: float = 0.1,
+        max_tokens: int = 1024,
+    ) -> AsyncIterator[str]:
+        """Streaming chat completion — yields token pieces as they arrive.
+
+        Provider-priority fallback chain same as chat(). Each provider gets
+        CHAT_MAX_ATTEMPTS (4) retries with exp backoff via _call_provider_chat
+        (which internally uses stream=True). Yields raw delta content strings.
+        The caller accumulates if a full string is needed.
+
+        Raises RuntimeError if ALL providers fail.
+        """
+        messages: List[Dict[str, str]] = []
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        messages.append({"role": "user", "content": user_message})
+
+        for provider in self._providers:
+            try:
+                pieces = await self._call_provider_stream_retry(
+                    provider, messages, temperature, max_tokens
+                )
+                for piece in pieces:
+                    yield piece
+                return  # success — exit
+            except Exception as exc:
+                logger.warning(f"LLM stream [{provider.name}] failed: {exc}")
+
+        raise RuntimeError("All LLM providers failed for streaming")
 
     async def chat_json(
         self,
@@ -397,6 +591,67 @@ class UnifiedLLMClient:
                 logger.warning(f"LLM JSON [{provider.name}] json_mode=False fallback failed: {exc}")
 
         raise RuntimeError("All LLM providers failed for JSON mode")
+
+
+# --- Router-only provider chain (fast path) ---
+# Groq llama-3.3-70b for router classify/step-back (~315ms vs ~3.3s on ramclouds).
+# Falls back to normal _build_providers() if GROQ_API_KEY is missing.
+
+
+def _build_router_providers() -> List[ProviderConfig]:
+    """Build router-specific provider list: groq primary, ramclouds fallback.
+
+    Only used by SmartQueryRouter via get_router_llm_client(). Generation,
+    HYDE, and NER clients continue to use _build_providers() / get_llm_client().
+    """
+    groq_key = os.getenv("GROQ_API_KEY")
+    if not groq_key:
+        # No groq key → fall back to normal provider chain (nothing breaks)
+        return _build_providers()
+
+    providers: List[ProviderConfig] = []
+
+    # Priority 0: Groq llama-3.3-70b (fast, JSON-capable)
+    groq_model = os.getenv("GROQ_ROUTER_MODEL", "llama-3.3-70b-versatile")
+    providers.append(ProviderConfig(
+        name="groq",
+        api_key=groq_key,
+        base_url="https://api.groq.com/openai/v1",
+        model=groq_model,
+        priority=0,
+    ))
+
+    # Priority 1: ramclouds fallback (existing primary)
+    ramclouds_key = os.getenv("RAMCLOUDS_API_KEY")
+    if ramclouds_key:
+        ramclouds_url = os.getenv("RAMCLOUDS_BASE_URL", "https://ramclouds.me/v1")
+        ramclouds_model = os.getenv("RAMCLOUDS_MODEL", "gemini-2.5-flash")
+        providers.append(ProviderConfig(
+            name="ramclouds",
+            api_key=ramclouds_key,
+            base_url=ramclouds_url,
+            model=ramclouds_model,
+            priority=1,
+        ))
+
+    providers.sort(key=lambda p: p.priority)
+    return providers
+
+
+# Singleton for router-only LLM client
+_router_client: Optional[UnifiedLLMClient] = None
+
+
+def get_router_llm_client() -> UnifiedLLMClient:
+    """Get or create the singleton router-only UnifiedLLMClient.
+
+    Provider order: groq (llama-3.3-70b) → ramclouds fallback.
+    Falls back to normal providers if GROQ_API_KEY is missing.
+    """
+    global _router_client
+    if _router_client is None:
+        _router_client = UnifiedLLMClient(providers=_build_router_providers())
+    return _router_client
 
 
 # Singleton for module-level import

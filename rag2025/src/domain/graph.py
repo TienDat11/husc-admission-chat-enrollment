@@ -20,6 +20,7 @@ Infrastructure: NetworkX injected. No Qdrant/LLM here (pure domain logic).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -131,7 +132,7 @@ class KnowledgeGraph:
 
     # ── PPR ─────────────────────────────────────────────────────────────────
 
-    def personalized_pagerank(
+    async def personalized_pagerank(
         self,
         seed_entities: List[str],
         alpha: float = 0.85,
@@ -165,24 +166,34 @@ class KnowledgeGraph:
         if cached is not None:
             return dict(cached)
 
-        personalization = {node: 1.0 / len(valid_seeds) for node in valid_seeds}
-        view = self._pagerank_view()
+        # Single-flight: use an asyncio.Lock so only one task recomputes PPR
+        # at a time.  Other callers with the same cache_key will wait and
+        # then read the cached result.
+        self._ppr_lock = getattr(self, "_ppr_lock", asyncio.Lock())
+        async with self._ppr_lock:
+            # Double-check: recheck cache after acquiring lock.
+            cached = self._ppr_cache.get(cache_key)
+            if cached is not None:
+                return dict(cached)
 
-        try:
-            scores = nx.pagerank(
-                view,
-                alpha=alpha,
-                personalization=personalization,
-                max_iter=max_iter,
-                weight="weight",
-            )
-            self._ppr_cache[cache_key] = scores
-            return dict(scores)
-        except nx.PowerIterationFailedConvergence:
-            logger.warning("PPR did not converge – falling back to empty scores")
-            return {}
+            personalization = {node: 1.0 / len(valid_seeds) for node in valid_seeds}
+            view = self._pagerank_view()
 
-    def ppr_scores_by_chunk(
+            try:
+                scores = nx.pagerank(
+                    view,
+                    alpha=alpha,
+                    personalization=personalization,
+                    max_iter=max_iter,
+                    weight="weight",
+                )
+                self._ppr_cache[cache_key] = scores
+                return dict(scores)
+            except nx.PowerIterationFailedConvergence:
+                logger.warning("PPR did not converge – falling back to empty scores")
+                return {}
+
+    async def ppr_scores_by_chunk(
         self,
         seed_entities: List[str],
         alpha: float = 0.85,
@@ -199,7 +210,7 @@ class KnowledgeGraph:
         Returns:
             Dict[chunk_id → normalized aggregated PPR score].
         """
-        node_scores = self.personalized_pagerank(seed_entities, alpha=alpha)
+        node_scores = await self.personalized_pagerank(seed_entities, alpha=alpha)
         if not node_scores:
             return {}
 

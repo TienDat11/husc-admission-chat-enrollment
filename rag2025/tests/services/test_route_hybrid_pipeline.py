@@ -68,7 +68,7 @@ class _FakeGraph:
     def __init__(self, ppr_map: Optional[Dict[str, float]] = None) -> None:
         self._ppr_map = dict(ppr_map or {})
 
-    def ppr_scores_by_chunk(self, seeds, alpha: float = 0.85):
+    async def ppr_scores_by_chunk(self, seeds, alpha: float = 0.85):
         return dict(self._ppr_map)
 
     def stats(self):

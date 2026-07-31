@@ -18,6 +18,8 @@ if str(ROOT) not in sys.path:
 from src.domain.entities import Entity, EntityType, RelationType, Triple
 from src.domain.graph import KnowledgeGraph, KnowledgeGraphBuilder
 
+pytestmark = pytest.mark.asyncio
+
 
 def _build_small_graph() -> KnowledgeGraph:
     builder = KnowledgeGraphBuilder()
@@ -53,12 +55,12 @@ def test_pagerank_view_returns_same_object_on_repeat_call():
     assert view1 is view2, "view cache miss: second call should return cached object"
 
 
-def test_pagerank_view_invalidated_after_clear_caches():
+async def test_pagerank_view_invalidated_after_clear_caches():
     """clear_caches() must drop both _ppr_cache and _view_cache."""
     kg = _build_small_graph()
 
     # Prime caches
-    kg.personalized_pagerank(["NGANH:cntt"], alpha=0.85)
+    await kg.personalized_pagerank(["NGANH:cntt"], alpha=0.85)
     cached_view = kg._pagerank_view()
     assert kg._view_cache is not None
     assert len(kg._ppr_cache) == 1
@@ -90,13 +92,13 @@ def test_pagerank_view_invalidated_after_add_node():
     assert view2.number_of_nodes() == 4, "fresh view must reflect the new node"
 
 
-def test_pagerank_view_invalidated_after_add_edge():
+async def test_pagerank_view_invalidated_after_add_edge():
     """In-place edge mutation invalidates the view, and the fresh view picks up
     the new edge weight (proves the cache is not stale-serving)."""
     kg = _build_small_graph()
     view1 = kg._pagerank_view()
     # Seed the PPR cache so we can also prove it gets cleared.
-    kg.personalized_pagerank(["NGANH:cntt"], alpha=0.85)
+    await kg.personalized_pagerank(["NGANH:cntt"], alpha=0.85)
 
     # In-place edge addition
     kg._graph.add_edge(
@@ -117,7 +119,7 @@ def test_pagerank_view_invalidated_after_add_edge():
     assert view2["NGANH:kt"]["NGANH:cntt"]["weight"] == pytest.approx(2.0)
 
 
-def test_pagerank_view_preserves_correctness():
+async def test_pagerank_view_preserves_correctness():
     """Cache hit must return the SAME scores as a freshly-built view.
 
     Builds a tiny graph, computes PPR once (warms the cache), then bypasses
@@ -126,7 +128,7 @@ def test_pagerank_view_preserves_correctness():
     kg = _build_small_graph()
 
     # Warm the cache via the public path
-    cached_scores = kg.personalized_pagerank(["NGANH:cntt"], alpha=0.85)
+    cached_scores = await kg.personalized_pagerank(["NGANH:cntt"], alpha=0.85)
 
     # Bypass the view cache to compute a reference
     import networkx as nx
