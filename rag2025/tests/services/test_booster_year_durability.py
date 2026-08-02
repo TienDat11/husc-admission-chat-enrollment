@@ -137,6 +137,28 @@ def _baseline_doc(chunk_id: str):
     )
 
 
+def _reload_year_modules_both() -> None:
+    """Re-derive the module-level `_YEAR` snapshots from the current env across
+    BOTH `src.services.*` and `services.*` namespaces (dual-module-pollution guard).
+    Order matters: temporal_authority -> aggregation_rules -> aggregation_booster,
+    because aggregation_rules snapshots the year from temporal_authority at import
+    and aggregation_booster copies `_YEAR` from aggregation_rules at import.
+    """
+    import importlib
+    import sys as _sys
+    for name in (
+        "src.services.temporal_authority",
+        "src.services.aggregation_rules",
+        "src.services.aggregation_booster",
+        "services.temporal_authority",
+        "services.aggregation_rules",
+        "services.aggregation_booster",
+    ):
+        if name in _sys.modules:
+            importlib.reload(_sys.modules[name])
+
+
+
 # ---------------------------------------------------------------------------
 # (1) year=2026 regression: built set == golden fixture exactly
 # ---------------------------------------------------------------------------
@@ -151,6 +173,11 @@ def test_year_2026_built_chunk_ids_match_golden_fixture(monkeypatch):
     """
     monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
     monkeypatch.delenv("APP_ENV", raising=False)
+
+    # The booster/rules snapshot `_YEAR` at module import. If a year=2027 test
+    # ran earlier in the same session the constant is frozen at 2027. Re-derive
+    # it from the pinned env=2026 BEFORE reading the rule set.
+    _reload_year_modules_both()
 
     from services import temporal_authority, aggregation_booster
 
