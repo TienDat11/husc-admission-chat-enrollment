@@ -91,7 +91,11 @@ def test_from_legacy_uses_year_field_when_data_year_missing():
     assert meta.data_year == 2025
 
 
-def test_from_legacy_falls_back_to_default_when_no_year():
+def test_from_legacy_falls_back_to_default_when_no_year(monkeypatch):
+    # Pin the admission-year authority so the fallback is deterministic: the
+    # calendar fallback would roll to 2027 after August (env unset). Per S14,
+    # env is the authority — set it explicitly to the current data cycle.
+    monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
     legacy = {"info_type": "qa"}
     meta = ChunkMetadataV3.from_legacy(legacy)
     # HIGH-3 fix: default year now comes from CURRENT_ADMISSION_YEAR env (default 2026)

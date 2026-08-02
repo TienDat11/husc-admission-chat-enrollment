@@ -231,7 +231,7 @@ def chunk_fn(text: str, metadata: dict) -> list[dict]:
     # Write JSONL to data/chunked/ for ingest_lancedb.py
     chunked_dir = Path(__file__).parent.parent / "data" / "chunked"
     chunked_dir.mkdir(parents=True, exist_ok=True)
-    jsonl_path = chunked_dir / f"crawl_{prefix}_{now.replace(':','.')}.jsonl"
+    jsonl_path = chunked_dir / f"chunked_{prefix}_{now.replace(':','.')}.jsonl"
 
     chunks = []
     for i, g in enumerate(groups):

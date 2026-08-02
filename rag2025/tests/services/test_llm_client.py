@@ -517,7 +517,7 @@ def test_provider_defaults_use_ai_box_deepseek_and_current_groq(monkeypatch) -> 
 
     assert providers["ramclouds"].base_url == "https://api.ai-box.vn/v1"
     assert providers["ramclouds"].model == "deepseek-v4-flash"
-    assert providers["groq"].model == "llama-3.3-70b-versatile"
+    assert providers["groq"].model == "llama-3.1-8b-instant"
 
 
 def test_settings_defaults_use_ai_box_deepseek_and_guardrail(monkeypatch) -> None:

@@ -353,13 +353,13 @@ class TestIdempotencyAndDedup:
 
         p1 = IngestPipeline(CrawlerState())
         p1._hash_log = {}
-        r1 = p1.run(crawl_fn=mock_crawl, chunk_fn=mock_chunk)
+        r1 = p1.run(crawl_fn=mock_crawl, chunk_fn=mock_chunk, embed_fn=lambda c: len(c))
         assert r1["skipped_duplicates"] == 0
         assert r1["chunks_produced"] == 1
 
         # Second run -- same content; __init__ loads from disk via patched load_hash_log
         p2 = IngestPipeline(CrawlerState())
-        r2 = p2.run(crawl_fn=mock_crawl, chunk_fn=mock_chunk)
+        r2 = p2.run(crawl_fn=mock_crawl, chunk_fn=mock_chunk, embed_fn=lambda c: len(c))
         assert r2["skipped_duplicates"] == 1
         assert r2["chunks_produced"] == 0
 
@@ -813,7 +813,7 @@ class TestRetryAndFault:
 
         pipeline = IngestPipeline(CrawlerState())
         pipeline._hash_log = {}
-        result = pipeline.run(crawl_fn=lambda: pages, chunk_fn=chunk_fn)
+        result = pipeline.run(crawl_fn=lambda: pages, chunk_fn=chunk_fn, embed_fn=lambda c: len(c))
         assert result["status"] == "success"
         assert result["chunks_produced"] == 2
 

@@ -247,6 +247,44 @@ class TestSpecialChars:
         r = _query(client, "Học phí ngành CNTT; DROP TABLE chunks;--")
         assert r.status_code == 200
         body = r.json()
-        # No SQL trace in answer
-        assert "DROP TABLE" not in body.get("answer", "")
-        assert "syntax error" not in body.get("answer", "").lower()
+        answer = body.get("answer", "")
+        answer_l = answer.lower()
+        # SECURITY: the invariant is NON-EXECUTION, NOT absence of the payload
+        # substring. The generation model may quote "DROP TABLE" inside a safe
+        # refusal (e.g. "Tôi không thể thực hiện lệnh DROP TABLE..."). That is
+        # SAFE and must pass. We assert there is NO evidence the SQL actually ran:
+        # no DB-engine error trace, no leaked schema/data, no leaked exception.
+        _SQL_EXEC_MARKERS = (
+            "syntax error",
+            "near \"",
+            "near '",
+            "sqlite3.",
+            "sqlite3.operationalerror",
+            "sqlite.operationalerror",
+            "psycopg2",
+            "psycopg",
+            "postgres",
+            "mysql server",
+            "operationalerror",
+            "programmingerror",
+            "ora-",
+            "sqlstate",
+            "traceback",
+            "stack trace",
+            "no such table",
+            "no such column",
+            "unknown column",
+            "duplicate column",
+            "sql error",
+            "syntaxerror",
+        )
+        assert not any(m in answer_l for m in _SQL_EXEC_MARKERS), (
+            "Answer contains SQL-engine error/leak evidence; SQL may have executed. "
+            f"answer={answer[:500]!r}"
+        )
+        # A data-dump (raw leaked rows) is the other execution signature: a real
+        # DROP/select would surface many rows/cells. A grounded refusal or a normal
+        # HUSC answer is short. Guard against a large verbatim data leak.
+        assert len(answer) < 2000, (
+            f"Answer suspiciously large (possible DB data leak): {len(answer)} chars"
+        )

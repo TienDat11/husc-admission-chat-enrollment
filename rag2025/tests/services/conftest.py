@@ -10,12 +10,13 @@ reloads the modules, the 2027 value leaks into subsequent tests that import
 reloaded module object (or a stale copy).
 
 This conftest ensures every test in `tests/services/` starts and ends with a
-clean year-state (default 2026) by:
-1. Popping `CURRENT_ADMISSION_YEAR` env var (and `APP_ENV` to avoid prod checks)
-   before each test.
+deterministic year-state pinned to 2026 (data cycle hien tai) by:
+1. Setting `CURRENT_ADMISSION_YEAR=2026` (and popping `APP_ENV` to avoid prod
+   checks) before each test. Pinned to 2026 — data cycle hien tai; bump to
+   2027 only when 2027 data is ingested.
 2. Reloading the temporal-authority / aggregation-rules / aggregation-booster
    modules (both `src.services.*` and `services.*` namespaces) to re-derive
-   `_YEAR` from the clean env.
+   `_YEAR` from the pinned env.
 3. Restoring the original env and reloading again after the test.
 
 The reload order is critical: temporal_authority -> aggregation_rules -> aggregation_booster.
@@ -37,11 +38,13 @@ def _reset_year_state() -> Generator[None, None, None]:
     original_year = os.environ.get("CURRENT_ADMISSION_YEAR")
     original_app_env = os.environ.get("APP_ENV")
 
-    # Clean env to known state
-    os.environ.pop("CURRENT_ADMISSION_YEAR", None)
+    # Pin year to known state — 2026 = data cycle hien tai (max data_year=2026).
+    # Calendar fallback would now resolve 2027 (month>=8), so we must SET the
+    # env var explicitly, not pop it, to stay deterministic.
+    os.environ["CURRENT_ADMISSION_YEAR"] = "2026"
     os.environ.pop("APP_ENV", None)
 
-    # Reload modules to derive _YEAR from clean env (default 2026)
+    # Reload modules to derive _YEAR from the pinned env (2026)
     _reload_year_modules()
 
     yield  # ── test runs ──

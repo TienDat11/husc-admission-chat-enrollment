@@ -36,6 +36,16 @@ def _build_app(meta_module, *, retriever=None, audit_payload: dict | None = None
     return app
 
 
+def _calendar_fallback_year() -> int:
+    """Mirror temporal_authority's dev/test calendar fallback
+    (month >= ADMISSION_YEAR_START_MONTH -> year + 1). Kept dynamic so the
+    tests stay correct across admission-year rollovers (2026 -> 2027 -> ...)."""
+    import os
+    start_month = int(os.getenv("ADMISSION_YEAR_START_MONTH", "8"))
+    now = datetime.now()
+    return now.year + 1 if now.month >= start_month else now.year
+
+
 def test_returns_200_with_required_keys(meta_module, monkeypatch):
     monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
     monkeypatch.setenv("AUDIT_FALLBACK_PATH", "/no/such/path")
@@ -58,12 +68,14 @@ def test_current_admission_year_reads_env(meta_module, monkeypatch, tmp_path):
 
 
 def test_default_year_when_env_unset(meta_module, monkeypatch, tmp_path):
+    """Env unset -> dev/test calendar fallback (NOT hardcoded 2026).
+    Calendar is time-dependent; today (month>=8) resolves to year+1."""
     monkeypatch.delenv("CURRENT_ADMISSION_YEAR", raising=False)
     monkeypatch.setenv("AUDIT_FALLBACK_PATH", str(tmp_path / "no.json"))
     app = _build_app(meta_module)
     client = TestClient(app)
     res = client.get("/api/meta")
-    assert res.json()["current_admission_year"] == 2026
+    assert res.json()["current_admission_year"] == _calendar_fallback_year()
 
 
 def test_audit_fallback_populates_freshness(meta_module, monkeypatch, tmp_path):
@@ -237,12 +249,13 @@ def test_custom_freshness_threshold_via_env(meta_module, monkeypatch, tmp_path):
     assert body["freshness_alert"] is True
 
 
-def test_malformed_current_admission_year_env_falls_back_to_2026(meta_module, monkeypatch, tmp_path):
-    """LOW-10 regression: CURRENT_ADMISSION_YEAR='2026a' must NOT 500."""
+def test_malformed_current_admission_year_env_falls_back_to_calendar_year(meta_module, monkeypatch, tmp_path):
+    """LOW-10 regression: CURRENT_ADMISSION_YEAR='2026a' must NOT 500; it falls
+    back to the dev/test calendar year (time-dependent)."""
     monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026a")
     monkeypatch.setenv("AUDIT_FALLBACK_PATH", str(tmp_path / "missing.json"))
     app = _build_app(meta_module)
     client = TestClient(app)
     res = client.get("/api/meta")
     assert res.status_code == 200
-    assert res.json()["current_admission_year"] == 2026
+    assert res.json()["current_admission_year"] == _calendar_fallback_year()

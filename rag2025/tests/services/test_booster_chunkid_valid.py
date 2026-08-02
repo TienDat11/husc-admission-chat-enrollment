@@ -79,7 +79,7 @@ def test_all_booster_chunk_ids_exist_in_db(monkeypatch) -> None:
     db = lancedb.connect(settings.LANCEDB_URI)
     table = db.open_table(settings.LANCEDB_TABLE)
     df = table.to_pandas()
-    db_ids = set(str(v) for v in df["chunk_id"].tolist())
+    db_ids = set(str(v) for v in df["id"].tolist())
 
     stale = sorted(cid for cid in refs if cid not in db_ids)
     assert not stale, (

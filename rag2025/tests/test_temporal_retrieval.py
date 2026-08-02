@@ -1,5 +1,6 @@
 """Tests for temporal retrieval filter in LanceDBRetriever."""
 import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -20,6 +21,18 @@ from services.lancedb_retrieval import (
 
 
 # --- Temporal filter unit tests ---
+
+
+@pytest.fixture(autouse=True)
+def _pin_admission_year_2026():
+    """Pin the admission-year authority to 2026 for calendar-deterministic
+    temporal-filter tests. `_apply_temporal_filter` resolves the current year
+    per-call from `temporal_authority.get_current_admission_year()` (env-driven),
+    so setting the env var makes these tests independent of the wall-clock
+    calendar rollover (month>=8 -> year+1)."""
+    os.environ["CURRENT_ADMISSION_YEAR"] = "2026"
+    yield
+    os.environ.pop("CURRENT_ADMISSION_YEAR", None)
 
 
 def test_current_admission_year_is_2026_or_higher():
