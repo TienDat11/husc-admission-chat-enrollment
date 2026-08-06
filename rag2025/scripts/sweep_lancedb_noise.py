@@ -206,6 +206,7 @@ def sweep(table) -> dict[str, Any]:
     by_year: Counter = Counter()
     stale_2025 = 0
     low_quality = 0
+    active_count = 0
     normalized_texts: list[str] = []
 
     for row in rows:
@@ -227,11 +228,15 @@ def sweep(table) -> dict[str, Any]:
         if _is_low_quality(text):
             low_quality += 1
 
-        # Normalize text for duplicate detection
-        normalized_texts.append(_normalize_text(text))
+        # Duplicate detection counts only ACTIVE (retrievable) rows: superseded
+        # rows are dropped by the retriever filter (lancedb_retrieval.py Rule 2),
+        # so they must not inflate the dup metric.
+        if not is_superseded:
+            active_count += 1
+            normalized_texts.append(_normalize_text(text))
 
     unique_norm = set(normalized_texts)
-    duplicate_count = max(0, total - len(unique_norm))
+    duplicate_count = max(0, active_count - len(unique_norm))
 
     # Embedding-dim drift: compare first row's vector to settings.EMBEDDING_DIM
     stored_dim: int | None = None

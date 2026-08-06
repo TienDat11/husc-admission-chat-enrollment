@@ -32,7 +32,8 @@ ENC = tiktoken.get_encoding("cl100k_base")
 REQUIRED_META_FIELDS = {"source", "source_type", "year", "data_year", "info_type", "school", "audience", "unit"}
 TABLE_ROW_MIN_TOKENS = 20
 TEXT_CHUNK_MIN_TOKENS = 30
-MAX_CHUNK_TOKENS = 800
+HARD_MAX_TOKENS = 512  # T1.8: hard cap — 0 chunks above this is an acceptance gate
+MAX_CHUNK_TOKENS = 800  # T1.8: soft ceiling — chunks above this are warned
 WIDE_TABLE_COLS = 8
 WIDE_TABLE_MIN_ROWS = 1
 
@@ -154,6 +155,8 @@ def test_d1_semantic_completeness(chunks: list[dict]) -> TestResult:
         tok = count_tokens(c.get("text", ""))
         if tok < TABLE_ROW_MIN_TOKENS and is_table_chunk(c):
             r.warn(f"Very short table chunk ({tok} tokens): {c.get('id', '?')}")
+        elif tok > HARD_MAX_TOKENS:
+            r.fail(f"Chunk exceeds hard cap {HARD_MAX_TOKENS} ({tok} tokens): {c.get('id', '?')}")
         elif tok > MAX_CHUNK_TOKENS:
             r.warn(f"Very large chunk ({tok} tokens): {c.get('id', '?')}")
         else:

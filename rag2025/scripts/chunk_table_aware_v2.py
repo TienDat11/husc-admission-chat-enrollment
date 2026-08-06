@@ -41,6 +41,9 @@ WIDE_TABLE_MIN_COLS = 8
 WIDE_TABLE_MIN_ROWS = 1
 SMALL_TABLE_MAX_ROWS = 6
 PROGRAM_GROUP_MAX_TOKENS = 500
+# T1.8 chunk size gates — hard cap (split) + soft floor (merge neighbors).
+HARD_MAX_TOKENS = 512  # any single chunk above this is split into <=512 pieces
+SOFT_MIN_TOKENS = 50   # chunks below this are merged into a neighbor (best-effort)
 
 
 STOPWORDS = {
@@ -195,7 +198,16 @@ def chunk_table(table: MarkdownTable, base_meta: dict, doc_id: str, enc, start_i
     2. Small-table fallback (≤6 rows) → single chunk
     3. Program-grouped tables → 1 chunk per program family
     4. General: pack rows by token budget with header
+
+    T1.8: output is passed through `_enforce_size_gates` (hard cap 512 tokens,
+    soft floor 50 tokens) before returning.
     """
+    chunks = _chunk_table(table, base_meta, doc_id, enc, start_idx)
+    return _enforce_size_gates(chunks, base_meta, doc_id, enc)
+
+
+def _chunk_table(table: MarkdownTable, base_meta: dict, doc_id: str, enc, start_idx: int) -> list[dict]:
+    """Inner table-chunking logic (v4 Phase 3 hybrid strategy)."""
     chunks = []
 
     # ── Rule 1: Wide-table bypass ──
@@ -271,6 +283,102 @@ def chunk_table(table: MarkdownTable, base_meta: dict, doc_id: str, enc, start_i
             ))
 
     return chunks
+
+
+def _split_oversized_preserving(text: str, enc, max_tokens: int) -> list[str]:
+    """Split an oversized chunk into <=max_tokens pieces.
+
+    Table-looking text is split at row boundaries (header + separator repeated on
+    each piece) to preserve table structure; everything else uses a balanced
+    token-boundary split so no tiny tail piece is produced.
+    """
+    if count_tokens(text, enc) <= max_tokens:
+        return [text]
+
+    stripped = text.strip()
+    if stripped.startswith("|") and stripped.endswith("|"):
+        lines = stripped.split("\n")
+        header, separator, data_rows = "", "", []
+        for ln in lines:
+            if re.match(r"^\|[\s\-|:]+\|$", ln) and not separator:
+                separator = ln
+            elif not header and ln.strip().startswith("|"):
+                header = ln
+            elif ln.strip().startswith("|"):
+                data_rows.append(ln)
+        if header and data_rows:
+            head_tok = count_tokens(header + "\n" + separator, enc)
+            pieces, current, cur_tok = [], [], head_tok
+            for row in data_rows:
+                row_tok = count_tokens(row, enc)
+                if cur_tok + row_tok > max_tokens and current:
+                    pieces.append("\n".join([header, separator] + current))
+                    current, cur_tok = [row], head_tok + row_tok
+                else:
+                    current.append(row)
+                    cur_tok += row_tok
+            if current:
+                pieces.append("\n".join([header, separator] + current))
+            if all(count_tokens(p, enc) <= max_tokens for p in pieces):
+                return pieces
+
+    # Balanced token-boundary split (no tiny tail)
+    tokens = enc.encode(text)
+    n = len(tokens)
+    k = (n + max_tokens - 1) // max_tokens
+    base, rem = divmod(n, k)
+    pieces, start = [], 0
+    for i in range(k):
+        end = start + base + (1 if i < rem else 0)
+        piece = enc.decode(tokens[start:end]).strip()
+        if piece:
+            pieces.append(piece)
+        start = end
+    return pieces
+
+
+def _enforce_size_gates(chunks: list[dict], base_meta: dict, doc_id: str, enc) -> list[dict]:
+    """T1.8: hard cap HARD_MAX_TOKENS + soft floor SOFT_MIN_TOKENS on chunk dicts.
+
+    Splits oversized chunks (preserving table rows), merges sub-floor chunks into
+    a neighbor without exceeding the cap, then re-indexes chunk ids.
+    """
+    if not chunks:
+        return chunks
+
+    out: list[dict] = []
+    for c in chunks:
+        text = c.get("text", "")
+        tok = count_tokens(text, enc)
+        if tok <= HARD_MAX_TOKENS:
+            out.append(c)
+            continue
+        pieces = _split_oversized_preserving(text, enc, HARD_MAX_TOKENS)
+        meta = {k: v for k, v in (c.get("metadata") or {}).items() if k != "token_count"}
+        for si, piece in enumerate(pieces):
+            out.append(_make_chunk(
+                doc_id, len(out), piece, base_meta,
+                **meta, split_index=si, token_count=count_tokens(piece, enc),
+            ))
+
+    # Soft-floor merge into previous neighbor (keep hard cap).
+    merged: list[dict] = []
+    for c in out:
+        if merged:
+            cur_tok = count_tokens(c.get("text", ""), enc)
+            prev_tok = count_tokens(merged[-1].get("text", ""), enc)
+            if cur_tok < SOFT_MIN_TOKENS and prev_tok + cur_tok <= HARD_MAX_TOKENS:
+                merged[-1]["text"] = f"{merged[-1].get('text', '')}\n\n{c.get('text', '')}"
+                merged[-1]["text_plain"] = merged[-1]["text"]
+                merged[-1].get("metadata", {})["token_count"] = prev_tok + cur_tok
+                continue
+        merged.append(c)
+
+    # Re-index chunk ids sequentially for the caller's doc-level sequencing.
+    for i, c in enumerate(merged):
+        c["chunk_id"] = i
+        c["id"] = f"{doc_id}_chunk_{i}"
+    return merged
 
 
 def _make_chunk(doc_id: str, chunk_id: int, text: str, base_meta: dict, **extra_meta) -> dict:

@@ -128,8 +128,9 @@ def test_ingest_writes_full_schema_to_husc_chunks(
     rows = table.to_arrow().to_pylist()
     row = rows[0]
 
-    # Core identity
-    assert row["id"] == "c1"
+    # Core identity — id is the T1.5 globally-unique hash; doc_id keeps the
+    # original chunk_id ("c1") for document-level grouping.
+    assert row["id"] == mod._unique_id("test.jsonl", chunk_file.name, "c1")
     assert row["doc_id"] == "c1"
     assert row["text"] == "Thông tin tuyển sinh 2026"
     assert len(row["vector"]) == 1024
@@ -317,3 +318,50 @@ def test_content_hash_reembeds_on_text_change(
 
     # MUST re-embed (count >= 1)
     assert call_count["n"] >= 1, f"Expected re-embed on text change, got {call_count['n']}"
+
+
+# ---------------------------------------------------------------------------
+# Test 7 — T1.4/G4 full-overwrite tags pre-ingest version BEFORE drop
+# ---------------------------------------------------------------------------
+
+
+def test_full_overwrite_tags_preingest_before_drop(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """Full-overwrite (incremental=False on an existing table) must tag the
+    pre-overwrite version BEFORE create_table(mode='overwrite'), so a mistaken
+    default run that drops rows (581/2068) is recoverable via rollback."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    # Pre-existing table simulating production husc_chunks with old rows.
+    temp_db.create_table(
+        "husc_chunks",
+        data=[{"id": "old1", "text": "old row", "vector": [0.1] * 1024}],
+    )
+
+    chunk_file = tmp_workspace / "chunked_overwrite.jsonl"
+    _write_jsonl(chunk_file, [
+        {"id": "n1", "text": "New content", "metadata": {"data_year": 2026}},
+    ])
+
+    _patch_ingest(mod, monkeypatch, temp_db, chunk_file)
+
+    tagged = []
+
+    def fake_tag(table, release_id):
+        tagged.append(release_id)
+        return table.version
+
+    import src.infrastructure.lancedb_versioning as lv
+
+    monkeypatch.setattr(lv, "tag_release", fake_tag)
+
+    result = mod.ingest_lancedb(incremental=False)
+    assert result is True
+
+    assert any(t.startswith("pre-ingest-") for t in tagged), (
+        f"expected a pre-ingest-* tag before overwrite, got {tagged}"
+    )
+
+    table = temp_db.open_table("husc_chunks")
+    assert table.count_rows() == 1  # overwrite replaced the old row
