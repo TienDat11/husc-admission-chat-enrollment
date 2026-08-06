@@ -85,6 +85,16 @@ def _write_jsonl(path: Path, chunks: List[Dict]) -> None:
     )
 
 
+def _row_id(mod, chunk_file: Path, cid: str) -> str:
+    """Row id under the T1.5 globally-unique scheme.
+
+    Test chunks carry metadata={} and a top-level "source" key, so
+    `_load_chunks` resolves source to `file.name` (the ingest_file) via
+    `obj.get("metadata", {}).get("source", file.name)`.
+    """
+    return mod._unique_id(chunk_file.name, chunk_file.name, cid)
+
+
 # ---------------------------------------------------------------------------
 # Test 1 — idempotent re-ingest same content → no growth
 # ---------------------------------------------------------------------------
@@ -239,8 +249,8 @@ def test_update_same_id_changes_content_no_duplicate(
     assert count == 3, f"Expected 3 rows after update, got {count} — duplicate created"
 
     df = table2.to_pandas()
-    x_rows = df[df["id"] == "X"]
-    assert len(x_rows) == 1, f"Expected exactly 1 row with id=X, got {len(x_rows)}"
+    x_rows = df[df["id"] == _row_id(mod, chunk_file, "X")]
+    assert len(x_rows) == 1, f"Expected exactly 1 row with id={_row_id(mod, chunk_file, 'X')}, got {len(x_rows)}"
     assert x_rows.iloc[0]["text"] == "Nội dung B", f"Expected 'Nội dung B', got '{x_rows.iloc[0]['text']}'"
 
 
@@ -319,7 +329,7 @@ def test_orphan_row_deleted_when_missing_from_source(
     assert count == 2, f"Expected 2 rows after orphan removal, got {count}"
 
     ids = set(table2.to_pandas()["id"].tolist())
-    assert "Z" not in ids, f"Orphan Z still present in table: {ids}"
+    assert _row_id(mod, chunk_file, "Z") not in ids, f"Orphan Z still present in table: {ids}"
 
 
 # ---------------------------------------------------------------------------
@@ -390,8 +400,8 @@ def test_orphan_delete_does_not_touch_surviving_rows(
 
     table = temp_db.open_table("test_survive")
     df = table.to_pandas()
-    x_row = df[df["id"] == "X"].iloc[0]
-    y_row = df[df["id"] == "Y"].iloc[0]
+    x_row = df[df["id"] == _row_id(mod, chunk_file, "X")].iloc[0]
+    y_row = df[df["id"] == _row_id(mod, chunk_file, "Y")].iloc[0]
     assert x_row["text"] == "Nội dung A", f"X text changed: {x_row['text']}"
     assert y_row["text"] == "Nội dung Y", f"Y text changed: {y_row['text']}"
 
@@ -477,7 +487,7 @@ def test_orphan_delete_scoped_by_source_does_not_touch_other_file(
 
     table2 = temp_db.open_table("test_scoped")
     df = table2.to_pandas()
-    f2a_rows = df[df["id"] == "F2A"]
+    f2a_rows = df[df["id"] == _row_id(mod, file2, "F2A")]
     assert len(f2a_rows) == 1, f"F2A should survive, found {len(f2a_rows)} rows"
 
 
@@ -549,7 +559,7 @@ def test_vector_updated_when_content_changes(
     mod.ingest_lancedb(incremental=True)
     table = temp_db.open_table("test_vec")
     df_before = table.to_pandas()
-    x_before = df_before[df_before["id"] == "X"].iloc[0]
+    x_before = df_before[df_before["id"] == _row_id(mod, chunk_file, "X")].iloc[0]
     vec_before = np.array(x_before["vector"])
 
     # Change X's text
@@ -564,7 +574,7 @@ def test_vector_updated_when_content_changes(
 
     table2 = temp_db.open_table("test_vec")
     df_after = table2.to_pandas()
-    x_rows = df_after[df_after["id"] == "X"]
+    x_rows = df_after[df_after["id"] == _row_id(mod, chunk_file, "X")]
 
     # Must be exactly 1 row for X (no duplicate)
     assert len(x_rows) == 1, f"Expected 1 row for X, got {len(x_rows)} — duplicate created"
@@ -574,3 +584,147 @@ def test_vector_updated_when_content_changes(
         f"Vector for X did not change after content update. "
         f"Before sum={vec_before.sum():.1f}, after sum={vec_after.sum():.1f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 7 — T1.2 cross-file text dedup (44.6% dup fix)
+# ---------------------------------------------------------------------------
+
+def test_cross_file_text_dedup_keeps_single_canonical(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """Two files with the same normalized text (case/whitespace differ) under
+    different ids → only the canonical row (first by ingest_file) is stored."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    fake_manifest = tmp_workspace / ".ingest_manifest_dd.json"
+    monkeypatch.setattr(mod, "MANIFEST_PATH", fake_manifest)
+    monkeypatch.setattr(mod, "TARGET_TABLE", "test_dedup")
+    monkeypatch.setattr(mod, "_trigger_graph_sync", lambda *_: None)
+
+    file1 = tmp_workspace / "chunked_dd1.jsonl"
+    file2 = tmp_workspace / "chunked_dd2.jsonl"
+    _write_jsonl(file1, [
+        {"id": "a1", "chunk_id": "a1", "text": "  Nội Dung Tuyển Sinh 2026  ", "metadata": {}},
+    ])
+    _write_jsonl(file2, [
+        {"id": "b1", "chunk_id": "b1", "text": "nội dung tuyển sinh 2026", "metadata": {}},
+    ])
+
+    def _fake_resolve(chunks_dir, incremental):
+        return [file1, file2]
+
+    monkeypatch.setattr(mod, "_resolve_target_files", _fake_resolve)
+    monkeypatch.setattr(mod, "_refresh_manifest_for_all_files", lambda *_: None)
+
+    def _fake_load_ids(table):
+        try:
+            return {str(v) for v in table.to_pandas()["id"].tolist()}
+        except Exception:
+            return set()
+
+    monkeypatch.setattr(mod, "_load_existing_ids", _fake_load_ids)
+
+    class FakeSettings:
+        LANCEDB_URI = temp_db.uri
+        LANCEDB_TABLE = "test_dedup"
+        EMBEDDING_MODEL = "fake"
+        EMBEDDING_DIM = 1024
+
+    monkeypatch.setattr(mod, "RAGSettings", FakeSettings)
+
+    vec_fixed = np.full(1024, 0.5)
+
+    class FakeEmbeddingService:
+        def __init__(self, settings):
+            pass
+
+        def encode_documents(self, texts):
+            return [vec_fixed.copy() for _ in texts]
+
+    monkeypatch.setattr(mod, "EmbeddingService", FakeEmbeddingService)
+
+    mod.ingest_lancedb(incremental=True)
+    table = temp_db.open_table("test_dedup")
+    assert table.count_rows() == 1, (
+        f"Expected 1 row after cross-file text dedup, got {table.count_rows()}"
+    )
+    df = table.to_pandas()
+    meta = json.loads(df.iloc[0]["metadata_json"])
+    assert meta.get("ingest_file") == "chunked_dd1.jsonl", (
+        "canonical row should be first by ingest_file (chunked_dd1.jsonl)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 8 — T1.5 globally-unique ids (G9 collision fix)
+# ---------------------------------------------------------------------------
+
+def test_unique_ids_across_documents(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """Same numeric chunk_id ('13') in two different files → distinct row ids.
+
+    Without the fix, both rows share id='13' and the last write silently
+    overwrites the first (collision). After the fix each row id is a hash of
+    source|ingest_file|chunk_id → both survive.
+    """
+    import rag2025.scripts.ingest_lancedb as mod
+
+    fake_manifest = tmp_workspace / ".ingest_manifest_uid.json"
+    monkeypatch.setattr(mod, "MANIFEST_PATH", fake_manifest)
+    monkeypatch.setattr(mod, "TARGET_TABLE", "test_uid")
+    monkeypatch.setattr(mod, "_trigger_graph_sync", lambda *_: None)
+
+    file1 = tmp_workspace / "chunked_uid1.jsonl"
+    file2 = tmp_workspace / "chunked_uid2.jsonl"
+    _write_jsonl(file1, [
+        {"id": "13", "chunk_id": "13", "text": "Doc A chunk 13", "metadata": {}},
+    ])
+    _write_jsonl(file2, [
+        {"id": "13", "chunk_id": "13", "text": "Doc B chunk 13", "metadata": {}},
+    ])
+
+    def _fake_resolve(chunks_dir, incremental):
+        return [file1, file2]
+
+    monkeypatch.setattr(mod, "_resolve_target_files", _fake_resolve)
+    monkeypatch.setattr(mod, "_refresh_manifest_for_all_files", lambda *_: None)
+
+    def _fake_load_ids(table):
+        try:
+            return {str(v) for v in table.to_pandas()["id"].tolist()}
+        except Exception:
+            return set()
+
+    monkeypatch.setattr(mod, "_load_existing_ids", _fake_load_ids)
+
+    class FakeSettings:
+        LANCEDB_URI = temp_db.uri
+        LANCEDB_TABLE = "test_uid"
+        EMBEDDING_MODEL = "fake"
+        EMBEDDING_DIM = 1024
+
+    monkeypatch.setattr(mod, "RAGSettings", FakeSettings)
+
+    vec_fixed = np.full(1024, 0.5)
+
+    class FakeEmbeddingService:
+        def __init__(self, settings):
+            pass
+
+        def encode_documents(self, texts):
+            return [vec_fixed.copy() for _ in texts]
+
+    monkeypatch.setattr(mod, "EmbeddingService", FakeEmbeddingService)
+
+    mod.ingest_lancedb(incremental=True)
+    table = temp_db.open_table("test_uid")
+    assert table.count_rows() == 2, f"Expected 2 rows, got {table.count_rows()}"
+    ids = {r["id"] for r in table.to_arrow().select(["id"]).to_pylist()}
+    assert len(ids) == 2, f"id collision — only {len(ids)} distinct ids for 2 rows: {ids}"
+    assert not ({"13"} & ids), "raw numeric chunk_id must not be used as row id"
+    assert ids == {
+        _row_id(mod, file1, "13"),
+        _row_id(mod, file2, "13"),
+    }, f"unexpected id scheme: {ids}"

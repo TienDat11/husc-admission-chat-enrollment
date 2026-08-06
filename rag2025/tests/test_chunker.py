@@ -231,3 +231,70 @@ def test_token_overlap(config_path, sample_long_doc):
         # Just verify both chunks have content
         assert len(chunk1_end) > 0
         assert len(chunk2_start) > 0
+
+
+# ══════════════════════════════════════════════════════════════════
+# T1.8 chunk size gates — hard cap 512 tokens, soft min 50 tokens
+# ══════════════════════════════════════════════════════════════════
+
+HARD_MAX_TOKENS = 512
+SOFT_MIN_TOKENS = 50
+
+
+def test_hard_cap_512_chunk_document(config_path):
+    """T1.8: chunk_document must never emit a chunk > HARD_MAX_TOKENS (512).
+
+    A long run-on doc with no separators is kept as a single oversized chunk by
+    the profile splitter (auto chunk_size 350); the size gate must split it.
+    """
+    config = ChunkConfig(config_path)
+    chunker = Chunker(config)
+
+    text = "x" * 6000  # ~6000 tokens, no separators
+    chunks = chunker.chunk_document(
+        {"id": "huge_001", "text": text, "metadata": {}}, profile_name="auto"
+    )
+
+    assert len(chunks) > 1
+    for c in chunks:
+        assert len(chunker.tokenizer.encode(c.text)) <= HARD_MAX_TOKENS
+
+
+def test_hard_cap_split_direct(config_path):
+    """T1.8: _enforce_size_gates splits an oversized chunk into <=512 pieces."""
+    config = ChunkConfig(config_path)
+    chunker = Chunker(config)
+
+    big = "y" * 3000  # ~3000 tokens
+    out = chunker._enforce_size_gates([big])
+
+    assert len(out) > 1
+    for piece in out:
+        assert len(chunker.tokenizer.encode(piece)) <= HARD_MAX_TOKENS
+
+
+def test_soft_min_50_merge(config_path):
+    """T1.8: chunks below SOFT_MIN_TOKENS (50) are merged into a neighbor."""
+    config = ChunkConfig(config_path)
+    chunker = Chunker(config)
+
+    out = chunker._enforce_size_gates(["A" * 300, "tiny chunk"])
+
+    assert len(out) == 1
+    merged_tok = len(chunker.tokenizer.encode(out[0]))
+    assert merged_tok <= HARD_MAX_TOKENS
+
+
+def test_size_gates_keep_normal_chunks_unchanged(config_path):
+    """T1.8: chunks already within [SOFT_MIN, HARD_MAX] pass through untouched."""
+    config = ChunkConfig(config_path)
+    chunker = Chunker(config)
+
+    # Both chunks comfortably above SOFT_MIN_TOKENS (50) and below the hard cap.
+    src = ["normal chunk with moderate length and additional filler words " * 12,
+           "second chunk content that is also reasonably long enough " * 12]
+    out = chunker._enforce_size_gates(src)
+
+    assert len(out) == len(src)
+    for a, b in zip(src, out):
+        assert a == b

@@ -186,9 +186,13 @@ def _parse_notification_id(url: str) -> int:
     return int(m.group(1)) if m else 0
 
 
-def chunk_fn(text: str, metadata: dict) -> list[dict]:
+def chunk_fn(text: str, metadata: dict, chunked_dir: Path | None = None) -> list[dict]:
     """Hybrid chunker adapter: split on single \\n, hard-cut at max_chars.
-    Writes JSONL to data/chunked/ for ingest_lancedb.py --incremental."""
+    Writes JSONL to data/chunked/ for ingest_lancedb.py --incremental.
+
+    ``chunked_dir`` is injectable so tests can write to tmp_path instead of
+    polluting the real data/chunked/ (regression: pytest run created
+    chunked_thongbao_78_*.jsonl crawl stubs into production data)."""
     # Split on single newline (not blank-line — site returns \n-separated text)
     raw_parts = [p.strip() for p in text.split("\n") if p.strip()]
     if not raw_parts:
@@ -229,7 +233,8 @@ def chunk_fn(text: str, metadata: dict) -> list[dict]:
     prefix = f"thongbao_{nid}" if nid else "thongbao_unknown"
 
     # Write JSONL to data/chunked/ for ingest_lancedb.py
-    chunked_dir = Path(__file__).parent.parent / "data" / "chunked"
+    if chunked_dir is None:
+        chunked_dir = Path(__file__).parent.parent / "data" / "chunked"
     chunked_dir.mkdir(parents=True, exist_ok=True)
     jsonl_path = chunked_dir / f"chunked_{prefix}_{now.replace(':','.')}.jsonl"
 

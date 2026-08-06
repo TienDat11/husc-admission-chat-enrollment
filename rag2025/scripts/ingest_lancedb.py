@@ -47,8 +47,25 @@ def _file_digest(path: Path) -> str:
 
 
 def _list_chunk_files(chunks_dir: Path) -> List[Path]:
-    files = sorted(chunks_dir.glob("chunked_*.jsonl"))
-    return [f for f in files if "enhanced" not in f.name]
+    # T1.5-bl / G4: the canonical corpus spans MANY sources, not just the
+    # legacy `chunked_*.jsonl` set. Include every `*.jsonl` in data/chunked/
+    # except stubs/noise:
+    #   - chunked_thongbao_* / batch_thongbao_* / crawl_thongbao_*: 556-byte
+    #     crawl stubs + defensive (T1.3 G1)
+    #   - *_enhanced: derived/duplicate chunks (never canonical)
+    #   - chunked_test: fixture, not corpus
+    #   - husc_yearly_{year}: literal template with braces, not a real file
+    #   - .* hidden files (manifest etc.)
+    files = sorted(chunks_dir.glob("*.jsonl"))
+    _stub_prefixes = ("chunked_thongbao_", "batch_thongbao_", "crawl_thongbao_")
+    _exact_names = {"chunked_test.jsonl", "husc_yearly_{year}.jsonl"}
+    return [
+        f for f in files
+        if not f.name.startswith(_stub_prefixes)
+        and "enhanced" not in f.name
+        and f.name not in _exact_names
+        and not f.name.startswith(".")
+    ]
 
 
 def _load_manifest() -> Dict[str, str]:
@@ -97,6 +114,31 @@ def _content_hash(text: str) -> str:
     return hashlib.sha256(_normalize_for_hash(text).encode("utf-8")).hexdigest()
 
 
+def _text_dedup_hash(text: str) -> str:
+    """Normalized text hash for cross-file dedup (case/whitespace-insensitive).
+
+    T1.2: unlike `_content_hash` (re-embed guardrail, date-pattern-insensitive),
+    this is the *insert* guard. Two JSONL files carrying the same text under
+    different ids must be stored once. Lowercase + collapsed whitespace means
+    "Nội dung X" and "  nội DUNG X  " resolve to the same hash.
+    """
+    normalized = " ".join(text.lower().split())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _unique_id(source: str, ingest_file: str, chunk_id: str) -> str:
+    """Globally-unique row id (T1.5/G9).
+
+    Bare chunk ids such as '0','13','61' collide across documents — several
+    ingest scripts emit identical numeric chunk_ids, so `id = chunk_id` lets the
+    last writer silently overwrite the others. Hashing source|ingest_file|chunk_id
+    yields a stable, unique id per (document, file, chunk) triple. `doc_id` keeps
+    the original chunk_id so document-level grouping is preserved.
+    """
+    raw = f"{source}|{ingest_file}|{chunk_id}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
 def _load_chunks(files: List[Path]) -> List[Dict]:
     all_chunks: List[Dict] = []
 
@@ -118,12 +160,16 @@ def _load_chunks(files: List[Path]) -> List[Dict]:
                     continue
 
                 chunk_id = str(obj.get("id", obj.get("chunk_id", f"chunk_{len(all_chunks)}")))
+                source = obj.get("metadata", {}).get("source", file.name)
                 all_chunks.append(
                     {
-                        "id": chunk_id,
+                        # T1.5 (G9): globally-unique row id — bare chunk ids
+                        # ('0','13','61') collide across documents. `chunk_id`
+                        # below keeps the original value for doc_id grouping.
+                        "id": _unique_id(source, file.name, chunk_id),
                         "chunk_id": chunk_id,
                         "text": text,
-                        "source": obj.get("metadata", {}).get("source", file.name),
+                        "source": source,
                         # File provenance for orphan scoping. Distinct from
                         # `source` (often a URL, shared across several files).
                         "ingest_file": file.name,
@@ -133,7 +179,20 @@ def _load_chunks(files: List[Path]) -> List[Dict]:
                     }
                 )
 
-    return [c for c in all_chunks if c.get("text")]
+    all_chunks = [c for c in all_chunks if c.get("text")]
+
+    # T1.2: cross-file text dedup — keep one canonical chunk (first by
+    # ingest_file + chunk_id) when two files carry the same normalized text.
+    seen_text_hashes: Set[str] = set()
+    deduped: List[Dict] = []
+    for c in sorted(all_chunks, key=lambda x: (x["ingest_file"], x["chunk_id"])):
+        th = _text_dedup_hash(c["text"])
+        if th in seen_text_hashes:
+            continue
+        seen_text_hashes.add(th)
+        deduped.append(c)
+
+    return deduped
 
 
 def _load_existing_ids(table) -> Set[str]:
@@ -411,6 +470,17 @@ def ingest_lancedb(incremental: bool = False) -> bool:
         )
     else:
         if table_exists:
+            # T1.4 (G4): pre-ingest tag BEFORE overwrite so the previous table
+            # state is recoverable. The old code overwrote first, so the
+            # pre-overwrite version was never tagged (a mistaken default run
+            # dropped 581/2068 rows with no rollback point).
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            try:
+                from src.infrastructure.lancedb_versioning import tag_release
+                table_tmp = db.open_table(target)
+                tag_release(table_tmp, f"pre-ingest-{ts}")
+            except Exception:
+                logger.warning(f"tag_release failed (non-fatal): {ts}")
             table = db.create_table(target, data=records, mode="overwrite")
             logger.info(
                 f"Full ingest complete (overwrite): table={target}, "

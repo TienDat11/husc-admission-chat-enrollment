@@ -15,6 +15,10 @@ from pydantic import BaseModel, Field
 
 from services._metadata_helpers import get_source_label, get_source_breadcrumb
 
+# T1.8 chunk size gates — hard cap (split) + soft floor (merge neighbors).
+HARD_MAX_TOKENS = 512  # any single chunk above this is split into <=512 pieces
+SOFT_MIN_TOKENS = 50   # chunks below this are merged into a neighbor (best-effort)
+
 
 class ChunkProfile(BaseModel):
     """Chunk profile configuration."""
@@ -122,6 +126,9 @@ class Chunker:
 
         # Split into chunks
         text_chunks = self._split_text(text, profile)
+
+        # T1.8: enforce hard cap (512) + soft floor (50) after profile split
+        text_chunks = self._enforce_size_gates(text_chunks)
 
         # Create RAGChunk objects
         chunks: list[RAGChunk] = []
@@ -259,6 +266,45 @@ class Chunker:
 
         logger.debug(f"Split {total_tokens} tokens into {len(chunks)} chunks")
         return chunks
+
+    def _enforce_size_gates(self, text_chunks: list[str]) -> list[str]:
+        """T1.8: hard cap HARD_MAX_TOKENS + soft floor SOFT_MIN_TOKENS.
+
+        Split any chunk above the hard cap into balanced <=HARD_MAX_TOKENS
+        pieces, then merge chunks below the soft floor into a neighbor without
+        exceeding the cap (best-effort — a lone tiny chunk is kept as-is).
+        """
+        if not text_chunks:
+            return text_chunks
+
+        # 1) Hard cap: split oversized chunks at balanced token boundaries.
+        pieces: list[str] = []
+        for chunk in text_chunks:
+            tokens = self.tokenizer.encode(chunk)
+            if len(tokens) <= HARD_MAX_TOKENS:
+                pieces.append(chunk)
+                continue
+            n_pieces = (len(tokens) + HARD_MAX_TOKENS - 1) // HARD_MAX_TOKENS
+            base, rem = divmod(len(tokens), n_pieces)
+            start = 0
+            for i in range(n_pieces):
+                end = start + base + (1 if i < rem else 0)
+                piece = self.tokenizer.decode(tokens[start:end]).strip()
+                if piece:
+                    pieces.append(piece)
+                start = end
+
+        # 2) Soft floor: merge tiny chunks into previous neighbor (keep cap).
+        merged: list[str] = []
+        for chunk in pieces:
+            if merged:
+                cur_tok = len(self.tokenizer.encode(chunk))
+                prev_tok = len(self.tokenizer.encode(merged[-1]))
+                if cur_tok < SOFT_MIN_TOKENS and prev_tok + cur_tok <= HARD_MAX_TOKENS:
+                    merged[-1] = f"{merged[-1]}\n\n{chunk}"
+                    continue
+            merged.append(chunk)
+        return merged
 
     def _split_markdown_legal_blocks(self, text: str) -> list[str]:
         """Split text by markdown headings and legal heading markers."""

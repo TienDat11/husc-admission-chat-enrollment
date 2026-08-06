@@ -7,7 +7,8 @@ Strategy: inject a fake LanceDB-shaped table (rows list + ``add`` + ``delete``
     ``is_superseded=True`` with ``superseded_by`` = kept canonical chunk_id.
   * Each duplicate group keeps EXACTLY ONE canonical (the FIRST/lowest-sort
     chunk_id) and the REST are superseded.
-  * Chunks with len >= 80 are NEVER touched (real content).
+  * Mid/long chunks (>= 80 chars) whose NORMALIZED text collides are deduped by
+    the T1.6 long pass (floor == 80; live letterhead fragments are 80-199 chars).
   * Single-occurrence short chunks are NEVER touched.
   * Re-running on an already-superseded table is a NO-OP (idempotent).
   * Already-superseded rows in a duplicate group are skipped (not double-
@@ -164,10 +165,10 @@ def test_short_exact_duplicates_are_deduped(dedup_module):
 
 
 # ---------------------------------------------------------------------------
-# 2. len>=80 chunks are NEVER touched, even if duplicated.
+# 2. Mid-length chunks (>=80) with colliding NORMALIZED text ARE deduped (T1.6).
 # ---------------------------------------------------------------------------
-def test_long_chunks_never_superseded(dedup_module):
-    long_text = "A" * 100  # 100 chars, >= 80
+def test_mid_length_normalized_duplicates_are_deduped(dedup_module):
+    long_text = "A" * 100  # 100 chars, >= the 80-char normalized-dedup floor
     rows = [
         _row("long_a", long_text, {"data_year": 2026}),
         _row("long_b", long_text, {"data_year": 2026}),
@@ -181,16 +182,19 @@ def test_long_chunks_never_superseded(dedup_module):
         short_threshold=80,
     )
 
-    # 0 duplicate groups because the long text is excluded from the dedup universe
-    assert summary["duplicate_groups"] == 0
-    assert summary["chunks_superseded"] == 0
-    assert table.add_calls == []
-    assert table.del_calls == []
-    for cid in ("long_a", "long_b", "long_c"):
+    # 1 normalized-duplicate group (3 copies) → keep 1, supersede 2
+    assert summary["duplicate_groups"] == 1
+    assert summary["chunks_superseded"] == 2
+    assert len(table.add_calls) == 2
+    assert len(table.del_calls) == 2
+    # kept canonical = lowest chunk_id
+    kept = table.by_chunk_id("long_a")
+    assert kept is not None
+    assert json.loads(kept["metadata_json"]).get("is_superseded", False) is False
+    for cid in ("long_b", "long_c"):
         row = table.by_chunk_id(cid)
         assert row is not None
-        meta = json.loads(row["metadata_json"])
-        assert meta.get("is_superseded", False) is False
+        assert json.loads(row["metadata_json"])["is_superseded"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -247,15 +251,18 @@ def test_mixed_scenario(dedup_module):
         short_threshold=80,
     )
 
-    # 2 groups: header (3 dups, keep 1, supersede 2) + v_dup (5 dups, keep 1, supersede 4)
-    assert summary["duplicate_groups"] == 2
-    assert summary["chunks_superseded"] == 2 + 4
+    # 3 groups: header (3, keep 1, supersede 2) + v_dup (5, keep 1, supersede 4)
+    # + long_text normalized-dup (2, keep long_only, supersede long_dup)
+    assert summary["duplicate_groups"] == 3
+    assert summary["chunks_superseded"] == 2 + 4 + 1
 
-    # The 2 long chunks remain untouched
-    for cid in ("long_only", "long_dup"):
-        row = table.by_chunk_id(cid)
-        meta = json.loads(row["metadata_json"])
-        assert meta.get("is_superseded", False) is False
+    # The long_text normalized-dup group keeps long_dup (lowest chunk_id sort),
+    # supersedes long_only via the T1.6 long pass.
+    long_kept = table.by_chunk_id("long_dup")
+    assert json.loads(long_kept["metadata_json"]).get("is_superseded", False) is False
+    long_sup = table.by_chunk_id("long_only")
+    assert json.loads(long_sup["metadata_json"])["is_superseded"] is True
+    assert json.loads(long_sup["metadata_json"])["superseded_by"] == "long_dup"
 
     # The solo short chunk remains untouched
     row = table.by_chunk_id("solo_short")

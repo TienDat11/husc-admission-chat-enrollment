@@ -7,6 +7,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 const Index = lazy(() => import("./pages/Index"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const ConfigEditor = lazy(() => import("./pages/admin/ConfigEditor"));
+const ComingSoon = lazy(() => import("./pages/admin/ComingSoon"));
 
 const queryClient = new QueryClient();
 
@@ -27,6 +30,13 @@ const App = () => (
         <Suspense fallback={<RouteLoadingSkeleton />}>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<ConfigEditor />} />
+              <Route path="config" element={<ConfigEditor />} />
+              <Route path="ingest" element={<ComingSoon title="Ingest" />} />
+              <Route path="retrieval" element={<ComingSoon title="Retrieval" />} />
+              <Route path="debt" element={<ComingSoon title="Debt" />} />
+            </Route>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

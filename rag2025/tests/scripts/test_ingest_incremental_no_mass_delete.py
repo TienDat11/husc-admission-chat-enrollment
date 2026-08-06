@@ -96,3 +96,34 @@ def test_id_in_batch_condition_is_a_noop(table):
     assert ids == {f"r{i}" for i in range(10)} | {"new1"}, (
         "id IN (batch) behaves identically to omitting the delete entirely"
     )
+
+
+# ---------------------------------------------------------------------------
+# T1.3/G1 — crawl stubs must never enter the ingest batch
+# ---------------------------------------------------------------------------
+
+
+def test_list_chunk_files_excludes_thongbao_stubs(tmp_path):
+    """`_list_chunk_files` must only track canonical `chunked_*.jsonl`.
+
+    `chunked_thongbao_*.jsonl` (556-byte crawl stubs, Jul 30-Aug 3) match the
+    glob but are NOT in the manifest and would pollute the corpus. Excluded
+    defensively too: `batch_thongbao_*`, `crawl_thongbao_*`, and `*_enhanced`.
+    """
+    import rag2025.scripts.ingest_lancedb as mod
+
+    d = tmp_path / "chunked"
+    d.mkdir()
+    names = [
+        "chunked_1.jsonl",
+        "chunked_2.jsonl",
+        "chunked_thongbao_76.jsonl",   # crawl stub — must be excluded
+        "batch_thongbao_76.jsonl",     # defensive exclusion
+        "crawl_thongbao_76.jsonl",     # defensive exclusion
+        "chunked_1_enhanced.jsonl",    # existing exclusion
+    ]
+    for n in names:
+        (d / n).write_text("{}", encoding="utf-8")
+
+    files = [f.name for f in mod._list_chunk_files(d)]
+    assert files == ["chunked_1.jsonl", "chunked_2.jsonl"], f"got {files}"
