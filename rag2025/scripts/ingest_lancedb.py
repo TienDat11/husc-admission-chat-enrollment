@@ -51,18 +51,20 @@ def _list_chunk_files(chunks_dir: Path) -> List[Path]:
     # legacy `chunked_*.jsonl` set. Include every `*.jsonl` in data/chunked/
     # except stubs/noise:
     #   - chunked_thongbao_* / batch_thongbao_* / crawl_thongbao_*: 556-byte
-    #     crawl stubs + defensive (T1.3 G1)
-    #   - *_enhanced: derived/duplicate chunks (never canonical)
+    #     crawl stubs + boilerplate navigation rác (batch_thongbao_* carries
+    #     only "Trang chủ Thông báo Tuyển sinh..." chrome, not corpus) — T1.3 G1
     #   - chunked_test: fixture, not corpus
     #   - husc_yearly_{year}: literal template with braces, not a real file
     #   - .* hidden files (manifest etc.)
+    #   - *_enhanced: T1.5-bl now INCLUDES these — chunked_10_enhanced.jsonl is
+    #     real 2026 subject data (38 rows); T1.2 text-dedup collapses its
+    #     overlap with the base file at insert.
     files = sorted(chunks_dir.glob("*.jsonl"))
     _stub_prefixes = ("chunked_thongbao_", "batch_thongbao_", "crawl_thongbao_")
     _exact_names = {"chunked_test.jsonl", "husc_yearly_{year}.jsonl"}
     return [
         f for f in files
         if not f.name.startswith(_stub_prefixes)
-        and "enhanced" not in f.name
         and f.name not in _exact_names
         and not f.name.startswith(".")
     ]
@@ -141,6 +143,7 @@ def _unique_id(source: str, ingest_file: str, chunk_id: str) -> str:
 
 def _load_chunks(files: List[Path]) -> List[Dict]:
     all_chunks: List[Dict] = []
+    malformed_lines = 0
 
     for file in files:
         with file.open("r", encoding="utf-8") as fh:
@@ -150,6 +153,7 @@ def _load_chunks(files: List[Path]) -> List[Dict]:
                 try:
                     obj = json.loads(line)
                 except json.JSONDecodeError:
+                    malformed_lines += 1
                     continue
 
                 if not isinstance(obj, dict):
@@ -159,8 +163,14 @@ def _load_chunks(files: List[Path]) -> List[Dict]:
                 if not text:
                     continue
 
-                chunk_id = str(obj.get("id", obj.get("chunk_id", f"chunk_{len(all_chunks)}")))
-                source = obj.get("metadata", {}).get("source", file.name)
+                # Metadata may be malformed (None/list/str) in a hand-authored
+                # JSONL — treat as empty rather than crash the whole ingest.
+                meta = obj.get("metadata") if isinstance(obj.get("metadata"), dict) else {}
+
+                # `id: null` must not stringify to "None": two such rows would
+                # collide on _unique_id and silently overwrite in a rebuild.
+                chunk_id = str(obj.get("id") or obj.get("chunk_id") or f"chunk_{len(all_chunks)}")
+                source = meta.get("source", file.name)
                 all_chunks.append(
                     {
                         # T1.5 (G9): globally-unique row id — bare chunk ids
@@ -173,11 +183,14 @@ def _load_chunks(files: List[Path]) -> List[Dict]:
                         # File provenance for orphan scoping. Distinct from
                         # `source` (often a URL, shared across several files).
                         "ingest_file": file.name,
-                        "faq_type": obj.get("faq_type", obj.get("metadata", {}).get("faq_type", "")),
-                        "metadata": obj.get("metadata", {}),
+                        "faq_type": obj.get("faq_type", meta.get("faq_type", "")),
+                        "metadata": meta,
                         "content_hash": _content_hash(text),
                     }
                 )
+
+    if malformed_lines:
+        logger.warning(f"Skipped {malformed_lines} malformed JSON line(s) in {len(files)} file(s)")
 
     all_chunks = [c for c in all_chunks if c.get("text")]
 
@@ -243,11 +256,12 @@ def _orphan_ids(table, batch_files: Set[str], batch_ids: Set[str]) -> List[str]:
 
 
 def _trigger_graph_sync(new_ids: List[str]) -> None:
-    """M3-N3a: Post-ingest graph sync hook (fail-safe, non-blocking).
+    """M3-N3a: Post-ingest graph sync hook (fail-safe, blocking up to 300s).
 
     Writes new chunk IDs to data/graph/.new_chunk_ids.json and triggers
-    build_graph.py --incremental via subprocess. Failures are logged but
-    do NOT propagate — eventual consistency per R3 direction A.
+    build_graph.py --incremental via subprocess. Failures — including a
+    non-zero exit or a 300s timeout — are logged but do NOT propagate:
+    eventual consistency per R3 direction A.
     """
     repo_root = Path(__file__).parent.parent
     graph_dir = repo_root / "data" / "graph"
@@ -261,16 +275,19 @@ def _trigger_graph_sync(new_ids: List[str]) -> None:
         logger.warning(f"Failed to write .new_chunk_ids.json: {e}")
         return
 
-    # Trigger incremental graph build (non-blocking, fail-safe)
+    # Trigger incremental graph build (blocking, fail-safe)
     try:
-        subprocess.run(
+        result = subprocess.run(
             [sys.executable, "scripts/build_graph.py", "--incremental"],
             cwd=str(repo_root),
             timeout=300,  # 5 min timeout
             capture_output=True,
             text=True,
         )
-        logger.info(f"Graph sync triggered for {len(new_ids)} new chunk(s)")
+        if result.returncode != 0:
+            logger.warning(f"Graph sync exited {result.returncode} (non-fatal)")
+        else:
+            logger.info(f"Graph sync triggered for {len(new_ids)} new chunk(s)")
     except subprocess.TimeoutExpired:
         logger.warning("Graph sync timed out after 300s (non-fatal)")
     except Exception as e:
@@ -305,7 +322,13 @@ def ingest_lancedb(incremental: bool = False) -> bool:
     # M3-N1b: content-hash guardrail — skip re-embed when text unchanged
     db = lancedb.connect(settings.LANCEDB_URI)
     target = TARGET_TABLE
-    table_exists = target in db.table_names()
+    # lancedb 0.29 list_tables() returns a ListTablesResponse object (with a
+    # `.tables` field), not a plain list — `target in response` is always False.
+    # `table_names()` (deprecated) returns a plain list; keep a defensive guard
+    # so `table_exists` reflects reality on any client version.
+    _listed = db.list_tables()
+    _table_names = _listed.tables if hasattr(_listed, "tables") else _listed
+    table_exists = target in _table_names
 
     existing_hashes: Dict[str, str] = {}
     if incremental and table_exists:
@@ -323,6 +346,32 @@ def ingest_lancedb(incremental: bool = False) -> bool:
         except Exception as e:
             logger.warning(f"Failed to load existing hashes: {e}")
 
+    # T1.5-bl vector-reuse: a full-overwrite rebuild re-hashes every row id
+    # (G9), so the id-keyed guardrail above can never match. Build a
+    # content-hash → vector map from the CURRENT table and reuse any embedding
+    # whose content is unchanged, instead of re-embedding the whole corpus
+    # (~2h CPU at ~0.22 chunks/s on this machine).
+    content_to_vector: Dict[str, list] = {}
+    if table_exists:
+        try:
+            table_old = db.open_table(target)
+            old_rows = table_old.to_arrow().select(["metadata_json", "vector", "text"]).to_pylist()
+            for r in old_rows:
+                try:
+                    meta = json.loads(r.get("metadata_json") or "{}")
+                    # Prefer the stored content_hash, but legacy rows (pre-T1.2)
+                    # lack it — fall back to recomputing from the immutable text
+                    # column, since content_hash depends only on text. Also guard
+                    # against embedding-model drift by requiring matching dim.
+                    h = meta.get("content_hash") or _content_hash(r.get("text") or "")
+                    vec = r.get("vector")
+                    if h and vec is not None and len(vec) == settings.EMBEDDING_DIM:
+                        content_to_vector[h] = vec
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        except Exception as e:
+            logger.warning(f"Failed to build content→vector reuse map: {e}")
+
     chunks_to_embed = [
         c for c in chunks
         if c["content_hash"] != existing_hashes.get(c["id"])
@@ -338,13 +387,29 @@ def ingest_lancedb(incremental: bool = False) -> bool:
     # Embed only changed chunks
     embeddings_map: Dict[str, list] = {}
     if chunks_to_embed:
-        logger.info(f"Embedding {len(chunks_to_embed)} chunk(s) (skipped {skipped} unchanged)")
-        logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL} (dim={settings.EMBEDDING_DIM})")
-        embedding_service = EmbeddingService(settings)
-        texts = [chunk["text"] for chunk in chunks_to_embed]
-        embeddings = embedding_service.encode_documents(texts)
-        for chunk, vector in zip(chunks_to_embed, embeddings):
-            embeddings_map[chunk["id"]] = vector.tolist()
+        # T1.5-bl: in an overwrite rebuild every id is re-hashed (G9), so first
+        # try to reuse a vector whose content-hash already exists in the current
+        # table; only freshly embed the remainder.
+        to_embed: list = []
+        reused = 0
+        for chunk in chunks_to_embed:
+            vec = content_to_vector.get(chunk["content_hash"])
+            if vec is not None:
+                embeddings_map[chunk["id"]] = vec
+                reused += 1
+            else:
+                to_embed.append(chunk)
+        if reused:
+            logger.info(f"Vector-reuse: reused {reused} chunk(s) from current table")
+        chunks_to_embed = to_embed
+        if chunks_to_embed:
+            logger.info(f"Embedding {len(chunks_to_embed)} chunk(s) (skipped {skipped} unchanged, {reused} reused)")
+            logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL} (dim={settings.EMBEDDING_DIM})")
+            embedding_service = EmbeddingService(settings)
+            texts = [chunk["text"] for chunk in chunks_to_embed]
+            embeddings = embedding_service.encode_documents(texts)
+            for chunk, vector in zip(chunks_to_embed, embeddings):
+                embeddings_map[chunk["id"]] = vector.tolist()
 
     # For unchanged chunks, reuse existing vectors from table
     if chunks_unchanged and table_exists:
@@ -364,10 +429,14 @@ def ingest_lancedb(incremental: bool = False) -> bool:
                     embeddings_map[chunk["id"]] = embedding_service.encode_documents([chunk["text"]])[0].tolist()
 
     records = []
+    skipped_no_vector = 0
     for chunk in chunks:
         vector = embeddings_map.get(chunk["id"])
         if vector is None:
-            continue  # safety: skip if no vector available
+            # T1.5 (python-reviewer): never skip silently — in overwrite mode a
+            # chunk dropped here would vanish from the rebuilt table.
+            skipped_no_vector += 1
+            continue
         raw_meta = chunk.get("metadata", {})
         # M3-N2b: extract data_year (pattern from migrate_schema_v2.py:32-41)
         data_year = 0
@@ -410,10 +479,22 @@ def ingest_lancedb(incremental: bool = False) -> bool:
                 "is_tombstone": False,
                 "superseded_by": None,
                 "metadata_json": json.dumps(meta_out, ensure_ascii=False, default=str),
-                "is_reference": bool(raw_meta.get("is_reference")),
+                # bool("false") is True — parse strings defensively (python-reviewer LOW)
+                "is_reference": raw_meta.get("is_reference")
+                if isinstance(raw_meta.get("is_reference"), bool)
+                else str(raw_meta.get("is_reference", "")).lower() in ("1", "true", "yes"),
                 "crawl_date": raw_meta.get("crawl_date"),
             }
         )
+
+    if skipped_no_vector:
+        logger.warning(f"Skipped {skipped_no_vector} chunk(s) with no vector available")
+
+    if not records:
+        # T1.5 (python-reviewer HIGH): a full overwrite of an empty batch would
+        # silently destroy the production table. Guard both write paths.
+        logger.error("No records to write — aborting ingest, table preserved")
+        return False
 
     if incremental and table_exists:
         table = db.open_table(target)

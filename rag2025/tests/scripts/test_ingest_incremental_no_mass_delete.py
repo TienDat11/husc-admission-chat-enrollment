@@ -104,11 +104,13 @@ def test_id_in_batch_condition_is_a_noop(table):
 
 
 def test_list_chunk_files_excludes_thongbao_stubs(tmp_path):
-    """`_list_chunk_files` must only track canonical `chunked_*.jsonl`.
+    """`_list_chunk_files` must only track canonical corpus files.
 
     `chunked_thongbao_*.jsonl` (556-byte crawl stubs, Jul 30-Aug 3) match the
-    glob but are NOT in the manifest and would pollute the corpus. Excluded
-    defensively too: `batch_thongbao_*`, `crawl_thongbao_*`, and `*_enhanced`.
+    glob but are NOT canonical and would pollute the corpus. Excluded
+    defensively too: `batch_thongbao_*` (boilerplate navigation rác) and
+    `crawl_thongbao_*`. `*_enhanced` is T1.5-bl NOW INCLUDED — e.g.
+    chunked_10_enhanced.jsonl carries real 2026 subject data.
     """
     import rag2025.scripts.ingest_lancedb as mod
 
@@ -118,12 +120,16 @@ def test_list_chunk_files_excludes_thongbao_stubs(tmp_path):
         "chunked_1.jsonl",
         "chunked_2.jsonl",
         "chunked_thongbao_76.jsonl",   # crawl stub — must be excluded
-        "batch_thongbao_76.jsonl",     # defensive exclusion
+        "batch_thongbao_76.jsonl",     # boilerplate rác — excluded
         "crawl_thongbao_76.jsonl",     # defensive exclusion
-        "chunked_1_enhanced.jsonl",    # existing exclusion
+        "chunked_1_enhanced.jsonl",    # real data — now INCLUDED (T1.5-bl)
     ]
     for n in names:
         (d / n).write_text("{}", encoding="utf-8")
 
     files = [f.name for f in mod._list_chunk_files(d)]
-    assert files == ["chunked_1.jsonl", "chunked_2.jsonl"], f"got {files}"
+    assert files == [
+        "chunked_1.jsonl",
+        "chunked_1_enhanced.jsonl",
+        "chunked_2.jsonl",
+    ], f"got {files}"
