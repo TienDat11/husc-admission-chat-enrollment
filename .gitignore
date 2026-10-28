@@ -369,3 +369,8 @@ data/graph/ner_cache.jsonl
 
 # Pre-B4 LanceDB backup snapshot.
 data/lancedb_backup_pre_b4_20260729/
+
+# Misnamed chunk file: JSONL_OUT in auto_ingest_yearly.py is never .format()ed,
+# so the literal-brace name is what lands on disk. Kept, not deleted: its 2
+# chunks are unique across the corpus. Fix the writer, then re-ingest and drop this.
+rag2025/data/chunked/husc_yearly_{year}.jsonl
