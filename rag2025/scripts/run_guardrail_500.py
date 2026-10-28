@@ -42,7 +42,7 @@ except Exception:
 def _redact(s: str) -> str:
     if not isinstance(s, str):
         return str(s)
-    for key in ("GROQ_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "ZAI_API_KEY", "RAMCLOUDS_API_KEY", "QWEN_API_KEY"):
+    for key in ("NS24_API_KEY",):
         val = os.getenv(key, "")
         if val and val in s:
             s = s.replace(val, f"<REDACTED:{key}>")
@@ -418,7 +418,7 @@ def main() -> int:
     service = GuardrailService(settings)
 
     if service._client is None:
-        print("WARNING: GROQ_API_KEY not set; guardrail will only use heuristics.")
+        print("WARNING: NS24_API_KEY not set; guardrail will only use heuristics.")
         print("         (Most non-keyword queries will return NOT_IN_HUSC_SCOPE via fallback.)")
 
     # Run
@@ -430,7 +430,7 @@ def main() -> int:
         "meta": {
             "total": len(results),
             "concurrency": args.concurrency,
-            "model": settings.GUARDRAIL_MODEL,
+            "model": settings.NS24_GUARDRAIL_MODEL,
             "guardrail_enabled": settings.GUARDRAIL_ENABLED,
         },
         "results": _redact_obj(results),

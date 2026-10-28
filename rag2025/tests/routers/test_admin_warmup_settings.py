@@ -1,7 +1,7 @@
-"""TDD: admin warmup must route RAMCLOUDS_API_KEY through settings.
+"""TDD: admin warmup must route NS24_API_KEY through settings.
 
-BUG-7 LOW: admin.py:64 must not read os.environ directly for the provider
-key; it should use config.settings.settings.RAMCLOUDS_API_KEY.
+BUG-7 LOW: admin.py must not read os.environ directly for the provider
+key; it should use config.settings.settings.NS24_API_KEY.
 """
 from __future__ import annotations
 
@@ -51,16 +51,16 @@ def _build_app(admin_module):
 
 
 def test_admin_warmup_routes_key_through_settings(admin_module, monkeypatch):
-    """Warmup must decide LLM ping based on settings.RAMCLOUDS_API_KEY, not
+    """Warmup must decide LLM ping based on settings.NS24_API_KEY, not
     a direct os.environ read.
     """
     monkeypatch.setenv("ADMIN_API_TOKEN", "tok")
     # Make sure the key value comes from settings, not raw env.
-    monkeypatch.setenv("RAMCLOUDS_API_KEY", "sk-from-env")
+    monkeypatch.setenv("NS24_API_KEY", "sk-from-env")
 
     from config.settings import settings as live_settings
 
-    with patch.object(live_settings, "RAMCLOUDS_API_KEY", "sk-from-settings"):
+    with patch.object(live_settings, "NS24_API_KEY", "sk-from-settings"):
         app = _build_app(admin_module)
         client = TestClient(app)
 
@@ -81,5 +81,5 @@ def test_admin_warmup_routes_key_through_settings(admin_module, monkeypatch):
     assert res.status_code == 200, res.text
     body = res.json()
     assert body["status"] == "warmed"
-    # LLM was pinged because settings.RAMCLOUDS_API_KEY was set.
+    # LLM was pinged because settings.NS24_API_KEY was set.
     llm.chat.assert_awaited_once()

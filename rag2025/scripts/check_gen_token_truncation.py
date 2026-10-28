@@ -9,7 +9,7 @@ Strategy
    mirror the production generation path's prompt shape (system = generation
    prompt file; user = CONTEXT block + question; max_tokens branched on
    is_program_list_query).
-3) Hit ramclouds.me via the SAME provider path the app uses, but call
+3) Hit the ns24 gateway via the SAME provider path the app uses, but call
    OpenAI non-streamed so we can read `response.choices[0].finish_reason`
    deterministically (the streaming path in llm_client.py captures
    finish_reason but does NOT return it to callers). The non-streamed call
@@ -52,9 +52,9 @@ GEN_SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8") if PROMPT_PATH.exist
     "Bạn là chuyên gia tư vấn tuyển sinh Trường Đại học Khoa học - ĐH Huế (HUSC)."
 )
 
-RAMCLOUDS_API_KEY = os.environ["RAMCLOUDS_API_KEY"]
-RAMCLOUDS_BASE_URL = os.environ.get("RAMCLOUDS_BASE_URL", "https://ramclouds.me/v1")
-RAMCLOUDS_GEN_MODEL = os.environ.get("RAMCLOUDS_GEN_MODEL", "gemini-3.5-flash-low")
+NS24_API_KEY = os.environ["NS24_API_KEY"]
+NS24_BASE_URL = os.environ.get("NS24_BASE_URL", "https://api.ns24.io/v1")
+NS24_GEN_MODEL = os.environ.get("NS24_GEN_MODEL", "gpt-6-luna")
 MAX_GEN_TOKENS = int(os.getenv("MAX_GEN_TOKENS", "800"))
 MAX_GEN_TOKENS_ENUM = int(os.getenv("MAX_GEN_TOKENS_ENUM", "8000"))
 
@@ -210,7 +210,7 @@ def _redact_key(k: str) -> str:
     return k[:4] + "..." + k[-4:]
 
 
-async def call_ramclouds(
+async def call_ns24(
     user_message: str,
     system_message: str,
     max_tokens: int,
@@ -222,11 +222,11 @@ async def call_ramclouds(
     Mirrors what llm_client._call_provider does but skips the stream wrapping.
     """
     headers = {
-        "Authorization": f"Bearer {RAMCLOUDS_API_KEY}",
+        "Authorization": f"Bearer {NS24_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": RAMCLOUDS_GEN_MODEL,
+        "model": NS24_GEN_MODEL,
         "messages": [
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message},
@@ -234,7 +234,7 @@ async def call_ramclouds(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    url = f"{RAMCLOUDS_BASE_URL.rstrip('/')}/chat/completions"
+    url = f"{NS24_BASE_URL.rstrip('/')}/chat/completions"
     async with httpx.AsyncClient(timeout=timeout_s) as client:
         t0 = time.time()
         resp = await client.post(url, headers=headers, json=payload)
@@ -294,9 +294,9 @@ async def main():
     print("=" * 80)
     print("MAX_GEN_TOKENS TRUNCATION CHECK")
     print("=" * 80)
-    print(f"API key (redacted):  {_redact_key(RAMCLOUDS_API_KEY)}")
-    print(f"Base URL:            {RAMCLOUDS_BASE_URL}")
-    print(f"Model:               {RAMCLOUDS_GEN_MODEL}")
+    print(f"API key (redacted):  {_redact_key(NS24_API_KEY)}")
+    print(f"Base URL:            {NS24_BASE_URL}")
+    print(f"Model:               {NS24_GEN_MODEL}")
     print(f"MAX_GEN_TOKENS:      {MAX_GEN_TOKENS}  (normal answers)")
     print(f"MAX_GEN_TOKENS_ENUM: {MAX_GEN_TOKENS_ENUM}  (program list answers)")
     print(f"Test cases:          {len(TEST_CASES)}")
@@ -311,7 +311,7 @@ async def main():
             "Hãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."
         )
         print(f"[{i}/{len(TEST_CASES)}] {label}  (budget={budget}, branch={branch})")
-        r = await call_ramclouds(user_msg, GEN_SYSTEM_PROMPT, max_tokens=budget)
+        r = await call_ns24(user_msg, GEN_SYSTEM_PROMPT, max_tokens=budget)
         if not r["ok"]:
             print(f"  ERROR status={r['status']} body={r['body']}")
             results[label] = {"error": r, "question": question, "context": context,
@@ -351,7 +351,7 @@ async def main():
             "Hãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."
         )
         print(f"[DIFF 1200] {label}")
-        r1200 = await call_ramclouds(user_msg, GEN_SYSTEM_PROMPT, max_tokens=1200)
+        r1200 = await call_ns24(user_msg, GEN_SYSTEM_PROMPT, max_tokens=1200)
         if not r1200["ok"]:
             print(f"  ERROR status={r1200['status']} body={r1200['body']}")
             continue
@@ -452,9 +452,9 @@ async def main():
         "config": {
             "max_gen_tokens": MAX_GEN_TOKENS,
             "max_gen_tokens_enum": MAX_GEN_TOKENS_ENUM,
-            "model": RAMCLOUDS_GEN_MODEL,
-            "base_url": RAMCLOUDS_BASE_URL,
-            "api_key_redacted": _redact_key(RAMCLOUDS_API_KEY),
+            "model": NS24_GEN_MODEL,
+            "base_url": NS24_BASE_URL,
+            "api_key_redacted": _redact_key(NS24_API_KEY),
         },
         "results": {
             label: ({

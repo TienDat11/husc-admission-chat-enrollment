@@ -1,6 +1,7 @@
 """Tests for crawl_urls (TDD V5-R030 1:1 mapping)."""
 from __future__ import annotations
 import importlib.util
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -8,6 +9,14 @@ import pytest
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "crawl_urls.py"
+
+# Ticket T21 moved the fetch policy (backoff, retry, byte cap) into
+# ``src/services/web_fetch`` so the admin URL route and this CLI share one
+# implementation; the script re-exports the knobs it still documents.
+if str(SCRIPT_PATH.parent.parent) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_PATH.parent.parent))
+
+from src.services import web_fetch  # noqa: E402
 
 
 @pytest.fixture
@@ -19,10 +28,28 @@ def crawl_module():
     return module
 
 
-def _mock_session(status: int = 200, content: bytes = b"<html>OK</html>"):
-    sess = MagicMock()
+def _mock_response(status: int = 200, content: bytes = b"<html>OK</html>") -> MagicMock:
+    """A response mock that streams like ``requests`` does.
+
+    ``web_fetch`` reads the body with ``iter_content`` (so the byte cap can stop
+    an oversized page before it is held in memory), which a bare ``MagicMock``
+    cannot satisfy — it would hand back a mock instead of chunks.
+    """
     resp = MagicMock(status_code=status, content=content)
-    sess.get.return_value = resp
+    resp.headers = {"Content-Length": str(len(content))}
+    resp.iter_content.return_value = iter([content]) if content else iter([])
+    return resp
+
+
+def _mock_session(status: int = 200, content: bytes = b"<html>OK</html>"):
+    """A session mock that answers every call with a *fresh* response.
+
+    Fresh matters: a response's body is consumed once, so a single reused mock
+    would hand the second fetch an empty stream and make an unchanged page look
+    like a changed one.
+    """
+    sess = MagicMock()
+    sess.get.side_effect = lambda *args, **kwargs: _mock_response(status, content)
     return sess
 
 
@@ -35,8 +62,8 @@ def test_fetch_url_returns_bytes_on_200(crawl_module):
 
 def test_fetch_url_retries_on_5xx_then_fails(crawl_module):
     sess = MagicMock()
-    sess.get.return_value = MagicMock(status_code=500, content=b"")
-    with patch.object(crawl_module.time, "sleep", return_value=None):
+    sess.get.return_value = _mock_response(500, b"")
+    with patch.object(web_fetch.time, "sleep", return_value=None):
         with pytest.raises(RuntimeError, match="Failed to fetch id=74"):
             crawl_module.fetch_url(74, session=sess, max_attempts=3)
     assert sess.get.call_count == 3
@@ -45,10 +72,10 @@ def test_fetch_url_retries_on_5xx_then_fails(crawl_module):
 def test_fetch_url_succeeds_after_transient_5xx(crawl_module):
     sess = MagicMock()
     sess.get.side_effect = [
-        MagicMock(status_code=503, content=b""),
-        MagicMock(status_code=200, content=b"<html>OK</html>"),
+        _mock_response(503, b""),
+        _mock_response(200, b"<html>OK</html>"),
     ]
-    with patch.object(crawl_module.time, "sleep", return_value=None):
+    with patch.object(web_fetch.time, "sleep", return_value=None):
         body = crawl_module.fetch_url(74, session=sess, max_attempts=3)
     assert body == b"<html>OK</html>"
     assert sess.get.call_count == 2
@@ -56,7 +83,7 @@ def test_fetch_url_succeeds_after_transient_5xx(crawl_module):
 
 def test_fetch_url_does_not_retry_on_404(crawl_module):
     sess = MagicMock()
-    sess.get.return_value = MagicMock(status_code=404, content=b"")
+    sess.get.return_value = _mock_response(404, b"")
     with pytest.raises(RuntimeError, match="HTTP 404"):
         crawl_module.fetch_url(99999, session=sess, max_attempts=3)
     assert sess.get.call_count == 1
@@ -100,8 +127,8 @@ def test_crawl_many_continues_on_failure(crawl_module, tmp_path):
     def get(url, **_):
         nid = int(url.split("=")[-1])
         if nid == 99999:
-            return MagicMock(status_code=404, content=b"")
-        return MagicMock(status_code=200, content=f"<html>{nid}</html>".encode())
+            return _mock_response(404, b"")
+        return _mock_response(200, f"<html>{nid}</html>".encode())
 
     sess.get.side_effect = get
     results = crawl_module.crawl_many([74, 99999, 75], tmp_path, session=sess)
@@ -123,7 +150,8 @@ def test_parse_ids_explicit_list(crawl_module):
     assert crawl_module._parse_ids("63,74,59") == [63, 74, 59]
 
 
-def test_backoff_delay_capped(crawl_module):
-    assert crawl_module._backoff_delay(0) == 1.0
-    assert crawl_module._backoff_delay(1) == 2.0
-    assert crawl_module._backoff_delay(10) == crawl_module.BACKOFF_CAP_S
+def test_backoff_delay_capped():
+    """The CLI's backoff is the shared core's, capped at 30s (ticket T21)."""
+    assert web_fetch.backoff_delay(0) == 1.0
+    assert web_fetch.backoff_delay(1) == 2.0
+    assert web_fetch.backoff_delay(10) == web_fetch.BACKOFF_CAP_S

@@ -5,7 +5,7 @@ fail-fast on missing config, and PAUSES at the Opus-subagent judging gate.
 
 Stages (in order):
   s2_instrumented, s5a_prepare, [judging_gate], s5b_aggregate,
-  s5c_ramclouds, s6_halltype, s7_report
+  s5c_ns24, s6_halltype, s7_report
 
 All tests use INJECTED deps (spies) — no real LLM, no network, no disk.
 """
@@ -74,7 +74,7 @@ def _make_spy_deps(order_log: List[str], verdicts_exist: bool = True) -> Dict[st
         "s5a_prepare": make_spy("s5a_prepare"),
         "judging_gate_check": judging_gate_check,
         "s5b_aggregate": make_spy("s5b_aggregate"),
-        "s5c_ramclouds": make_spy("s5c_ramclouds"),
+        "s5c_ns24": make_spy("s5c_ns24"),
         "s6_halltype": make_spy("s6_halltype"),
         "s7_report": make_spy("s7_report"),
     }
@@ -83,7 +83,7 @@ def _make_spy_deps(order_log: List[str], verdicts_exist: bool = True) -> Dict[st
 
 
 # =============================================================================
-# 1. check_config: fail-fast on missing/empty RAMCLOUDS_API_KEY
+# 1. check_config: fail-fast on missing/empty NS24_API_KEY
 # =============================================================================
 
 def test_check_config_missing_key_raises(suite):
@@ -93,15 +93,15 @@ def test_check_config_missing_key_raises(suite):
 
 
 def test_check_config_empty_key_raises(suite):
-    """check_config({"RAMCLOUDS_API_KEY": ""}) → raises (SystemExit | RuntimeError)."""
+    """check_config({"NS24_API_KEY": ""}) → raises (SystemExit | RuntimeError)."""
     with pytest.raises((SystemExit, RuntimeError)):
-        suite.check_config({"RAMCLOUDS_API_KEY": ""})
+        suite.check_config({"NS24_API_KEY": ""})
 
 
 def test_check_config_present_does_not_raise(suite):
-    """check_config({"RAMCLOUDS_API_KEY": "x"}) → does not raise."""
+    """check_config({"NS24_API_KEY": "x"}) → does not raise."""
     # Should NOT raise — any exception here fails the test.
-    suite.check_config({"RAMCLOUDS_API_KEY": "x"})
+    suite.check_config({"NS24_API_KEY": "x"})
 
 
 # =============================================================================
@@ -122,7 +122,7 @@ def test_run_id_and_seed_propagated_to_every_stage(suite):
         "s2_instrumented",
         "s5a_prepare",
         "s5b_aggregate",
-        "s5c_ramclouds",
+        "s5c_ns24",
         "s6_halltype",
         "s7_report",
     )
@@ -153,7 +153,7 @@ def test_stage_ordering(suite):
         "s5a_prepare",
         "judging_gate",
         "s5b_aggregate",
-        "s5c_ramclouds",
+        "s5c_ns24",
         "s6_halltype",
         "s7_report",
     ]
@@ -184,7 +184,7 @@ def test_judging_gate_pause_when_verdicts_missing(suite):
         assert stage in order, f"upstream {stage} should be in order log"
 
     # Downstream stages MUST NOT have run.
-    for stage in ("s5b_aggregate", "s5c_ramclouds", "s6_halltype", "s7_report"):
+    for stage in ("s5b_aggregate", "s5c_ns24", "s6_halltype", "s7_report"):
         assert stage not in calls, (
             f"downstream {stage} should NOT be called when verdicts missing"
         )
@@ -210,7 +210,7 @@ def test_judging_gate_proceed_when_verdicts_exist(suite):
 
     assert result["status"] == "complete", result
     calls = deps["_calls"]
-    for stage in ("s5b_aggregate", "s5c_ramclouds", "s6_halltype", "s7_report"):
+    for stage in ("s5b_aggregate", "s5c_ns24", "s6_halltype", "s7_report"):
         assert stage in calls, f"stage {stage} should run when verdicts exist"
         assert len(calls[stage]) == 1, f"stage {stage} should run exactly once"
 
@@ -259,7 +259,7 @@ def test_module_docstring_documents_env_vars(suite):
     doc = parts[1]
 
     # Required env vars / claims
-    assert "RAMCLOUDS_API_KEY" in doc, "docstring must mention RAMCLOUDS_API_KEY"
+    assert "NS24_API_KEY" in doc, "docstring must mention NS24_API_KEY"
     assert "EVAL_BOOTSTRAP_N" in doc, "docstring must mention EVAL_BOOTSTRAP_N"
     assert "EVAL_JUDGE_RUNS" in doc, "docstring must mention EVAL_JUDGE_RUNS"
     assert "CI-bounded" in doc, (

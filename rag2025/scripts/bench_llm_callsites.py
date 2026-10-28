@@ -1,10 +1,10 @@
-"""LLM call-site latency benchmark — REAL gateway calls to ramclouds.me.
+"""LLM call-site latency benchmark — REAL gateway calls to the ns24 gateway.
 
 Measures wall-clock latency of EVERY LLM round-trip on the /v2 hot path,
 using the REAL UnifiedLLMClient. Reports p50/p95/max per call site +
 success/timeout/error counts + raw model id.
 
-REDACT RAMCLOUDS_API_KEY in all output. Do NOT edit production source.
+NS24_API_KEY is redacted in all output. Do NOT edit production source.
 
 Usage:
     cd rag2025 && D:/miniconda3/python.exe scripts/bench_llm_callsites.py
@@ -60,14 +60,14 @@ def _redact(text: str) -> str:
 def _redact_env() -> Dict[str, str]:
     """Return current model env (key redacted)."""
     keys = [
-        "RAMCLOUDS_API_KEY",
-        "RAMCLOUDS_BASE_URL",
-        "RAMCLOUDS_MODEL",
-        "RAMCLOUDS_NER_MODEL",
-        "RAMCLOUDS_HYDE_MODEL",
-        "RAMCLOUDS_GEN_MODEL",
-        "RAMCLOUDS_GEN_FALLBACK_MODEL",
-        "RAMCLOUDS_STREAM",
+        "NS24_API_KEY",
+        "NS24_BASE_URL",
+        "NS24_MODEL",
+        "NS24_NER_MODEL",
+        "NS24_HYDE_MODEL",
+        "NS24_GEN_MODEL",
+        "NS24_GEN_FALLBACK_MODEL",
+        "NS24_STREAM",
         "MAX_GEN_TOKENS",
         "MAX_GEN_TOKENS_ENUM",
     ]
@@ -234,8 +234,8 @@ async def bench_router_classify(
     client: UnifiedLLMClient, model_id: str, runs: int
 ) -> Dict[str, Any]:
     """chat_json call: _CLASSIFY_STEPBACK_SYSTEM + sample query.
-    Effective model on hot path = RAMCLOUDS_HYDE_MODEL (router uses default
-    client which reads RAMCLOUDS_MODEL)."""
+    Effective model on hot path = NS24_HYDE_MODEL (router uses default
+    client, whose provider list is printed at startup)."""
     queries = [
         "học phí ngành CNTT 2026?",                                # 1-fact
         "cách xét tuyển bằng học bạ và thời gian nộp hồ sơ?",     # policy
@@ -296,12 +296,12 @@ async def bench_router_classify(
 async def _gen_with_ttft(
     client: UnifiedLLMClient, user_msg: str, system: str, max_tokens: int
 ) -> Tuple[float, Optional[float], str, Optional[BaseException]]:
-    """Measure TTFT + total for a streaming call (always, since RAMCLOUDS_STREAM=true).
+    """Measure TTFT + total for a streaming call (always, since NS24_STREAM=true).
 
     Returns (total_ms, ttft_ms_or_None, content, exc).
     """
     # We call the public `chat` (which goes through _call_provider's SSE path
-    # when RAMCLOUDS_STREAM is on). To measure TTFT we patch the underlying
+    # when NS24_STREAM is on). To measure TTFT we patch the underlying
     # OpenAI client call with a one-shot wrapper that records when the first
     # delta arrives. Easier path: replicate the SSE collection inline and
     # time the first chunk ourselves.
@@ -386,7 +386,7 @@ async def bench_generation(
     user_msg = _build_gen_user_msg(query, _FAKE_CHUNKS)
     max_tokens = int(os.getenv("MAX_GEN_TOKENS", "1200"))
 
-    # SSE (matches RAMCLOUDS_STREAM=true default in production)
+    # SSE (matches NS24_STREAM=true default in production)
     sse_total: List[float] = []
     sse_ttft: List[float] = []
     sse_ok = 0
@@ -407,7 +407,7 @@ async def bench_generation(
                 sse_errs.append(f"{type(exc).__name__}: {_redact(str(exc))[:200]}")
         await asyncio.sleep(0.1)
 
-    # Non-SSE: temporarily flip RAMCLOUDS_STREAM off via env (we replicate the
+    # Non-SSE: temporarily flip NS24_STREAM off via env (we replicate the
     # call inline so we don't have to mutate the singleton's behavior).
     nons_total: List[float] = []
     nons_ok = 0
@@ -449,7 +449,7 @@ async def bench_generation(
     }
 
 
-# ─── 3. NER fallback (gpt-5.5-chat) ────────────────────────────────────────
+# ─── 3. NER (NS24_NER_MODEL) ───────────────────────────────────────────────
 
 
 async def bench_ner(
@@ -507,7 +507,7 @@ async def bench_ner(
     }
 
 
-# ─── 4. Fallback model (RAMCLOUDS_GEN_FALLBACK_MODEL) ──────────────────────
+# ─── 4. Fallback model (NS24_GEN_FALLBACK_MODEL) ──────────────────────
 
 
 async def bench_fallback_model(
@@ -565,7 +565,7 @@ async def bench_fallback_model(
 async def main() -> None:
     runs = int(os.getenv("BENCH_RUNS", "5"))
     print("=" * 80)
-    print("LLM CALL-SITE BENCHMARK — REAL ramclouds.me calls")
+    print("LLM CALL-SITE BENCHMARK — REAL ns24 gateway calls")
     print("=" * 80)
     print(f"Python: {sys.version.split()[0]}  cwd: {os.getcwd()}")
     print("ENV (redacted):")
@@ -573,8 +573,8 @@ async def main() -> None:
         print(f"  {k}={v}")
     print()
 
-    if not os.getenv("RAMCLOUDS_API_KEY"):
-        print("FATAL: RAMCLOUDS_API_KEY not set in .env — aborting")
+    if not os.getenv("NS24_API_KEY"):
+        print("FATAL: NS24_API_KEY not set in .env — aborting")
         sys.exit(2)
 
     # Build a singleton client that the production /v2 hot path uses
@@ -585,19 +585,19 @@ async def main() -> None:
         sys.exit(2)
 
     primary_model = client._providers[0].model
-    print(f"Primary model from RAMCLOUDS_MODEL = {primary_model!r}")
+    print(f"Providers (client order, model ids): {[p.model for p in client._providers]}")
     print(f"Runs per call site = {runs}  (override via BENCH_RUNS env)")
     print()
 
     results: List[Dict[str, Any]] = []
 
     # 1. Router classify
-    print("[1/4] router_classify (RAMCLOUDS_HYDE_MODEL / primary) ...")
+    print("[1/4] router_classify (router role: NS24_ROUTER_MODEL) ...")
     results.append(await bench_router_classify(client, primary_model, runs))
     print(f"  -> {_redact(json.dumps(results[-1], ensure_ascii=False))[:300]}...")
 
     # 2. Generation
-    print("\n[2/4] answer_generation (RAMCLOUDS_GEN_MODEL) ...")
+    print("\n[2/4] answer_generation (NS24_GEN_MODEL) ...")
     results.append(await bench_generation(client, primary_model, runs))
     sse = results[-1]["sse"]
     nons = results[-1]["non_sse"]
@@ -605,9 +605,9 @@ async def main() -> None:
           f"ttft p50={sse['ttft_ms'].get('p50')}ms ok={sse['success']}/{runs} err={sse['error']}")
     print(f"  nonS total p50={nons['total_ms'].get('p50')}ms ok={nons['success']}/{runs} err={nons['error']}")
 
-    # 3. NER fallback (gpt-5.5-chat)
-    ner_model = os.getenv("RAMCLOUDS_NER_MODEL", "deepseek-v4-flash")
-    print(f"\n[3/4] ner_fallback (RAMCLOUDS_NER_MODEL={ner_model}) ...")
+    # 3. NER (NS24_NER_MODEL, default gemini-3.5-flash-lite)
+    ner_model = os.getenv("NS24_NER_MODEL", "gemini-3.5-flash-lite")
+    print(f"\n[3/4] ner_fallback (NS24_NER_MODEL={ner_model}) ...")
     ner_client = UnifiedLLMClient(force_model=ner_model)
     results.append(await bench_ner(ner_client, ner_model, runs))
     print(f"  -> latency p50={results[-1]['latency_ms'].get('p50')}ms "
@@ -616,8 +616,8 @@ async def main() -> None:
     await ner_client.close()
 
     # 4. Fallback model
-    fb_model = os.getenv("RAMCLOUDS_GEN_FALLBACK_MODEL", "deepseek-v4-flash")
-    print(f"\n[4/4] answer_generation_fallback (RAMCLOUDS_GEN_FALLBACK_MODEL={fb_model}) ...")
+    fb_model = os.getenv("NS24_GEN_FALLBACK_MODEL", "claude-haiku-5-5")
+    print(f"\n[4/4] answer_generation_fallback (NS24_GEN_FALLBACK_MODEL={fb_model}) ...")
     results.append(await bench_fallback_model(client, fb_model, runs))
     sse = results[-1]["sse"]
     print(f"  -> SSE total p50={sse['total_ms'].get('p50')}ms "

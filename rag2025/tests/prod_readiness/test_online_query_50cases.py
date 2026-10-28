@@ -225,33 +225,6 @@ def _install_fakes(
 class TestRouterProviderCascade:
     """Verify provider fallback, error handling, and cache interaction."""
 
-    def test_groq_429_fallsback_to_ramclouds(self, main_module, monkeypatch):
-        """Case 1: groq 429 -> ramclouds picks up -> route resolves."""
-        calls_log: list = []
-        class _FakeRouter:
-            async def route(self, query):
-                calls_log.append("called")
-                return _fake_router_result()
-        # _install_fakes FIRST to set up unified_pipeline, THEN patch router
-        _install_fakes(main_module, guarded_answer="CNTT 400 chỉ tiêu.")
-        main_module.unified_pipeline._router = _FakeRouter()
-        client = TestClient(main_module.app)
-        res = client.post("/v2/query", json={"query": "CNTT?"})
-        assert res.status_code == 200, res.text
-        body = res.json()
-        assert body["answer"] == "CNTT 400 chỉ tiêu."
-        assert len(calls_log) == 1
-
-    def test_groq_timeout_fallthrough(self, main_module, monkeypatch):
-        """Case 2: groq timeout -> ramclouds fallback -> success."""
-        _install_fakes(main_module, guarded_answer="Ngành CNTT 400 chỉ tiêu.")
-        client = TestClient(main_module.app)
-        res = client.post("/v2/query", json={"query": "ngành CNTT?"})
-        assert res.status_code == 200, res.text
-        body = res.json()
-        assert "Ngành CNTT" in body["answer"] or "NGÀNH CNTT" in body["answer"].upper()
-        assert len(body["answer"]) > 0
-
     def test_both_providers_fail_returns_503(self, main_module, monkeypatch):
         """Case 3: Both providers 429 -> RuntimeError caught as 500."""
         _install_fakes(main_module, guarded_answer="irrelevant",
@@ -264,7 +237,7 @@ class TestRouterProviderCascade:
         assert res.status_code in (500, 503), res.text
 
     def test_invalid_json_fallthrough(self, main_module, monkeypatch):
-        """Case 4: groq invalid JSON -> fallback to ramclouds JSON mode."""
+        """Case 4: ns24 invalid JSON -> fallback to same-gateway JSON mode."""
         _install_fakes(main_module, guarded_answer="CNTT 400 chỉ tiêu.")
         client = TestClient(main_module.app)
         res = client.post("/v2/query", json={"query": "CNTT?"})

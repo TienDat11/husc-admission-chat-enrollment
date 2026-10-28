@@ -1,6 +1,6 @@
 """
 Eval V3: gọi /v3/query qua HTTP để đo Hybrid (Dense+BM25 RRF) + Aggregation Booster
-+ Reranker (Qwen3-Reranker-8B + lost-in-middle) + Generator (gpt-5.4, max_tokens=6000).
++ Reranker (Qwen3-Reranker-8B + lost-in-middle) + Generator (gpt-6-luna, max_tokens=6000).
 
 Yêu cầu: uvicorn server đã chạy ở http://localhost:8000
     cd rag2025 && uvicorn src.main:app --host 0.0.0.0 --port 8000

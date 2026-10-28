@@ -1,0 +1,28 @@
+# HUSC RAG — local dev compose (T13, rag2025-local)
+# Run from rag2025/:  docker compose -f docker-compose.yml up
+# Or use the root docker-compose.yml for the full app + Caddy setup.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: husc-rag:latest
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      LANCEDB_URI: /data/lancedb
+      DATA_DIR: /data
+      HF_HOME: /data/hf-cache
+    volumes:
+      - ./data:/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped

@@ -1,6 +1,6 @@
 """TDD: query_enhancer must be settings-driven and lazily constructed.
 
-BUG-3 HIGH: RAMCLOUDS_HYDE_MODEL must be read from config.settings, not
+BUG-3 HIGH: NS24_HYDE_MODEL must be read from config.settings, not
 os.getenv at import time. The module-level singleton must be replaced by a
 lazy factory with a backward-compat shim.
 """
@@ -17,34 +17,21 @@ RAG_SRC = Path(__file__).resolve().parents[2] / "src"
 if str(RAG_SRC) not in sys.path:
     sys.path.insert(0, str(RAG_SRC))
 
-# Ensure a ramclouds provider exists for HYDEQueryEnhancer init.
-os.environ.setdefault("RAMCLOUDS_API_KEY", "sk-test-fake")
-os.environ.setdefault("RAMCLOUDS_BASE_URL", "https://example.test/v1")
-os.environ.setdefault("RAMCLOUDS_MODEL", "deepseek-v4-pro")
+# Ensure an ns24 provider exists for HYDEQueryEnhancer init.
+os.environ.setdefault("NS24_API_KEY", "sk-test-fake")
 
 
-def test_hyde_model_read_from_settings_not_process_env(monkeypatch):
-    """If RAMCLOUDS_HYDE_MODEL env is 'gpt-5.3' but settings says
-    'gemini-hyde-test', the enhancer must use the settings value.
-    """
-    monkeypatch.setenv("RAMCLOUDS_HYDE_MODEL", "gpt-5.3")
-
-    # Import config.settings with a patched RAMCLOUDS_HYDE_MODEL.
-    from config.settings import RAGSettings
-
-    patched_settings = RAGSettings()
-    monkeypatch.setattr(patched_settings, "RAMCLOUDS_HYDE_MODEL", "gemini-hyde-test")
-
+def test_hyde_role_model_pair_from_ns24_contract(monkeypatch):
+    """The hyde role's primary/fallback come from the ns24 role contract, and the
+    built HYDE client uses the primary model of that pair."""
+    from config.ns24_models import ROLE_MODELS
     from services import query_enhancer as qe_mod
 
-    # Force a fresh instance under patched settings.
-    monkeypatch.setattr(qe_mod, "settings", patched_settings)
     qe_mod._query_enhancer_instance = None
-
     inst = qe_mod.get_query_enhancer()
-    assert inst._hyde_client._force_model == "gemini-hyde-test", (
-        f"HYDE used wrong model: {inst._hyde_client._force_model!r}"
-    )
+    primary, _fallback = ROLE_MODELS["hyde"]
+    models = [p.model for p in inst._hyde_client._providers]
+    assert models[0] == primary
 
 
 def test_query_enhancer_is_lazy_and_cached():

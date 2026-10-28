@@ -1,0 +1,8 @@
+# EVALUATION (parity/arbiter cross-check only) — NOT imported by the core runtime harness.
+# These are lazy-imported inside functions (see scripts/eval_parity_ragas_lib.py).
+# Do NOT bake into the Docker image; install only when running evals.
+#
+# Not present in rag2025/.venv as of 2026-10-06 (verified via pip freeze).
+# Pins kept at the versions last known to work.
+ragas==0.2.16
+deepeval==1.5.9

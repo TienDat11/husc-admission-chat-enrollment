@@ -1,6 +1,6 @@
 // @spec(plan-warmup-ux-20260705-111031 §3.2)
 // api.ts — RAG API client + retry wrapper + error classification.
-import type { GraphStats, RouterInfo, SourceChip } from './api-types';
+import type { ClaimCitation, components, GraphStats, RouterInfo, SourceChip } from './api-types';
 
 // ─────────────────────────────────────────────────────────────────────────
 // QueryError — typed error surface for the FE resilience layer
@@ -421,7 +421,14 @@ export interface QueryResponse {
   // answer + retrieval
   answer?: string;
   sources?: SourceChip[]; // enriched object[] on /v2 (was string[] on legacy /query)
+  // Ticket 10: per-claim provenance (claim -> chunk -> record -> source).
+  // Optional: canned/guardrail responses carry none. Type is GENERATED from
+  // the BE schema (gen-api-types.mjs); never re-type the fields here.
+  citations?: ClaimCitation[];
   confidence?: number;
+  // Ticket 44 contract: the generator's self-trust in its own text. `null`
+  // when generation failed. Optional because older/legacy responses omit it.
+  answer_confidence?: number | null;
   groundedness_score?: number;
   trace_id?: string;
   // status surface (now present on /v2 — used by ChatLayout banner)
@@ -430,6 +437,14 @@ export interface QueryResponse {
   data_gap_hints?: string[];
   internal_status_code?: string | null;
   pii_detected?: boolean;
+  // Ticket 40: set only when reranking was skipped (e.g. model load failed);
+  // null/absent on the happy path, so it must stay optional.
+  rerank_skipped_reason?: string | null;
+  // Ticket 17: the provenance of the answer text. The BE sets it to
+  // "evidence-policy:<reason>" when abstention/conflict policy overrode the
+  // generator (Main's measured wire). The FE keys abstain/conflict states off
+  // this string — a state it could never observe is not a state.
+  provider?: string | null;
 }
 
 export interface HealthResponse {
@@ -511,7 +526,33 @@ export async function warmup(): Promise<void> {
 export interface StreamMeta {
   route?: string;
   sources?: SourceChip[];
+  /**
+   * Ticket 10: the stream carries the same per-claim citations as the JSON
+   * response (main.py puts them on the meta frame). The FE reconciles them
+   * with the streamed answer on the `done` frame.
+   */
+  citations?: ClaimCitation[];
   status_code?: string;
+  /**
+   * FIX-05 (ticket 44): the stream carries the same status surface as the
+   * non-stream response, so a degraded generation cannot render as a normal
+   * answer on the SSE path only.
+   */
+  status_reason?: string;
+  internal_status_code?: string;
+  answer_confidence?: number | null;
+  /**
+   * Ticket 17: retrieval confidence. One number per response, rendered onto
+   * every source chip. Without it the streamed path would have to invent a
+   * default and its chips would disagree with the non-stream ones.
+   */
+  confidence?: number;
+  /**
+   * Ticket 17: same provider string as the JSON response, on the meta frame
+   * (main.py puts the full guarded response on `meta`). Without it the
+   * streamed path could not tell an abstain/conflict answer from a normal one.
+   */
+  provider?: string | null;
   data_gap_hints?: string[];
   trace_id?: string;
 }
@@ -711,4 +752,62 @@ export async function getWhatIf(req: WhatIfRequest): Promise<WhatIfResponse> {
     );
   }
   return (await response.json()) as WhatIfResponse;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// /v2/compare — multi-major same-year comparison (ticket 24).
+// The contract lives in the generated types (components["schemas"]); these
+// are type-only aliases, NOT a parallel hand-written shape. Mirror the
+// fetch + error pattern of getRecommendations()/getWhatIf() above.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Request body for POST /v2/compare (generated CompareRequest). */
+export type CompareRequestPayload = components['schemas']['CompareRequest'];
+
+/** Response body for POST /v2/compare (generated ComparisonResponse). */
+export type ComparisonResponsePayload = components['schemas']['ComparisonResponse'];
+
+export async function compareMajors(
+  req: CompareRequestPayload,
+): Promise<ComparisonResponsePayload> {
+  const response = await fetch(`${API_BASE_URL}/v2/compare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.detail || `API error: ${response.status} ${response.statusText}`,
+    );
+  }
+  return (await response.json()) as ComparisonResponsePayload;
+}
+
+// Ticket T07 — feedback loop: the 👍/👎 buttons in MessageBubble need a
+// public, no-auth endpoint. The BE stamps `values.source_trace_id` on the
+// canonical record, so a lost call here never blocks the UI (the caller
+// swallows the rejection). No retry: feedback is fire-and-forget.
+export interface FeedbackResponse {
+  trace_id: string;
+  helpful: boolean;
+  recorded: boolean;
+  reason?: string | null;
+}
+
+export async function sendFeedback(payload: {
+  trace_id: string;
+  helpful: boolean;
+  reason?: string | null;
+  question?: string | null;
+}): Promise<FeedbackResponse> {
+  const response = await fetch(`${API_BASE_URL}/v2/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(`Feedback failed: ${response.status}`);
+  }
+  return (await response.json()) as FeedbackResponse;
 }

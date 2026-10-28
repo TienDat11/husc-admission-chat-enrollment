@@ -29,7 +29,7 @@ import json
 import math
 import pathlib
 import sys
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 
 # ---------- Paths ----------
@@ -776,7 +776,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
     parts.append("")
 
     # ----- Cohen's κ -----
-    parts.append("## Cohen's κ (Opus vs ramclouds)")
+    parts.append("## Cohen's κ (Opus vs ns24)")
     parts.append("")
     kappa = report.get("kappa") or {}
     pmk = kappa.get("per_metric_kappa") if isinstance(kappa, dict) else None
@@ -851,7 +851,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument(
         "--kappa", required=True, type=pathlib.Path,
-        help="Path to S5c judge_ramclouds_<run_id>.json.",
+        help="Path to S5c judge_ns24_<run_id>.json.",
     )
     parser.add_argument(
         "--halltype", required=True, type=pathlib.Path,

@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 780" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="admin-ingestion-flow-title admin-ingestion-flow-desc">
+        <title id="admin-ingestion-flow-title">Admin nạp tài liệu tuyển sinh</title>
+        <desc id="admin-ingestion-flow-desc">Sáu bước từ tải tài liệu lên đến phát hành cho sinh viên hỏi, với việc làm và kết quả của từng bước theo ba vai trò: cán bộ, hệ thống và người duyệt.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="11" cy="11" r="0.8" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="1200" height="780" fill="#f5f5f5"/>
+        <rect width="1200" height="780" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- Lane tints and dividers -->
+        <rect x="140" y="44" width="1060" height="200" fill="rgba(45,49,66,0.018)"/>
+        <rect x="140" y="444" width="1060" height="200" fill="rgba(45,49,66,0.018)"/>
+        <g stroke="rgba(45,49,66,0.12)" stroke-width="0.8">
+          <line x1="0" y1="44" x2="1200" y2="44"/>
+          <line x1="0" y1="244" x2="1200" y2="244"/>
+          <line x1="0" y1="444" x2="1200" y2="444"/>
+          <line x1="0" y1="644" x2="1200" y2="644"/>
+        </g>
+        <line x1="140" y1="44" x2="140" y2="644" stroke="rgba(45,49,66,0.20)" stroke-width="1"/>
+
+        <!-- Step numbers -->
+        <text x="70" y="27" text-anchor="middle" font-family="Geist Mono, monospace" font-size="9" font-weight="500" letter-spacing="0.12em" fill="#4f5d75">BƯỚC</text>
+        <g font-family="Geist Mono, monospace" font-size="10" font-weight="600" text-anchor="middle">
+          <rect x="229.5" y="12" width="16" height="16" rx="8" fill="rgba(45,49,66,0.12)"/><text x="237.5" y="23.5" fill="#2d3142">1</text>
+          <rect x="404.5" y="12" width="16" height="16" rx="8" fill="rgba(45,49,66,0.12)"/><text x="412.5" y="23.5" fill="#2d3142">2</text>
+          <rect x="579.5" y="12" width="16" height="16" rx="8" fill="rgba(45,49,66,0.12)"/><text x="587.5" y="23.5" fill="#2d3142">3</text>
+          <rect x="754.5" y="12" width="16" height="16" rx="8" fill="rgba(45,49,66,0.12)"/><text x="762.5" y="23.5" fill="#2d3142">4</text>
+          <rect x="929.5" y="12" width="16" height="16" rx="8" fill="rgba(45,49,66,0.12)"/><text x="937.5" y="23.5" fill="#2d3142">5</text>
+          <rect x="1104.5" y="12" width="16" height="16" rx="8" fill="rgba(191,69,32,0.20)"/><text x="1112.5" y="23.5" fill="#2d3142">6</text>
+        </g>
+
+        <!-- Lane labels -->
+        <g font-family="Geist Mono, monospace" font-size="10" font-weight="500" letter-spacing="0.08em" text-anchor="middle" fill="#4f5d75">
+          <text x="70" y="148">CÁN BỘ</text>
+          <text x="70" y="162">TUYỂN SINH</text>
+          <text x="70" y="348">HỆ THỐNG</text>
+          <text x="70" y="548">NGƯỜI</text>
+          <text x="70" y="562">DUYỆT</text>
+        </g>
+
+        <!-- Connectors (drawn before nodes) -->
+        <path d="M317.5,144 H404.5 Q412.5,144 412.5,152 V256" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M492.5,344 H579.5 Q587.5,344 587.5,336 V232" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M667.5,144 H754.5 Q762.5,144 762.5,152 V256" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M842.5,344 H929.5 Q937.5,344 937.5,336 V232" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M1017.5,144 H1104.5 Q1112.5,144 1112.5,152 V456" fill="none" stroke="#bf4520" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+
+        <!-- Node 1: Tải lên (CÁN BỘ) -->
+        <g>
+          <rect x="157.5" y="56" width="160" height="176" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.25)" stroke-width="1"/>
+          <rect x="165.5" y="66" width="84" height="16" rx="2" fill="rgba(45,49,66,0.12)"/>
+          <text x="207.5" y="77" text-anchor="middle" font-family="Geist Mono, monospace" font-size="8" font-weight="600" fill="#2d3142">CÁN BỘ</text>
+          <text x="237.5" y="102" text-anchor="middle" font-family="Geist, sans-serif" font-size="13" font-weight="600" fill="#2d3142">Tải lên</text>
+          <g font-family="Geist Mono, monospace" font-size="9.5" fill="#5a6580" text-anchor="middle">
+            <text x="237.5" y="122">Chọn file PDF/DOCX/XLSX</text>
+            <text x="237.5" y="138">Hệ thống kiểm tra trùng</text>
+            <text x="237.5" y="154">Nếu trùng: mở bản cũ</text>
+          </g>
+          <line x1="173.5" y1="168" x2="301.5" y2="168" stroke="rgba(45,49,66,0.15)"/>
+          <text x="173.5" y="184" font-family="Geist Mono, monospace" font-size="8.5" font-weight="600" letter-spacing="0.1em" fill="#4f5d75">CÓ:</text>
+          <g font-family="Geist, sans-serif" font-size="10.5" font-weight="500" fill="#2d3142" text-anchor="middle">
+            <text x="237.5" y="200">Tài liệu có mã riêng</text>
+            <text x="237.5" y="216">không tạo bản trùng</text>
+          </g>
+        </g>
+
+        <!-- Node 2: Phân tích (HỆ THỐNG) -->
+        <g>
+          <rect x="332.5" y="256" width="160" height="176" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.25)" stroke-width="1"/>
+          <rect x="340.5" y="266" width="84" height="16" rx="2" fill="rgba(45,49,66,0.12)"/>
+          <text x="382.5" y="277" text-anchor="middle" font-family="Geist Mono, monospace" font-size="8" font-weight="600" fill="#2d3142">HỆ THỐNG</text>
+          <text x="412.5" y="302" text-anchor="middle" font-family="Geist, sans-serif" font-size="13" font-weight="600" fill="#2d3142">Phân tích</text>
+          <g font-family="Geist Mono, monospace" font-size="9.5" fill="#5a6580" text-anchor="middle">
+            <text x="412.5" y="322">Đọc chữ, bảng, tiêu đề</text>
+            <text x="412.5" y="338">Trang scan: chạy OCR</text>
+            <text x="412.5" y="354">Ghi rõ trang nào lỗi</text>
+          </g>
+          <line x1="348.5" y1="368" x2="476.5" y2="368" stroke="rgba(45,49,66,0.15)"/>
+          <text x="348.5" y="384" font-family="Geist Mono, monospace" font-size="8.5" font-weight="600" letter-spacing="0.1em" fill="#4f5d75">CÓ:</text>
+          <g font-family="Geist, sans-serif" font-size="10.5" font-weight="500" fill="#2d3142" text-anchor="middle">
+            <text x="412.5" y="400">Danh sách khối nội dung</text>
+            <text x="412.5" y="416">kèm số trang nguồn</text>
+          </g>
+        </g>
+
+        <!-- Node 3: Cấu hình (CÁN BỘ) -->
+        <g>
+          <rect x="507.5" y="56" width="160" height="176" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.25)" stroke-width="1"/>
+          <rect x="515.5" y="66" width="84" height="16" rx="2" fill="rgba(45,49,66,0.12)"/>
+          <text x="557.5" y="77" text-anchor="middle" font-family="Geist Mono, monospace" font-size="8" font-weight="600" fill="#2d3142">CÁN BỘ</text>
+          <text x="587.5" y="102" text-anchor="middle" font-family="Geist, sans-serif" font-size="13" font-weight="600" fill="#2d3142">Cấu hình</text>
+          <g font-family="Geist Mono, monospace" font-size="9.5" fill="#5a6580" text-anchor="middle">
+            <text x="587.5" y="122">Chọn cách cắt đoạn:</text>
+            <text x="587.5" y="138">theo Điều/Khoản, bảng,</text>
+            <text x="587.5" y="154">theo cặp hỏi–đáp (FAQ)</text>
+          </g>
+          <line x1="523.5" y1="168" x2="651.5" y2="168" stroke="rgba(45,49,66,0.15)"/>
+          <text x="523.5" y="184" font-family="Geist Mono, monospace" font-size="8.5" font-weight="600" letter-spacing="0.1em" fill="#4f5d75">CÓ:</text>
+          <g font-family="Geist, sans-serif" font-size="10.5" font-weight="500" fill="#2d3142" text-anchor="middle">
+            <text x="587.5" y="200">Bộ cấu hình có phiên bản</text>
+            <text x="587.5" y="216">không sửa khi đã dùng</text>
+          </g>
+        </g>
+
+        <!-- Node 4: Xem trước (HỆ THỐNG) -->
+        <g>
+          <rect x="682.5" y="256" width="160" height="176" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.25)" stroke-width="1"/>
+          <rect x="690.5" y="266" width="84" height="16" rx="2" fill="rgba(45,49,66,0.12)"/>
+          <text x="732.5" y="277" text-anchor="middle" font-family="Geist Mono, monospace" font-size="8" font-weight="600" fill="#2d3142">HỆ THỐNG</text>
+          <text x="762.5" y="302" text-anchor="middle" font-family="Geist, sans-serif" font-size="13" font-weight="600" fill="#2d3142">Xem trước</text>
+          <g font-family="Geist Mono, monospace" font-size="9.5" fill="#5a6580" text-anchor="middle">
+            <text x="762.5" y="322">Tạo sẵn các đoạn sẽ tìm</text>
+            <text x="762.5" y="338">Cảnh báo đoạn quá dài,</text>
+            <text x="762.5" y="354">rỗng hoặc trùng</text>
+          </g>
+          <line x1="698.5" y1="368" x2="826.5" y2="368" stroke="rgba(45,49,66,0.15)"/>
+          <text x="698.5" y="384" font-family="Geist Mono, monospace" font-size="8.5" font-weight="600" letter-spacing="0.1em" fill="#4f5d75">CÓ:</text>
+          <g font-family="Geist, sans-serif" font-size="10.5" font-weight="500" fill="#2d3142" text-anchor="middle">
+            <text x="762.5" y="400">Từng đoạn kèm nguồn</text>
+            <text x="762.5" y="416">trang và Điều tương ứng</text>
+          </g>
+        </g>
+
+        <!-- Node 5: Sửa & gửi duyệt (CÁN BỘ) -->
+        <g>
+          <rect x="857.5" y="56" width="160" height="176" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.25)" stroke-width="1"/>
+          <rect x="865.5" y="66" width="84" height="16" rx="2" fill="rgba(45,49,66,0.12)"/>
+          <text x="907.5" y="77" text-anchor="middle" font-family="Geist Mono, monospace" font-size="8" font-weight="600" fill="#2d3142">CÁN BỘ</text>
+          <text x="937.5" y="102" text-anchor="middle" font-family="Geist, sans-serif" font-size="13" font-weight="600" fill="#2d3142">Sửa &amp; gửi duyệt</text>
+          <g font-family="Geist Mono, monospace" font-size="9.5" fill="#5a6580" text-anchor="middle">
+            <text x="937.5" y="122">Sửa chỗ sai trong bản</text>
+            <text x="937.5" y="138">Hệ thống chặn gửi nếu</text>
+            <text x="937.5" y="154">còn lỗi bắt buộc</text>
+          </g>
+          <line x1="873.5" y1="168" x2="1001.5" y2="168" stroke="rgba(45,49,66,0.15)"/>
+          <text x="873.5" y="184" font-family="Geist Mono, monospace" font-size="8.5" font-weight="600" letter-spacing="0.1em" fill="#4f5d75">CÓ:</text>
+          <g font-family="Geist, sans-serif" font-size="10.5" font-weight="500" fill="#2d3142" text-anchor="middle">
+            <text x="937.5" y="200">Bản mới chờ người duyệt</text>
+            <text x="937.5" y="216">bản cũ vẫn đang phục vụ</text>
+          </g>
+        </g>
+
+        <!-- Node 6: Duyệt & phát hành (NGƯỜI DUYỆT) — focal -->
+        <g>
+          <rect x="1032.5" y="456" width="160" height="176" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.5"/>
+          <rect x="1040.5" y="466" width="84" height="16" rx="2" fill="rgba(191,69,32,0.20)"/>
+          <text x="1082.5" y="477" text-anchor="middle" font-family="Geist Mono, monospace" font-size="8" font-weight="600" fill="#2d3142">NGƯỜI DUYỆT</text>
+          <text x="1112.5" y="502" text-anchor="middle" font-family="Geist, sans-serif" font-size="13" font-weight="600" fill="#2d3142">Duyệt &amp; phát hành</text>
+          <g font-family="Geist Mono, monospace" font-size="9.5" fill="#5a6580" text-anchor="middle">
+            <text x="1112.5" y="522">Duyệt: khác người soạn</text>
+            <text x="1112.5" y="538">Từ chối: ghi rõ lý do</text>
+            <text x="1112.5" y="554">Phát hành: tạo release</text>
+          </g>
+          <line x1="1048.5" y1="568" x2="1176.5" y2="568" stroke="rgba(45,49,66,0.15)"/>
+          <text x="1048.5" y="584" font-family="Geist Mono, monospace" font-size="8.5" font-weight="600" letter-spacing="0.1em" fill="#4f5d75">CÓ:</text>
+          <g font-family="Geist, sans-serif" font-size="10.5" font-weight="500" fill="#2d3142" text-anchor="middle">
+            <text x="1112.5" y="600">Sinh viên hỏi được ngay</text>
+            <text x="1112.5" y="616">khi kiểm tra truy vấn đạt</text>
+          </g>
+        </g>
+
+        <!-- Legend strip -->
+        <g font-family="Geist Mono, monospace" font-size="9" font-weight="500" letter-spacing="0.12em" fill="#4f5d75">
+          <text x="144" y="672">ĐƯỜNG ĐI</text>
+          <text x="144" y="704">ĐỌC Ô</text>
+          <text x="144" y="736">MÀU</text>
+        </g>
+        <line x1="260" y1="668" x2="310" y2="668" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="320" y="672" font-family="Geist, sans-serif" font-size="11" fill="#4f5d75">bước tiếp theo</text>
+        <line x1="470" y1="668" x2="520" y2="668" stroke="#bf4520" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+        <text x="530" y="672" font-family="Geist, sans-serif" font-size="11" fill="#4f5d75">đi vào điểm kiểm soát</text>
+        <text x="260" y="708" font-family="Geist, sans-serif" font-size="11" fill="#2d3142">Dòng «CÓ:» là thứ người dùng nhận được sau bước đó.</text>
+        <rect x="260" y="726" width="14" height="10" rx="2" fill="rgba(191,69,32,0.20)" stroke="#bf4520" stroke-width="1"/>
+        <text x="282" y="735" font-family="Geist, sans-serif" font-size="11" fill="#2d3142">điểm kiểm soát: người duyệt phải khác người soạn</text>
+        <text x="260" y="762" font-family="Geist, sans-serif" font-size="11" fill="#4f5d75">Từ chối quay về bước 5. Bản xem trước chưa phải bản sinh viên đang thấy.</text>
+      </svg>

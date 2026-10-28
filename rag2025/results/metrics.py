@@ -6,6 +6,34 @@ import time
 import numpy as np
 from typing import List, Set, Callable, Any
 from sklearn.metrics import ndcg_score
+import threading
+
+
+# SentenceTransformer weights for the faithfulness metric. Loading them costs
+# ~9-10s per construction (disk-bound, not network: the model is already
+# cached under HF_HOME), so the instance is built once per process and reused.
+# Guards construction only; encoding itself runs unlocked.
+FAITHFULNESS_MODEL_NAME = 'intfloat/multilingual-e5-base'
+_faithfulness_model = None
+_faithfulness_model_lock = threading.Lock()
+
+
+def _get_faithfulness_model():
+    """
+    Return the process-wide SentenceTransformer used by faithfulness_score,
+    constructing it on first call. Thread-safe: two concurrent first-callers
+    cannot both build the model.
+
+    Raises whatever SentenceTransformer/import raises so callers keep their
+    existing fallback behaviour; failures are never cached.
+    """
+    global _faithfulness_model
+    if _faithfulness_model is None:
+        with _faithfulness_model_lock:
+            if _faithfulness_model is None:
+                from sentence_transformers import SentenceTransformer
+                _faithfulness_model = SentenceTransformer(FAITHFULNESS_MODEL_NAME)
+    return _faithfulness_model
 
 
 def mrr_at_k(retrieved_lists: List[List[str]], relevant_ids_list: List[Set[str]], k: int = 10) -> float:
@@ -98,11 +126,10 @@ def faithfulness_score(generated_answer: str, source_chunks_text: List[str]) -> 
         float [0,1] faithfulness score
     """
     try:
-        from sentence_transformers import SentenceTransformer
         from sklearn.metrics.pairwise import cosine_similarity
-        
-        # Initialize model (same as PaddedRAG)
-        model = SentenceTransformer('intfloat/multilingual-e5-base')
+
+        # Cached model (same as PaddedRAG), loaded at most once per process
+        model = _get_faithfulness_model()
         
         # Encode all texts
         texts_to_encode = [generated_answer] + source_chunks_text

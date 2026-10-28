@@ -1,4 +1,4 @@
-import { adminConfig, RAMCLOUDS_API_KEY, RAMCLOUDS_API_KEY_NOTE } from "@/constants/adminConfig";
+import { adminConfig, NS24_API_KEY, NS24_API_KEY_NOTE } from "@/constants/adminConfig";
 import {
   Table,
   TableBody,
@@ -12,65 +12,65 @@ const ConfigEditor = () => {
   const rows = [
     ...adminConfig,
     {
-      key: "RAMCLOUDS_API_KEY",
-      label: "RAM Clouds API Key",
-      value: RAMCLOUDS_API_KEY,
-      source: "Loaded from .env (rag2025/.env)",
-      howToChange: "Set RAMCLOUDS_API_KEY in rag2025/.env. Never expose the full key.",
+      key: "NS24_API_KEY",
+      label: "ns24 API Key",
+      value: NS24_API_KEY,
+      source: "Loaded from /srv/atlas-lab/shared/atlas.env on the server",
+      howToChange: "Set NS24_API_KEY in /srv/atlas-lab/shared/atlas.env. Never expose the full key.",
     },
   ];
 
   return (
     <div className="mt-1">
       <div className="space-y-1 mb-4">
-        <h2 className="text-sm font-medium text-zinc-100">Config</h2>
-        <p className="text-xs text-zinc-400">
-          Active configuration. Values are loaded at build time from
-          environment variables.
+        <h2 className="text-sm font-medium text-foreground dark:text-zinc-100">Config</h2>
+        <p className="text-xs text-muted-foreground dark:text-zinc-400">
+          Mirrored from the backend config (rag2025/config). These are the values
+          the server runs with; the table is a reference, not a live read.
         </p>
       </div>
-      <div className="border border-zinc-800 rounded-sm">
+      <div className="border border-border dark:border-zinc-800 rounded-sm">
         <Table>
           <TableHeader>
-            <TableRow className="border-zinc-800 hover:bg-zinc-900/50">
-              <TableHead className="text-zinc-400 h-8 px-3 text-xs">
+            <TableRow className="border-border dark:border-zinc-800 hover:bg-muted/50 dark:hover:bg-zinc-900/50">
+              <TableHead className="text-muted-foreground dark:text-zinc-400 h-8 px-3 text-xs">
                 Setting
               </TableHead>
-              <TableHead className="text-zinc-400 h-8 px-3 text-xs">
+              <TableHead className="text-muted-foreground dark:text-zinc-400 h-8 px-3 text-xs">
                 Value
               </TableHead>
-              <TableHead className="text-zinc-400 h-8 px-3 text-xs">
+              <TableHead className="text-muted-foreground dark:text-zinc-400 h-8 px-3 text-xs">
                 Source
               </TableHead>
-              <TableHead className="text-zinc-400 h-8 px-3 text-xs">
+              <TableHead className="text-muted-foreground dark:text-zinc-400 h-8 px-3 text-xs">
                 How to change
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={row.key} className="border-zinc-800">
-                <TableCell className="px-3 py-1.5 text-xs text-zinc-100 font-mono align-top">
+              <TableRow key={row.key} className="border-border dark:border-zinc-800">
+                <TableCell className="px-3 py-1.5 text-xs text-foreground dark:text-zinc-100 font-mono align-top">
                   {row.key}
                 </TableCell>
                 <TableCell
                   className={`px-3 py-1.5 text-xs font-mono align-top ${
                     row.value === "[REDACTED]"
-                      ? "text-amber-400"
-                      : "text-zinc-300"
+                      ? "text-amber-700 dark:text-amber-400"
+                      : "text-foreground dark:text-zinc-300"
                   }`}
                 >
                   <span>{row.value}</span>
-                  {row.key === "RAMCLOUDS_API_KEY" && (
-                    <span className="ml-2 text-zinc-500 font-sans normal-case text-[10px]">
-                      — {RAMCLOUDS_API_KEY_NOTE}
+                  {row.key === "NS24_API_KEY" && (
+                    <span className="ml-2 text-muted-foreground dark:text-zinc-400 font-sans normal-case text-[10px]">
+                      — {NS24_API_KEY_NOTE}
                     </span>
                   )}
                 </TableCell>
-                <TableCell className="px-3 py-1.5 text-xs text-zinc-500 font-sans align-top">
+                <TableCell className="px-3 py-1.5 text-xs text-muted-foreground dark:text-zinc-400 font-sans align-top">
                   {row.source}
                 </TableCell>
-                <TableCell className="px-3 py-1.5 text-xs text-zinc-400 font-sans align-top">
+                <TableCell className="px-3 py-1.5 text-xs text-muted-foreground dark:text-zinc-400 font-sans align-top">
                   {row.howToChange}
                 </TableCell>
               </TableRow>

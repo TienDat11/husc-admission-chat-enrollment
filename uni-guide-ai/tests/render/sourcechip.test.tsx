@@ -13,7 +13,7 @@
  *   - data_year = 'N/A'              -> no year badge
  *   - data_year = '' (empty)         -> no year badge
  *   - url present                    -> renders <a> with target=_blank, rel=noopener noreferrer
- *   - url absent                     -> renders <button>
+ *   - url absent                     -> renders informational <span> (no keyboard tab stop)
  *   - title truncated                 -> title span has truncate class
  *   - confidence 0..1                 -> no badge
  */
@@ -117,7 +117,7 @@ describe('SourceChip — url branching (anchor vs button)', () => {
     expect(anchor!.getAttribute('rel')).toBe('noopener noreferrer');
   });
 
-  it('renders <button> (not <a>) when url is absent', () => {
+  it('renders a non-interactive chip (no dead tab stop) when url is absent', () => {
     render(
       <MessageBubble
         message={makeMessage([
@@ -125,17 +125,18 @@ describe('SourceChip — url branching (anchor vs button)', () => {
         ])}
       />
     );
-    // Source chip should render as a <button>, not a link
-    // The container of the chip is a motion.button — find it by the title
+    // Ticket 23: a source without a URL has no action, so it must NOT be a
+    // focusable control — keyboard users pay for every dead tab stop. The
+    // chip is informational content (span), still present for screen readers.
     const buttons = Array.from(document.querySelectorAll('button')).filter(
       (b) => b.textContent?.includes('Plain source')
     );
-    expect(buttons.length).toBeGreaterThan(0);
-    // And no anchor with the title text
+    expect(buttons).toHaveLength(0);
     const anchors = Array.from(document.querySelectorAll('a')).filter(
       (a) => a.textContent?.includes('Plain source')
     );
     expect(anchors).toHaveLength(0);
+    expect(document.body.textContent).toContain('Plain source');
   });
 
   it('renders <button> when url is undefined explicitly', () => {

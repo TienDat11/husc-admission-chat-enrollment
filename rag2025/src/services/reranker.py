@@ -9,7 +9,20 @@ from sentence_transformers import CrossEncoder
 from config.settings import RAGSettings
 
 
+# Public load-state vocabulary (ticket 40). Three distinct states, never
+# compressed to a boolean: the config intentionally turned the reranker off,
+# the model loaded, or the model was configured on but failed to load.
+LOAD_STATE_LOADED = "loaded"
+LOAD_STATE_LOAD_FAILED = "load_failed"
+LOAD_STATE_DISABLED_BY_CONFIG = "disabled_by_config"
+
+
 class RerankerService:
+    # Class-level default so doubles built with ``RerankerService.__new__``
+    # (existing unit tests) still answer ``load_state``/``skip_reason``
+    # instead of raising AttributeError.
+    _load_state = LOAD_STATE_DISABLED_BY_CONFIG
+
     def __init__(self, settings: RAGSettings):
         self._enabled = settings.RERANKER_ENABLED
         self._model_name = settings.RERANKER_MODEL
@@ -21,15 +34,44 @@ class RerankerService:
         self._model = None
 
         if not self._enabled:
+            self._load_state = LOAD_STATE_DISABLED_BY_CONFIG
             logger.info("Reranker disabled by config")
             return
 
         try:
             self._model = CrossEncoder(self._model_name, max_length=self._max_length)
-            logger.info(f"Reranker loaded: {self._model_name} (max_length={self._max_length})")
+            # "loaded" means the model object really exists — a CrossEncoder
+            # that returns None is not a loaded reranker.
+            if self._model is not None:
+                self._load_state = LOAD_STATE_LOADED
+                logger.info(f"Reranker loaded: {self._model_name} (max_length={self._max_length})")
+            else:
+                self._enabled = False
+                self._load_state = LOAD_STATE_LOAD_FAILED
+                logger.warning(
+                    f"Reranker load FAILED (model={self._model_name}): "
+                    "CrossEncoder returned None"
+                )
         except Exception as exc:
             self._enabled = False
-            logger.warning(f"Failed to load reranker {self._model_name}: {exc}")
+            self._load_state = LOAD_STATE_LOAD_FAILED
+            # Distinct from the "disabled by config" info line: a dead model
+            # must be recognizable as a failure, not as an intentional off.
+            logger.warning(
+                f"Reranker load FAILED (model={self._model_name}): {exc}"
+            )
+
+    @property
+    def load_state(self) -> str:
+        """One of ``loaded`` / ``load_failed`` / ``disabled_by_config``."""
+        return self._load_state
+
+    @property
+    def skip_reason(self) -> Optional[str]:
+        """Why rerank cannot run: the load state, or None when it can run."""
+        if self._load_state == LOAD_STATE_LOADED:
+            return None
+        return self._load_state
 
     @property
     def enabled(self) -> bool:

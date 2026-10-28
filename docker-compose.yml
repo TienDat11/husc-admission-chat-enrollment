@@ -1,0 +1,77 @@
+# HUSC RAG — docker compose (T13)
+#
+# Topology (spec 04 §P-A):
+#   app — FastAPI backend (uvicorn), owns /data volume (LanceDB + corpus).
+#   web — Caddy: serves the pre-built React SPA + reverse-proxies API paths
+#         to app:8000. Automatic HTTPS when DOMAIN is set to a public domain;
+#         internal CA on :443 when DOMAIN is localhost/unset.
+#
+# Usage:
+#   cp rag2025/.env.example rag2025/.env   # then edit: NS24_API_KEY, ADMIN_*
+#   docker compose up --build
+#   # Local:  open https://localhost  (or http://localhost → :443 redirect)
+#   # Prod:   DOMAIN=husc.edu.vn ADMIN_EMAIL=ops@example.com docker compose up -d
+#
+# Config: rag2025/.env is OPTIONAL at the compose level (marked `required: false`)
+# so `docker compose up` parses on a clean machine. The app itself reads its
+# config from that file — copy .env.example to .env before starting, or
+# NS24_API_KEY / admin credentials will be unset.
+#
+# Data: rag2025/data (773MB corpus + LanceDB) is bind-mounted, never baked into
+# any image. The host directory is created empty on first start; populate it
+# from the host corpus before expecting answers.
+
+services:
+  app:
+    build:
+      context: ./rag2025
+      dockerfile: Dockerfile
+    image: husc-rag:latest
+    environment:
+      # Paths inside the container (volume-mounted). Override per-host via .env.
+      LANCEDB_URI: /data/lancedb
+      DATA_DIR: /data
+      # HF model cache: set HF_HOME to the mounted cache dir if you bind-mount
+      # a pre-downloaded HuggingFace cache. Without it the model downloads on
+      # first run (~1.2GB for Qwen3-Embedding-0.6B).
+      HF_HOME: /data/hf-cache
+    env_file:
+      - path: ./rag2025/.env
+        required: false
+    volumes:
+      # Bind mount keeps host-side rag2025/data live. Swap for a named volume
+      # (husc-app-data) if you want container-owned data:
+      - ./rag2025/data:/data
+    ports:
+      - "8000:8000"   # direct API access (debugging / non-Caddy paths)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s   # embedding model cold-load + LanceDB open
+    restart: unless-stopped
+
+  web:
+    build:
+      # Context MUST be uni-guide-ai/ (not the repo root): the Dockerfile does
+      # `COPY package.json package-lock.json ./`, which resolves against this
+      # context. Repo root has its own stub package.json (mega-template only),
+      # so a root context silently installs the wrong deps and `npm run build`
+      # fails on a missing `vite`. The repo root is provided separately as the
+      # named context `repo` for the OpenAPI schema + Caddyfile.
+      context: ./uni-guide-ai
+      dockerfile: Dockerfile
+      additional_contexts:
+        repo: .
+    image: husc-web:latest
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      CADDY_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped

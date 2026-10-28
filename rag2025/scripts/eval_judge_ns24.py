@@ -1,9 +1,9 @@
-"""Slice S5c — Ramclouds secondary judge + Cohen's κ agreement.
+"""Slice S5c — ns24 gateway secondary judge + Cohen's κ agreement.
 
 The PRIMARY judge is the Opus subagent (cross-vendor, breaks self-grading).
 This module adds a SECONDARY judge using the project's own `UnifiedLLMClient`
-(ramclouds) — NOT to score the system, but to quantify judge-vendor
-AGREEMENT (Cohen's κ) with the Opus verdicts. Ramclouds is the AGREEMENT
+(ns24 gateway) — NOT to score the system, but to quantify judge-vendor
+AGREEMENT (Cohen's κ) with the Opus verdicts. The ns24 gateway is the AGREEMENT
 BASELINE, NEVER the headline scorer. Scores produced here MUST NOT be
 merged into the headline aggregate (that is Opus-only — Slice S5b).
 
@@ -12,7 +12,7 @@ Public API:
   * score_batch(client, batch) -> list[dict]   (async)
   * cohens_kappa(labels_a, labels_b) -> float
   * binned_kappa(opus, ram, *, bins=(0.5, 0.8)) -> float
-  * agreement_report(opus_verdicts, ramclouds_verdicts) -> dict
+  * agreement_report(opus_verdicts, ns24_verdicts) -> dict
   * main() — argparse: --run-id --batches-dir --opus-verdicts-dir --out
 
 Determinism:
@@ -81,7 +81,7 @@ def _build_judge_prompt(rubric: str, item: Dict[str, Any]) -> str:
         "critical_facts": item.get("critical_facts", []),
     }
     return (
-        "You are the ramclouds secondary judge. Score the item below using "
+        "You are the ns24 secondary judge. Score the item below using "
         "the EXACT rubric embedded in the system message.\n\n"
         "Return ONE JSON object with these keys (floats in [0.0, 1.0] or "
         "null where the rubric says not-applicable):\n"
@@ -149,7 +149,7 @@ async def score_item(
     item: Dict[str, Any],
     rubric: str,
 ) -> Dict[str, Any]:
-    """Score a single prepared-batch item via the injected ramclouds client.
+    """Score a single prepared-batch item via the injected ns24 gateway client.
 
     The client is INJECTED so tests can pass a fake `chat_json`-only stub.
     For real runs, this is `UnifiedLLMClient` from
@@ -173,13 +173,13 @@ async def score_item(
         )
     except Exception as exc:  # network / parse / transport / any provider error
         logger.warning(
-            f"[eval_judge_ramclouds] chat_json failed for id={rid!r}: {exc}"
+            f"[eval_judge_ns24] chat_json failed for id={rid!r}: {exc}"
         )
         return _null_verdict(rid)
 
     if not isinstance(raw, dict):
         logger.warning(
-            f"[eval_judge_ramclouds] non-dict response for id={rid!r}: "
+            f"[eval_judge_ns24] non-dict response for id={rid!r}: "
             f"type={type(raw).__name__}"
         )
         return _null_verdict(rid)
@@ -296,7 +296,7 @@ def _bin_score(score: Optional[float], bins: Tuple[float, float]) -> Optional[st
 
 def binned_kappa(
     opus_scores: Sequence[Optional[float]],
-    ramclouds_scores: Sequence[Optional[float]],
+    ns24_scores: Sequence[Optional[float]],
     *,
     bins: Tuple[float, float] = DEFAULT_BINS,
 ) -> float:
@@ -306,15 +306,15 @@ def binned_kappa(
     remain, returns 1.0 (vacuously — no disagreement). If the binned labels
     are perfectly identical on the kept pairs, returns 1.0.
     """
-    if len(opus_scores) != len(ramclouds_scores):
+    if len(opus_scores) != len(ns24_scores):
         raise ValueError(
             f"binned_kappa: length mismatch "
-            f"(opus={len(opus_scores)}, ramclouds={len(ramclouds_scores)})"
+            f"(opus={len(opus_scores)}, ns24={len(ns24_scores)})"
         )
 
     a: List[str] = []
     b: List[str] = []
-    for o, r in zip(opus_scores, ramclouds_scores):
+    for o, r in zip(opus_scores, ns24_scores):
         if o is None or r is None:
             continue
         ba = _bin_score(o, bins)
@@ -359,21 +359,21 @@ def _verdict_score_lookup(
 
 def agreement_report(
     opus_verdicts: Sequence[Dict[str, Any]],
-    ramclouds_verdicts: Sequence[Dict[str, Any]],
+    ns24_verdicts: Sequence[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Compute the κ agreement report between two verdict lists.
 
     Per-metric: κ over binned (low/mid/high) labels, n_compared (number of
-    matched, non-null pairs), and mean_abs_diff (|opus - ramclouds| average
+    matched, non-null pairs), and mean_abs_diff (|opus - ns24| average
     over the same non-null pairs).
 
     IMPORTANT: This function returns ONLY agreement statistics. It does NOT
-    include a `headline_score` (or equivalent) key — ramclouds verdicts are
+    include a `headline_score` (or equivalent) key — ns24 verdicts are
     the AGREEMENT baseline, not the headline scorer. Headline scoring is
     Opus-only (S5b).
     """
     opus_idx = _verdict_score_lookup(opus_verdicts)
-    ram_idx = _verdict_score_lookup(ramclouds_verdicts)
+    ram_idx = _verdict_score_lookup(ns24_verdicts)
     common_ids = sorted(set(opus_idx.keys()) & set(ram_idx.keys()))
 
     per_metric_kappa: Dict[str, float] = {}
@@ -407,15 +407,15 @@ def agreement_report(
 
 # ============================================================================
 # CLI (skeleton — writes a placeholder output file; the real call-site is
-# wired up by a later slice that owns the real ramclouds run).
+# wired up by a later slice that owns the real ns24 gateway run).
 # ============================================================================
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Slice S5c — score prepared batches via ramclouds and write the "
+            "Slice S5c — score prepared batches via the ns24 gateway and write the "
             "Cohen's κ agreement report vs the Opus primary judge. The "
-            "ramclouds scores here are AGREEMENT BASELINE ONLY — they MUST "
+            "ns24 scores here are AGREEMENT BASELINE ONLY — they MUST "
             "NOT be merged into the headline aggregate."
         )
     )
@@ -438,12 +438,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         default=None,
         help=(
             "Override output path. Default: "
-            "rag2025/results/eval_harness/judge_ramclouds_<run_id>.json"
+            "rag2025/results/eval_harness/judge_ns24_<run_id>.json"
         ),
     )
     args = parser.parse_args(argv)
 
-    out_path = args.out or (RESULTS_ROOT / f"judge_ramclouds_{args.run_id}.json")
+    out_path = args.out or (RESULTS_ROOT / f"judge_ns24_{args.run_id}.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # NOTE: a real invocation requires a live UnifiedLLMClient. Tests do not
@@ -465,7 +465,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         json.dumps(skeleton, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"[eval_judge_ramclouds] skeleton written: {out_path}")
+    print(f"[eval_judge_ns24] skeleton written: {out_path}")
     return 0
 
 

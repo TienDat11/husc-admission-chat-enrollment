@@ -58,8 +58,6 @@ async def test_no_fabrication_when_only_2025_context_for_2026_hoc_phi_query(monk
 
     gen = LLMGenerator.__new__(LLMGenerator)
     gen.generation_system_prompt = "BẠN LÀ TƯ VẤN VIÊN."
-    gen.zai_client = None
-    gen.groq_client = None
     gen.has_any_provider = True
 
     fake_unified = MagicMock()
@@ -117,8 +115,6 @@ async def test_no_fabricated_numerics_when_risky_intent_lacks_current_year(monke
 
     gen = LLMGenerator.__new__(LLMGenerator)
     gen.generation_system_prompt = "BẠN LÀ TƯ VẤN VIÊN."
-    gen.zai_client = None
-    gen.groq_client = None
     gen.has_any_provider = True
 
     fake_unified = MagicMock()
@@ -179,8 +175,6 @@ async def test_risky_intent_with_current_year_chunk_does_NOT_trigger_fallback(mo
 
     gen = LLMGenerator.__new__(LLMGenerator)
     gen.generation_system_prompt = "TEST"
-    gen.zai_client = None
-    gen.groq_client = None
     gen.has_any_provider = True
 
     fake_unified = MagicMock()
@@ -231,8 +225,6 @@ async def test_data_year_as_string_does_not_disable_fallback_check(monkeypatch):
 
     gen = LLMGenerator.__new__(LLMGenerator)
     gen.generation_system_prompt = "TEST"
-    gen.zai_client = None
-    gen.groq_client = None
     gen.has_any_provider = True
 
     fake_unified = MagicMock()

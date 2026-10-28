@@ -189,9 +189,9 @@ async def main(embedding_override: str = "default", out_suffix: str = ""):
             RESULTS_DIR.mkdir(exist_ok=True)
             with (RESULTS_DIR / f"86q_thi_sinh_results{suffix_part}.json").open("w", encoding="utf-8") as f:
                 json.dump({"metadata": {
-                    "ner_model": settings.RAMCLOUDS_NER_MODEL,
-                    "hyde_model": settings.RAMCLOUDS_HYDE_MODEL,
-                    "gen_model": settings.RAMCLOUDS_GEN_MODEL,
+                    "ner_model": settings.NS24_NER_MODEL,
+                    "hyde_model": settings.NS24_HYDE_MODEL,
+                    "gen_model": settings.NS24_GEN_MODEL,
                     "embedding_model": settings.EMBEDDING_MODEL,
                     "total": len(questions),
                     "completed": len(out),

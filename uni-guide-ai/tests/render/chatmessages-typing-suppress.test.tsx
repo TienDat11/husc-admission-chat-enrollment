@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { ChatMessages, hasAssistantStage } from '@/components/chat/ChatMessages';
 import type { Message } from '@/lib/chat-types';
 
@@ -52,7 +52,7 @@ describe('hasAssistantStage', () => {
   it('returns true when the last assistant message has a stage set', () => {
     const msgs = [
       makeMessage({ role: 'user', content: 'Diem chuan CNTT 2024?' }),
-      makeMessage({ role: 'assistant', stage: 'Dang phan tich cau hoi…' }),
+      makeMessage({ role: 'assistant', stage: 'Đang phân tích câu hỏi…' }),
     ];
     expect(hasAssistantStage(msgs)).toBe(true);
   });
@@ -87,15 +87,16 @@ describe('ChatMessages — no double-bubble while assistant stage is set', () =>
         id: 'a1',
         role: 'assistant',
         content: '',
-        stage: 'Dang phan tich cau hoi…',
+        stage: 'Đang phân tích câu hỏi…',
       }),
     ];
 
     render(<ChatMessages messages={messages} isTyping={true} />);
 
     // (1) The stage pill label IS in the DOM — this is the SINGLE
-    //     visible loading affordance.
-    expect(screen.getByText(/Dang phan tich cau hoi…/)).toBeInTheDocument();
+    //     visible loading affordance. Scoped to the transcript because
+    //     ticket 23 also mirrors the stage into an sr-only live region.
+    expect(within(screen.getByRole('log')).getByText(/Đang phân tích câu hỏi…/)).toBeInTheDocument();
 
     // (2) The TypingIndicator copy "Đang suy nghĩ" is NOT in the DOM —
     //     that was the second bubble before the fix.

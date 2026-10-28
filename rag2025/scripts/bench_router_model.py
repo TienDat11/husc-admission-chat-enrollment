@@ -11,7 +11,7 @@ Quality-only — latency is NOT scored (per user). Writes a raw+scored JSON to
 `results/eval_harness/router_bench/<model>.json`.
 
 Usage:
-  python scripts/bench_router_model.py --model gpt-5.4
+  python scripts/bench_router_model.py --model gemini-3.5-flash-lite
   python scripts/bench_router_model.py --model gemini-3.5-flash-low
 
 The model is forced via `get_llm_client(force_model=...)`; the router is

@@ -31,8 +31,21 @@ CHUNK_TSTD = "husc_tstd_xethocba_taikhoan_2026"
 CHUNK_PHANBIET = "husc_phanbiet_dangky_minhchung_2026"
 
 
+def _served_id_column(df) -> str:
+    """Name of the served table's logical chunk-id column.
+
+    The legacy ``rag2025`` table carried it as ``chunk_id``; the served
+    ``husc_chunks`` table carries it as ``doc_id`` (on a canonical build
+    ``id`` holds the same logical value). Prefer ``doc_id`` so a legacy
+    build — where ``id`` is a content hash — still resolves.
+    """
+    for column in ("doc_id", "chunk_id", "id"):
+        if column in df.columns:
+            return column
+    raise KeyError("served table has no logical chunk-id column")
+
 def _has_live_chunk(chunk_id: str) -> bool:
-    """Check whether the live rag2025 table contains the chunk_id."""
+    """Check whether the served table contains the chunk_id."""
     _run_from_rag2025_cwd()
     try:
         import lancedb
@@ -41,7 +54,7 @@ def _has_live_chunk(chunk_id: str) -> bool:
         db = lancedb.connect(settings.LANCEDB_URI)
         table = db.open_table(settings.LANCEDB_TABLE)
         df = table.to_pandas()
-        return chunk_id in df["chunk_id"].tolist()
+        return chunk_id in df[_served_id_column(df)].tolist()
     except Exception:
         return False
 
@@ -90,9 +103,10 @@ def test_chunk_tstd_text_contains_canonical_answer():
         df = table.to_pandas()
     except Exception:
         pytest.skip("live rag2025 table unavailable")
-    if CHUNK_TSTD not in df["chunk_id"].tolist():
+    id_col = _served_id_column(df)
+    if CHUNK_TSTD not in df[id_col].tolist():
         pytest.skip(f"{CHUNK_TSTD} not yet ingested")
-    row = df[df["chunk_id"] == CHUNK_TSTD].iloc[0]
+    row = df[df[id_col] == CHUNK_TSTD].iloc[0]
     text = row["text"]
     assert "Thí sinh tự do" in text, "missing TSTD phrasing"
     assert "ĐƯỢC xét tuyển bằng học bạ" in text, "missing xet hoc ba allow"
@@ -112,9 +126,10 @@ def test_chunk_phanbiet_text_distinguishes_two_windows():
         df = table.to_pandas()
     except Exception:
         pytest.skip("live rag2025 table unavailable")
-    if CHUNK_PHANBIET not in df["chunk_id"].tolist():
+    id_col = _served_id_column(df)
+    if CHUNK_PHANBIET not in df[id_col].tolist():
         pytest.skip(f"{CHUNK_PHANBIET} not yet ingested")
-    row = df[df["chunk_id"] == CHUNK_PHANBIET].iloc[0]
+    row = df[df[id_col] == CHUNK_PHANBIET].iloc[0]
     text = row["text"]
     assert "THỜI GIAN ĐĂNG KÝ" in text, "missing ĐK marker"
     assert "THỜI GIAN MINH CHỨNG" in text, "missing minh chứng marker"
@@ -144,7 +159,7 @@ def test_chunk_tstd_retrieval_top5():
         results = table.search(vec).limit(5).to_pandas()
     except Exception as exc:
         pytest.skip(f"live retrieval failed: {exc}")
-    chunk_ids = set(results["chunk_id"].tolist())
+    chunk_ids = set(results[_served_id_column(results)].tolist())
     assert CHUNK_TSTD in chunk_ids, (
         f"{CHUNK_TSTD} NOT in top-5 retrieval; "
         f"got={sorted(chunk_ids)}"
@@ -169,7 +184,7 @@ def test_chunk_phanbiet_retrieval_top5():
         results = table.search(vec).limit(5).to_pandas()
     except Exception as exc:
         pytest.skip(f"live retrieval failed: {exc}")
-    chunk_ids = set(results["chunk_id"].tolist())
+    chunk_ids = set(results[_served_id_column(results)].tolist())
     assert CHUNK_PHANBIET in chunk_ids, (
         f"{CHUNK_PHANBIET} NOT in top-5 retrieval; "
         f"got={sorted(chunk_ids)}"

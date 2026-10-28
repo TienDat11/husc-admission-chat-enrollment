@@ -1,8 +1,8 @@
 """Tighten the scope guardrail so other-university queries (Bách Khoa / FPT / Y Hà Nội ...)
 are blocked while HUSC-only AND HUSC-vs-other comparison queries remain in_scope.
 
-No live GROQ calls — the AsyncGroq client is mocked the same way other guardrail
-tests do it. We only need to verify the deterministic fast-path guard
+No live LLM calls — the ns24 guardrail client is replaced by a fake with
+``chat_json`` (see ``_FakeLLM``). We only need to verify the deterministic fast-path guard
 (_mentions_other_school) and that the hardened prompt contains the HUSC-only
 anchor + comparison-exception clauses.
 """
@@ -23,46 +23,27 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 
-def _build_service_with_mock_groq(monkeypatch, is_in_scope: bool):
-    """Construct a GuardrailService with a fake AsyncGroq client that returns
-    the given `is_in_scope` verdict. Mirrors the AsyncGroq mock pattern used
-    by the existing router/contract tests.
-    """
-    # Ensure GROQ_API_KEY is non-empty so _client is created (not None fallback).
-    monkeypatch.setenv("GROQ_API_KEY", "test-fake-groq-key")
+class _FakeLLM:
+    """Stands in for the ns24 guardrail role client; records chat_json calls."""
 
-    # Lazy imports so monkeypatch is in effect.
+    def __init__(self, is_in_scope: bool):
+        self._is_in_scope = is_in_scope
+        self.token_ledger = None
+        self._providers = []
+        self.chat_json = AsyncMock(
+            side_effect=lambda **_kw: {"is_in_scope": is_in_scope, "reason": "mocked"}
+        )
+
+
+def _build_service_with_mock_llm(monkeypatch, is_in_scope: bool):
+    """Build a GuardrailService whose ns24 guardrail client is a fake that
+    returns the given `is_in_scope` verdict via chat_json."""
     from config.settings import RAGSettings
     from services import guardrail as guardrail_mod
 
-    # Build the fake AsyncGroq that any client() call resolves to.
-    class _FakeCompletions:
-        async def create(self, *args, **kwargs):
-            # NOTE: precheck() does:
-            #   content = resp.choices[0].message.content.strip()
-            #   data = json.loads(content[content.find("{"):content.rfind("}")+1])
-            # So we need `content` to be a REAL str (not a MagicMock).
-            content_str = (
-                '{"is_in_scope": %s, "reason": "mocked"}' % str(is_in_scope).lower()
-            )
-            resp = MagicMock()
-            # Drill down via attribute access so the str lives on the mock
-            # without being re-mocked by auto-spec.
-            resp.choices[0].message.content = content_str
-            return resp
-
-    class _FakeChat:
-        completions = _FakeCompletions()
-
-    class _FakeAsyncGroq:
-        def __init__(self, *a, **kw):
-            self.chat = _FakeChat()
-
-    # Patch the AsyncGroq class so a fresh GuardrailService uses our fake.
-    monkeypatch.setattr(guardrail_mod, "AsyncGroq", _FakeAsyncGroq)
-
-    settings = RAGSettings()
-    svc = guardrail_mod.GuardrailService(settings)
+    svc = guardrail_mod.GuardrailService(RAGSettings(_env_file=None))
+    svc._llm = _FakeLLM(is_in_scope)
+    svc._model = "fake-guardrail-model"
     return svc, guardrail_mod
 
 
@@ -73,7 +54,7 @@ def test_hardened_prompt_anchors_husc_only():
     other schools so the LLM is aware, and (c) explicitly call out the
     HUSC-vs-other comparison exception.
     """
-    svc, mod = _build_service_with_mock_groq_no_llm()
+    svc, mod = _build_service_with_mock_llm_no_llm()
     # Pull the prompt directly from the source so we can assert substrings.
     src = Path(mod.__file__).read_text(encoding="utf-8")
     # Find the prompt literal assigned to `prompt = (` in precheck()
@@ -95,15 +76,13 @@ def test_hardened_prompt_anchors_husc_only():
     assert "Đại học Huế khác HUSC" in snippet, "must include HUSC-vs-other comparison few-shot"
 
 
-def _build_service_with_mock_groq_no_llm(monkeypatch=None):  # helper for prompt test
+def _build_service_with_mock_llm_no_llm(monkeypatch=None):  # helper for prompt test
     """Light-weight helper: build service + return module, used only for prompt
     substring assertions (we never call .precheck() on the result here).
     """
-    import os
     if monkeypatch is None:
         from _pytest.monkeypatch import MonkeyPatch
         monkeypatch = MonkeyPatch()
-    monkeypatch.setenv("GROQ_API_KEY", "fake")
     sys.path.insert(0, str(SRC))
     from config.settings import RAGSettings
     from services import guardrail as guardrail_mod
@@ -116,15 +95,15 @@ def _build_service_with_mock_groq_no_llm(monkeypatch=None):  # helper for prompt
 
 def test_other_school_query_falls_through_to_llm_and_blocks(monkeypatch):
     """Other-school query is blocked deterministically before any LLM call."""
-    svc, _ = _build_service_with_mock_groq(monkeypatch, is_in_scope=True)
-    svc._client.chat.completions.create = AsyncMock()
+    svc, _ = _build_service_with_mock_llm(monkeypatch, is_in_scope=True)
+    svc._llm.chat_json = AsyncMock()
 
     decision = asyncio.run(svc.precheck("ĐH Ngoại Thương tuyển sinh 2026 ngành nào?"))
 
     assert decision.is_in_scope is False
     assert decision.internal_code == "NOT_IN_HUSC_SCOPE"
     assert decision.reason == "other_school_detected"
-    svc._client.chat.completions.create.assert_not_awaited()
+    svc._llm.chat_json.assert_not_awaited()
 
 
 # --- 2. Pure HUSC query stays in_scope (zero regression) ---
@@ -133,7 +112,7 @@ def test_pure_husc_query_still_in_scope(monkeypatch):
     """'Học phí ngành CNTT HUSC?' contains only HUSC + admission keywords —
     keyword fast-path returns in_scope=True immediately.
     """
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=False)
+    svc, mod = _build_service_with_mock_llm(monkeypatch, is_in_scope=False)
     decision = asyncio.run(svc.precheck("Học phí ngành CNTT HUSC?"))
     assert decision.is_in_scope is True
     assert decision.reason == "in_scope_keyword"
@@ -146,7 +125,7 @@ def test_husc_vs_other_comparison_stays_in_scope(monkeypatch):
     legitimate admission questions — the other-school guard must NOT
     force them out, and the LLM (mocked in_scope=true) confirms it.
     """
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=True)
+    svc, mod = _build_service_with_mock_llm(monkeypatch, is_in_scope=True)
     decision = asyncio.run(
         svc.precheck("HUSC so với Bách Khoa ngành CNTT cái nào hơn?")
     )
@@ -165,7 +144,7 @@ def test_new_2026_husc_major_in_scope(monkeypatch):
     The LLM (mocked in_scope=True) is what rescues it because the query
     contains NO admission keyword (no "điểm chuẩn", "học phí" etc.).
     """
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=True)
+    svc, mod = _build_service_with_mock_llm(monkeypatch, is_in_scope=True)
     decision = asyncio.run(
         svc.precheck("Vật lý học - Chương trình Công nghệ bán dẫn có gì hay?")
     )
@@ -186,7 +165,7 @@ def test_pii_layer_wins_first_even_with_other_school(monkeypatch):
     """A query containing BOTH a CCCD (PII keyword) AND 'Bách Khoa' must hit the
     PII layer FIRST — the other-school guard never gets a chance.
     """
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=False)
+    svc, mod = _build_service_with_mock_llm(monkeypatch, is_in_scope=False)
     decision = asyncio.run(
         svc.precheck("Số CCCD 012345678901 của tôi, cho hỏi điểm chuẩn Bách Khoa")
     )

@@ -58,7 +58,7 @@ def _make_provider(name: str = "test", api_key: str = "k") -> ProviderConfig:
 @pytest.mark.asyncio
 async def test_llm_client_uses_persistent_pool() -> None:
     """Verify the same httpx.AsyncClient is reused across multiple _get_client calls."""
-    with patch.dict("os.environ", {"RAMCLOUDS_API_KEY": "test-key"}):
+    with patch.dict("os.environ", {"NS24_API_KEY": "test-key"}):
         client = UnifiedLLMClient()
 
     p1 = _make_provider("p1")
@@ -76,7 +76,7 @@ async def test_llm_client_uses_persistent_pool() -> None:
 
 def test_llm_client_pool_max_connections() -> None:
     """Verify connection pool limits are configured correctly."""
-    with patch.dict("os.environ", {"RAMCLOUDS_API_KEY": "test-key"}):
+    with patch.dict("os.environ", {"NS24_API_KEY": "test-key"}):
         client = UnifiedLLMClient()
 
     # httpx stores limits on the transport pool
@@ -88,7 +88,7 @@ def test_llm_client_pool_max_connections() -> None:
 @pytest.mark.asyncio
 async def test_llm_client_pool_close_on_shutdown() -> None:
     """Verify close() cleans up the HTTP pool without leaked connections."""
-    with patch.dict("os.environ", {"RAMCLOUDS_API_KEY": "test-key"}):
+    with patch.dict("os.environ", {"NS24_API_KEY": "test-key"}):
         client = UnifiedLLMClient()
 
     assert not client._http_client.is_closed
@@ -103,7 +103,7 @@ async def test_llm_client_handles_concurrent_requests() -> None:
     """10 parallel _get_client calls should not create more than pool limit."""
     import asyncio
 
-    with patch.dict("os.environ", {"RAMCLOUDS_API_KEY": "test-key"}):
+    with patch.dict("os.environ", {"NS24_API_KEY": "test-key"}):
         client = UnifiedLLMClient()
 
     async def _get() -> object:

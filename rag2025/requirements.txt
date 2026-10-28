@@ -1,86 +1,84 @@
-# Core ML and NLP libraries (verified working versions)
+# T13: all pins verified against rag2025/.venv (pip freeze 2026-10-06).
+# Eval-only libs (ragas, deepeval) moved to requirements-eval.txt.
+
+# Core ML and NLP libraries
 numpy==2.1.0
-sentence-transformers==5.1.2
+pandas==2.3.3  # has_current_year_data (lancedb_retrieval.py) imports pandas; absent = silent "assume present" on current-year check. Probed: numpy==2.1.0 + pandas==2.3.3 resolve on python:3.13-slim (pip --dry-run, 2026-10-27).
+sentence-transformers==5.4.1
 rank-bm25==0.2.2
-pypdf>=5.0.0
-python-docx>=1.1.2
+pypdf==6.10.2
+python-docx==1.2.0
+openpyxl==3.1.5  # T17: XLSX uploads parsed in the subprocess worker.
+et-xmlfile==2.0.0  # T17: openpyxl's only runtime dependency (pin per requirements policy).
+tiktoken==0.12.0  # Hard runtime dep: top-level import in src/chunker.py (reached from src/main.py); absent = ModuleNotFoundError at container start.
 
-# Web framework  
-fastapi>=0.100.0
-uvicorn[standard]>=0.24.0
-
-# Data validation and serialization (upgraded to v2 for Python 3.13 compatibility)
-pydantic==2.10.3
-pydantic-settings==2.12.0
+# Web framework
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+python-multipart==0.0.32  # T04: FastAPI UploadFile support. Pin matched to the running venv (pip freeze 2026-10-07).
+# Data validation and serialization
+pydantic==2.13.3
+pydantic-settings==2.14.0
 jsonschema==4.17.3
 
 # Configuration and data handling
 pyyaml==6.0.1
 chardet==5.2.0
 
-# Tokenization (try installing without tiktoken first)
-# tiktoken==0.4.0
-
 # Logging
 loguru==0.7.2
 
-# Testing (optional - comment out if not needed)
-# pytest==7.4.3 
-# pytest-asyncio==0.21.1
-
-# Development (optional)
+# Development (black is a dev tool, kept per prior requirements)
 black==23.11.0
 
 # Optional dependencies for testing and scripts
 httpx==0.25.2
 requests==2.31.0
+# HTML parsing for the crawlers (scripts/crawl_*.py, vision_crawl_husc.py) and the
+# tests that exercise them (tests/scripts, tests/prod_readiness). Imported at module
+# level, so its absence fails pytest COLLECTION, not just the crawl tests.
+beautifulsoup4==4.15.0
 
 # ========== RAG 2025 UPDATES ==========
 
 # Vector Database
-lancedb==0.29.2  # PINNED: tag/restore semantics verified in M1-T3
-pyarrow==23.0.1
+lancedb==0.30.2
+pyarrow==24.0.0
 
-# LLM Providers
-google-generativeai==0.8.5
-groq==1.0.0
-openai==2.8.1  # For GLM-4 via Z.AI endpoint
-zai-sdk>=0.1.0  # GLM-4.5 via Z.AI
+# LLM gateway: ns24 (OpenAI-compatible) via the openai SDK pinned above.
+openai==2.34.0  # ns24 gateway client (services/llm_client.py)
 
-# BGE Multi-Vector (AITeamVN) + Qwen3-Embedding (requires >=4.51.0 for Qwen3 support)
-transformers==4.57.1
-torch==2.9.1
+# BGE Multi-Vector (AITeamVN) + Qwen3-Embedding (transformers 5.x required for Qwen3)
+transformers==5.7.0
+torch==2.11.0
 
 # Additional utilities
-python-dotenv>=1.0.0
-aiohttp>=3.9.0
-tenacity>=8.2.0  # For retry logic
-tqdm>=4.66.0  # Progress bars
+python-dotenv==1.2.2
+aiohttp==3.13.5
+tenacity==9.1.4
+tqdm==4.67.3
 
 # ========== GRAPH & NLP DEPENDENCIES ==========
 
 # Graph processing for GraphRAG
-networkx>=3.0  # Knowledge graph construction and PPR
+networkx==3.6.1
 
 # Vietnamese NLP (NER service uses underthesea for fallback tokenization)
-underthesea>=8.0.0  # Vietnamese word segmentation and NER
+underthesea==9.4.0
 
 # Async file I/O
-aiofiles>=23.0.0  # Async file operations for data pipeline
+aiofiles==25.1.0
 
 # Nested async support
-nest-asyncio>=1.5.0  # Allow nested event loops in Jupyter/scripts
+nest-asyncio==1.6.0
 
 # Machine learning utilities
-scikit-learn>=1.0.0  # For evaluation metrics and clustering
+scikit-learn==1.8.0
 
 # Process monitoring (optional, used by benchmark scripts)
-psutil>=5.9.0
+psutil==7.2.2
 
-# ===== EVALUATION (parity/arbiter cross-check only — NOT imported by core harness) =====
-# SLICE S0: pinned for reproducible parity runs. The primary judge is the
-# Opus-subagent batch protocol; these libs are cross-check / arbiter only.
-# Keep them lazy-imported (inside functions) so they never enter the core
-# harness import graph.
-ragas==0.2.16
-deepeval==1.5.9
+# ===== EVALUATION =====
+# Eval/arbiter libs (ragas, deepeval) live in requirements-eval.txt.
+# They are lazy-imported inside functions and NOT part of the runtime image;
+# install with: pip install -r requirements-eval.txt

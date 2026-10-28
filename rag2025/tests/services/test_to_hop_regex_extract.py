@@ -21,7 +21,7 @@ def test_to_hop_pattern_matches_every_code(code: str) -> None:
 def test_extract_from_query_to_hop_seeds() -> None:
     from src.services.ner_service import NERService
 
-    svc = NERService(llm=None, fallback_llm=None)
+    svc = NERService(llm=None)
     svc._llm = None  # prevent auto-init of UnifiedLLMClient
 
     seeds = svc.extract_from_query("ngành CNTT xét tuyển C01, A00, A01")

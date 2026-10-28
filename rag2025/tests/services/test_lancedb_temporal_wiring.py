@@ -50,6 +50,7 @@ if str(SRC_ROOT) not in sys.path:
 from services.lancedb_retrieval import (  # noqa: E402
     LanceDBRetriever,
     LanceDBRetrieverConfig,
+    TOMBSTONE_PREDICATE,
 )
 from services.season import SeasonPhase  # noqa: E402
 from services.temporal_intent import TemporalIntent  # noqa: E402
@@ -62,18 +63,24 @@ from services.temporal_intent import TemporalIntent  # noqa: E402
 EMBEDDING_DIM = 4  # small; tests don't care about vector content
 
 
-def _make_fake_search_adapter(rows: List[Dict[str, Any]]) -> MagicMock:
+def _make_fake_search_adapter(
+    rows: List[Dict[str, Any]],
+    has_tombstone_column: bool = True,
+) -> MagicMock:
     """Build a MagicMock that quacks like LanceDBAdapter for retrieve().
 
     The fake (a) records the `where_clause` it was called with so tests
-    can assert it is always None, and (b) returns ALL rows unchanged
-    (because the contract is that no SQL pre-filtering is done — the
+    can assert on it, and (b) returns ALL rows unchanged (because the
+    contract is that no SQL pre-filtering of `data_year` is done — the
     real table has no `data_year` column).
 
-    No real LanceDB is touched.
+    `has_tombstone_column` models the schema gate: when True the retriever
+    passes TOMBSTONE_PREDICATE as `where_clause`; when False (legacy table)
+    it passes None. No real LanceDB is touched.
     """
     fake = MagicMock()
     fake.ensure_table = MagicMock()
+    fake.has_tombstone_column = MagicMock(return_value=has_tombstone_column)
 
     # Recording side-effect: capture the where_clause at call time.
     captured: Dict[str, Any] = {"where_clause": "__unset__"}
@@ -111,6 +118,7 @@ def _row_data_year(row: Dict[str, Any]) -> Optional[int]:
 def _make_retriever(
     rows: Optional[List[Dict[str, Any]]] = None,
     embedding_dim: int = EMBEDDING_DIM,
+    has_tombstone_column: bool = True,
 ) -> LanceDBRetriever:
     """Build a LanceDBRetriever bypassing __init__ to avoid real LanceDB."""
     if rows is None:
@@ -122,7 +130,7 @@ def _make_retriever(
         embedding_dim=embedding_dim,
         default_top_k=5,
     )
-    retriever._adapter = _make_fake_search_adapter(rows)
+    retriever._adapter = _make_fake_search_adapter(rows, has_tombstone_column=has_tombstone_column)
     return retriever
 
 
@@ -328,7 +336,14 @@ class TestPreSeasonGapNoHardDrop:
     """During the pre-season gap, prior-year chunks are KEPT (shown labeled).
     No post-fetch hard drop; the soft demote path stays in effect."""
 
-    def test_pre_season_gap_where_clause_is_none(self, monkeypatch):
+    def test_pre_season_gap_where_clause_is_tombstone_gate(self, monkeypatch):
+        """T15: the dense arm now always passes TOMBSTONE_PREDICATE as the
+        server-side `where_clause` (never a data_year clause). The
+        PRE_SEASON_GAP invariant was 'no hard-dropping prior-year rows' —
+        that is enforced POST-FETCH in `_apply_temporal_filter`, not by
+        omitting the tombstone gate from the SQL clause. The gate only
+        excludes rows stamped `is_tombstone=true`; it does not affect
+        year-based soft/demote behavior."""
         monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
         monkeypatch.delenv("APP_ENV", raising=False)
 
@@ -345,11 +360,12 @@ class TestPreSeasonGapNoHardDrop:
             query="điểm chuẩn năm nay",
         )
 
-        assert retriever._adapter._captured["where_clause"] is None, (
-            "PRE_SEASON_GAP must NOT push a where_clause; the soft-demote "
-            "path is responsible for showing prior-year data labeled. "
-            f"got {retriever._adapter._captured['where_clause']!r}"
+        captured = retriever._adapter._captured["where_clause"]
+        assert captured == TOMBSTONE_PREDICATE, (
+            "T15: dense arm must pass TOMBSTONE_PREDICATE; "
+            f"got {captured!r}"
         )
+        assert "data_year" not in captured
 
     def test_pre_season_gap_prior_year_rows_survive(self, monkeypatch):
         """Prior-year rows SURVIVE in PRE_SEASON_GAP (shown, just demoted)."""
@@ -586,14 +602,18 @@ class TestInputValidationUnchanged:
 
 
 # ---------------------------------------------------------------------------
-# Test 9: invariant — `adapter.search` always called with where_clause=None
+# T15 invariant — `adapter.search` never receives a data_year clause.
+# The dense arm now passes TOMBSTONE_PREDICATE (the is_tombstone gate)
+# as its `where_clause`; that gate does NOT reference data_year, so the
+# "no data_year clause" invariant is preserved and re-asserted here.
 # ---------------------------------------------------------------------------
 
 class TestNoDataYearSQLClauseEver:
     """Sweep the contract end-to-end: in every intent path, `adapter.search`
-    MUST be called with `where_clause=None`. The real table has no
-    `data_year` column, so any clause containing that identifier would
-    raise `LanceError(Schema)`."""
+    MUST be called with a clause that does not contain `data_year`. Since
+    T15 the only clause emitted is `TOMBSTONE_PREDICATE` (is_tombstone
+    gate); the real table has no `data_year` column, so any clause
+    containing that identifier would raise `LanceError(Schema)`."""
 
     @pytest.mark.parametrize(
         "query, expected_intent",
@@ -622,3 +642,260 @@ class TestNoDataYearSQLClauseEver:
         )
 
         _assert_no_data_year_sql_clause(retriever)
+
+# ---------------------------------------------------------------------------
+# Test 9: the `query` key is a HINT, never an equality constraint
+# ---------------------------------------------------------------------------
+
+class TestQueryHintIsNotAFilter:
+    """HybridSearchService injects the raw query into `metadata_filter` so the
+    temporal classifier can read the user's wording. No row carries a `query`
+    field, so matching it as equality dropped EVERY row and the dense arm
+    returned EMPTY_RESULT on every hybrid call — the fused pool silently
+    degenerated to BM25-only. The hint must be ignored, like `or_conditions`.
+    """
+
+    def test_query_hint_alone_does_not_drop_rows(self, monkeypatch):
+        monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
+        monkeypatch.delenv("APP_ENV", raising=False)
+
+        rows = [
+            _row("current-2026", data_year=2026),
+            _row("stable-agnostic", data_year=None),
+        ]
+        retriever = _make_retriever(rows=rows)
+        _drive_season(retriever, year=2026, has_data=True)
+
+        result = retriever.retrieve(
+            query_vector=_make_vector(),
+            top_k=5,
+            metadata_filter={"query": "học phí ngành CNTT"},
+        )
+
+        chunk_ids = {doc.chunk_id for doc in result.documents}
+        assert chunk_ids == {"current-2026", "stable-agnostic"}, (
+            "the `query` hint must not filter rows out; "
+            f"expected both rows, got {chunk_ids}"
+        )
+
+    def test_temporal_hard_drop_still_fires_with_hint_present(self, monkeypatch):
+        """A real rule still applies when the hint rides along in the filter."""
+        monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
+        monkeypatch.delenv("APP_ENV", raising=False)
+
+        rows = [
+            _row("current-2026", data_year=2026),
+            _row("prior-2025", data_year=2025),
+        ]
+        retriever = _make_retriever(rows=rows)
+        _drive_season(retriever, year=2026, has_data=True)
+
+        result = retriever.retrieve(
+            query_vector=_make_vector(),
+            top_k=5,
+            metadata_filter={"query": "học phí ngành CNTT"},
+        )
+
+        chunk_ids = {doc.chunk_id for doc in result.documents}
+        assert "current-2026" in chunk_ids, (
+            f"current-year row must survive; got {chunk_ids}"
+        )
+        assert "prior-2025" not in chunk_ids, (
+            "the IN_SEASON+ambiguous hard-drop must still fire when the "
+            f"hint rides along in metadata_filter; got {chunk_ids}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# T15: tombstone rows are absent from dense `sources` AND from fetch_by_id
+# ---------------------------------------------------------------------------
+
+
+def _row_t15(
+    text: str,
+    distance: float = 0.5,
+    data_year: Optional[int] = None,
+    is_tombstone: Optional[bool] = None,
+) -> Dict[str, Any]:
+    """Row with an explicit `is_tombstone` top-level column."""
+    return {
+        "text": text,
+        "source": "synthetic",
+        "chunk_id": text,
+        "id": text,
+        "metadata_json": json.dumps({"data_year": data_year, "is_tombstone": is_tombstone}),
+        "is_tombstone": is_tombstone,
+        "_distance": distance,
+    }
+
+
+class TestTombstoneDenseDropped:
+    """T15(a): a row stamped `is_tombstone=true` must NOT appear in the
+    dense `sources` list, regardless of temporal intent."""
+
+    def test_tombstone_row_dropped_from_sources(self, monkeypatch):
+        monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
+        monkeypatch.delenv("APP_ENV", raising=False)
+        rows = [
+            _row_t15("normal-2026", data_year=2026, is_tombstone=False),
+            _row_t15("tombstoned-2026", data_year=2026, is_tombstone=True),
+        ]
+        retriever = _make_retriever(rows=rows)
+        _drive_season(retriever, year=2026, has_data=True)
+        result = retriever.retrieve(query_vector=_make_vector(), top_k=5, query="điểm chuẩn")
+        chunk_ids = {doc.chunk_id for doc in result.documents}
+        assert "normal-2026" in chunk_ids
+        assert "tombstoned-2026" not in chunk_ids, f"tombstoned row must be absent; got {chunk_ids}"
+
+    def test_tombstone_row_dropped_even_for_historical_query(self, monkeypatch):
+        """Unlike superseded rows, a tombstoned row is NEVER valid."""
+        monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
+        monkeypatch.delenv("APP_ENV", raising=False)
+        rows = [
+            _row_t15("tombstoned-prior", data_year=2024, is_tombstone=True),
+            _row_t15("normal-prior", data_year=2024, is_tombstone=False),
+        ]
+        retriever = _make_retriever(rows=rows)
+        _drive_season(retriever, year=2026, has_data=True)
+        result = retriever.retrieve(
+            query_vector=_make_vector(), top_k=5, query="điểm chuẩn năm 2024"
+        )
+        chunk_ids = {doc.chunk_id for doc in result.documents}
+        assert "normal-prior" in chunk_ids
+        assert "tombstoned-prior" not in chunk_ids, (
+            "tombstoned row must never survive, even for historical queries; "
+            f"got {chunk_ids}"
+        )
+
+    def test_null_tombstone_row_is_still_returned(self, monkeypatch):
+        """The nullable-column trap: a row where `is_tombstone` is NULL
+        (not tombstoned) must NOT be dropped — it is a legitimate chunk."""
+        monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
+        monkeypatch.delenv("APP_ENV", raising=False)
+        rows = [_row_t15("unstamped", data_year=2026, is_tombstone=None)]
+        retriever = _make_retriever(rows=rows)
+        _drive_season(retriever, year=2026, has_data=True)
+        result = retriever.retrieve(query_vector=_make_vector(), top_k=5, query="học phí")
+        chunk_ids = {doc.chunk_id for doc in result.documents}
+        assert "unstamped" in chunk_ids, (
+            "a NULL is_tombstone row is a legitimate chunk and must be "
+            f"returned; got {chunk_ids}"
+        )
+
+    def test_server_side_predicate_is_tombstone_gate_not_data_year(self, monkeypatch):
+        """T15 decision: the dense arm passes TOMBSTONE_PREDICATE as the
+        server-side `where_clause`. No `data_year` clause may appear."""
+        monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
+        monkeypatch.delenv("APP_ENV", raising=False)
+        rows = [_row_t15("c", data_year=2026, is_tombstone=False)]
+        retriever = _make_retriever(rows=rows)
+        _drive_season(retriever, year=2026, has_data=True)
+        retriever.retrieve(query_vector=_make_vector(), top_k=5, query="học phí")
+        captured = retriever._adapter._captured["where_clause"]
+        assert captured == TOMBSTONE_PREDICATE, (
+            f"dense arm must pass the tombstone gate; got {captured!r}"
+        )
+        assert "data_year" not in captured
+
+    def test_legacy_table_no_tombstone_column_searches_with_no_clause(self, monkeypatch):
+        """T15 regression: when the table predates the `is_tombstone`
+        column the dense arm must NOT reference it (LanceError(Schema)).
+        `where_clause` is None and rows still flow through the post-fetch
+        belt, which catches the metadata-mirror stamp."""
+        monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
+        monkeypatch.delenv("APP_ENV", raising=False)
+        rows = [_row_t15("c", data_year=2026, is_tombstone=False)]
+        retriever = _make_retriever(rows=rows, has_tombstone_column=False)
+        _drive_season(retriever, year=2026, has_data=True)
+        result = retriever.retrieve(query_vector=_make_vector(), top_k=5, query="học phí")
+        captured = retriever._adapter._captured["where_clause"]
+        assert captured is None, (
+            f"legacy table (no is_tombstone column) must search with "
+            f"where_clause=None; got {captured!r}"
+        )
+        # Rows still come back; the schema gate suppressed the clause, not the filter.
+        assert {doc.chunk_id for doc in result.documents} == {"c"}
+
+
+class TestTombstoneFetchById:
+    """T15(c): the post-fetch belt in `fetch_by_id`/`fetch_by_ids` catches
+    tombstoned rows that bypassed the server-side predicate."""
+
+    def _make_retriever_with_fake_fetch(
+        self, rows_by_id: Dict[str, List[Dict[str, Any]]]
+    ) -> LanceDBRetriever:
+        retriever = LanceDBRetriever.__new__(LanceDBRetriever)
+        retriever._config = LanceDBRetrieverConfig(
+            uri="memory://",
+            table_name="t",
+            embedding_dim=EMBEDDING_DIM,
+            default_top_k=5,
+        )
+        fake_adapter = MagicMock()
+        fake_adapter.ensure_table = MagicMock()
+
+        def _fetch_by_ids(ids: Optional[List[str]]) -> List[Dict[str, Any]]:
+            if not ids:
+                return []
+            out: List[Dict[str, Any]] = []
+            for cid in ids:
+                out.extend(rows_by_id.get(cid, []))
+            return out
+
+        fake_adapter.fetch_rows_by_ids.side_effect = _fetch_by_ids
+        fake_adapter.fetch_rows_by_doc_ids.return_value = []
+        retriever._adapter = fake_adapter
+        return retriever
+
+    def test_fetch_by_id_returns_none_for_tombstoned_row(self):
+        rows = [
+            {
+                "id": "t1",
+                "text": "tombstoned",
+                "source": "synthetic",
+                "chunk_id": "t1",
+                "metadata_json": "{}",
+                "is_tombstone": True,
+            }
+        ]
+        retriever = self._make_retriever_with_fake_fetch({"t1": rows})
+        doc = retriever.fetch_by_id("t1")
+        assert doc is None, f"tombstoned chunk must return None; got {doc}"
+
+    def test_fetch_by_ids_omits_tombstoned_row(self):
+        ok = {
+            "id": "ok1",
+            "text": "normal",
+            "source": "synthetic",
+            "chunk_id": "ok1",
+            "metadata_json": "{}",
+            "is_tombstone": False,
+        }
+        bad = {
+            "id": "bad1",
+            "text": "tombstoned",
+            "source": "synthetic",
+            "chunk_id": "bad1",
+            "metadata_json": "{}",
+            "is_tombstone": True,
+        }
+        retriever = self._make_retriever_with_fake_fetch({"ok1": [ok], "bad1": [bad]})
+        result = retriever.fetch_by_ids(["ok1", "bad1"])
+        assert "ok1" in result
+        assert "bad1" not in result, f"tombstoned chunk must be omitted; got {list(result)}"
+
+    def test_fetch_by_id_returns_doc_for_null_tombstone_row(self):
+        rows = [
+            {
+                "id": "null1",
+                "text": "un-stamped",
+                "source": "synthetic",
+                "chunk_id": "null1",
+                "metadata_json": "{}",
+                # is_tombstone column absent → NULL semantics
+            }
+        ]
+        retriever = self._make_retriever_with_fake_fetch({"null1": rows})
+        doc = retriever.fetch_by_id("null1")
+        assert doc is not None, "a NULL is_tombstone row must not be dropped"
+        assert doc.chunk_id == "null1"

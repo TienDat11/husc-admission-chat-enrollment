@@ -6,8 +6,10 @@ so plain text crawl loses critical info (e.g. công thức tính điểm, bảng
 Solution: Two-stage extraction
   1. HTML text → BeautifulSoup as before (cheap, primary)
   2. For images that look like content (not logos/icons), download + OCR via vision LLM
-     (Claude/GPT vision through ramclouds.me). Append OCR text to chunk under
+     (vision LLM via the ns24 gateway). Append OCR text to chunk under
      "## [Trích xuất từ hình ảnh]" header so retrieval can find formulas.
+     NOTE: vision/image OCR support on the ns24 gateway is unverified. NS24_VISION_MODEL
+     MUST be a model the gateway actually serves for images, or every OCR call will fail.
 
 Image filtering heuristics (skip non-content images):
   - URL contains 'logo', 'icon', 'avatar', 'banner', 'qrcode'
@@ -57,10 +59,10 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 OUT_DIR = ROOT / "data" / "vision_extracted"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Vision model (claude-sonnet-4.6 is cost-balanced for OCR/formula extraction)
-VISION_MODEL = os.getenv("RAMCLOUDS_VISION_MODEL", "claude-sonnet-4.6")
-RAMCLOUDS_BASE = os.getenv("RAMCLOUDS_BASE_URL", "https://ramclouds.me/v1")
-API_KEY = os.getenv("RAMCLOUDS_API_KEY")
+# Vision model: must be an image-capable model served by the ns24 gateway (unverified).
+VISION_MODEL = os.getenv("NS24_VISION_MODEL", "")
+NS24_BASE = os.getenv("NS24_BASE_URL", "https://api.ns24.io/v1")
+API_KEY = os.getenv("NS24_API_KEY")
 
 SKIP_URL_TOKENS = ("logo", "icon", "avatar", "qrcode", "favicon", "footer", "header_bg",
                    "fanpage", "sitename", "hero-bg", "emoji", "fbcdn", "facebook")
@@ -121,9 +123,12 @@ def _download_image(url: str, out_path: Path) -> bool:
 
 
 def _ocr_via_vision(image_path: Path) -> str:
-    """Send image to ramclouds vision endpoint, get back OCR text."""
+    """Send image to the ns24 vision endpoint, get back OCR text."""
     if not API_KEY:
-        logger.warning("No RAMCLOUDS_API_KEY — skipping OCR.")
+        logger.warning("No NS24_API_KEY — skipping OCR.")
+        return ""
+    if not VISION_MODEL:
+        logger.warning("No NS24_VISION_MODEL set — skipping OCR.")
         return ""
 
     cache_key = hashlib.sha256(image_path.read_bytes()).hexdigest()[:16]
@@ -167,7 +172,7 @@ def _ocr_via_vision(image_path: Path) -> str:
     try:
         with httpx.Client(timeout=90) as client:
             r = client.post(
-                f"{RAMCLOUDS_BASE}/chat/completions",
+                f"{NS24_BASE}/chat/completions",
                 json=payload,
                 headers={"Authorization": f"Bearer {API_KEY}"},
             )

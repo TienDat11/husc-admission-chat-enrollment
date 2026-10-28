@@ -1,9 +1,9 @@
-# @spec(S13.3) chunker arbiter — boundary IoU + faithfulness judge (deepseek-v4-pro)
+# @spec(S13.3) chunker arbiter — boundary IoU + faithfulness judge (gpt-6-luna)
 """Adjudicate between 3-way chunker outputs (system_v2, haiku_v1, claude_v1).
 
 Scoring:
 - Boundary agreement: Jaccard / IoU on token offsets pairwise.
-- Faithfulness: LLM-as-judge (default deepseek-v4-pro per C12) scores each chunk
+- Faithfulness: LLM-as-judge (default gpt-6-luna per C12) scores each chunk
   against the source HTML.
 
 Winner rule (P4 weighted):
@@ -108,7 +108,7 @@ def faithfulness_judge(
     """Score chunk faithfulness in [0, 1] vs source HTML.
 
     judge_runner: callable accepting the prompt string and returning a float
-    score. In production this calls deepseek-v4-pro via UnifiedLLMClient with
+    score. In production this calls gpt-6-luna via UnifiedLLMClient with
     temperature=0 (per C12). For tests, inject a deterministic stub.
     """
     if judge_runner is None:
@@ -135,7 +135,7 @@ def _default_deepseek_judge(prompt: str) -> float:
     silent fallback to 0.0 (which then short-circuits the override rule
     and locks the system to system_v2), we require explicit injection.
 
-    To wire deepseek-v4-pro in production, build a sync judge_runner using
+    To wire gpt-6-luna in production, build a sync judge_runner using
     httpx.Client (UnifiedLLMClient OpenAI-compatible endpoint) and pass it
     via faithfulness_judge(judge_runner=...).
     """

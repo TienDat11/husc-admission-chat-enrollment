@@ -1,0 +1,506 @@
+{
+  "school": {
+    "name": "Trường Đại học Khoa học, Đại học Huế",
+    "code": "DHT",
+    "address": "77 Nguyễn Huệ, TP Huế",
+    "hotline": "(0234) 3828427 / 0385887111",
+    "email": "tuyensinh@husc.edu.vn"
+  },
+  "year": 2026,
+  "tuition": {
+    "khoi_iv": {
+      "amount": 555000,
+      "unit": "VNĐ/tín chỉ",
+      "nganh_codes": [
+        "7440102",
+        "7440112",
+        "7440301",
+        "7420201"
+      ]
+    },
+    "khoi_v": {
+      "amount": 600000,
+      "unit": "VNĐ/tín chỉ",
+      "nganh_codes": [
+        "7480103",
+        "7480107TD",
+        "7480201",
+        "7480201VJ",
+        "7510302",
+        "7510401",
+        "7520503",
+        "7580101",
+        "7580211"
+      ]
+    },
+    "khoi_vii": {
+      "amount": 490000,
+      "unit": "VNĐ/tín chỉ",
+      "nganh_codes": [
+        "7220104",
+        "7229001",
+        "7229010",
+        "7229030",
+        "7229042",
+        "7310205",
+        "7310301",
+        "7310608",
+        "7320101",
+        "7320111",
+        "7760101",
+        "7850101",
+        "7850105"
+      ]
+    }
+  },
+  "programs": [
+    {
+      "code": "7220104",
+      "name": "Hán Nôm",
+      "name_short": "Hán Nôm",
+      "chi_tieu": 32,
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7229001",
+      "name": "Triết học",
+      "name_short": "Triết học",
+      "chi_tieu": 32,
+      "to_hop": [
+        "A00",
+        "X78",
+        "D66",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7229010",
+      "name": "Lịch sử",
+      "name_short": "Lịch sử",
+      "chi_tieu": 62,
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "C03"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7229030",
+      "name": "Văn học",
+      "name_short": "Văn học",
+      "chi_tieu": 104,
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7229042",
+      "name": "Quản lý văn hóa",
+      "name_short": "QLVH",
+      "chi_tieu": 30,
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "C03"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7310205",
+      "name": "Quản lý nhà nước",
+      "name_short": "QLNN",
+      "chi_tieu": 80,
+      "to_hop": [
+        "A00",
+        "X78",
+        "D66",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7310301",
+      "name": "Xã hội học",
+      "name_short": "XHH",
+      "chi_tieu": 31,
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7310608",
+      "name": "Đông phương học",
+      "name_short": "ĐPH",
+      "chi_tieu": 45,
+      "to_hop": [
+        "C00",
+        "D14",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7320101",
+      "name": "Báo chí",
+      "name_short": "Báo chí",
+      "chi_tieu": 250,
+      "to_hop": [
+        "C00",
+        "C03",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7320111",
+      "name": "Truyền thông số",
+      "name_short": "TTĐ",
+      "chi_tieu": 279,
+      "to_hop": [
+        "C00",
+        "C03",
+        "X70",
+        "C19",
+        "D01"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7420201",
+      "name": "Công nghệ sinh học",
+      "name_short": "CNSH",
+      "chi_tieu": 43,
+      "to_hop": [
+        "B00",
+        "A02",
+        "B08",
+        "B03"
+      ],
+      "khoi_hoc_phi": "khoi_iv",
+      "duration_years": 4
+    },
+    {
+      "code": "7440102",
+      "name": "Vật lý học",
+      "name_short": "Vật lý",
+      "chi_tieu": 20,
+      "to_hop": [
+        "A00",
+        "C01",
+        "A01",
+        "X06"
+      ],
+      "khoi_hoc_phi": "khoi_iv",
+      "duration_years": 4
+    },
+    {
+      "code": "7440112",
+      "name": "Hóa học",
+      "name_short": "Hóa học",
+      "chi_tieu": 28,
+      "to_hop": [
+        "A00",
+        "B00",
+        "D07",
+        "C02"
+      ],
+      "khoi_hoc_phi": "khoi_iv",
+      "duration_years": 4
+    },
+    {
+      "code": "7440301",
+      "name": "Khoa học môi trường",
+      "name_short": "KHMT",
+      "chi_tieu": 28,
+      "to_hop": [
+        "A00",
+        "B00",
+        "D10",
+        "X01",
+        "C14"
+      ],
+      "khoi_hoc_phi": "khoi_iv",
+      "duration_years": 4
+    },
+    {
+      "code": "7480103",
+      "name": "Kỹ thuật phần mềm",
+      "name_short": "KTPM",
+      "chi_tieu": 63,
+      "to_hop": [
+        "A00",
+        "A01",
+        "D01",
+        "X26"
+      ],
+      "khoi_hoc_phi": "khoi_v",
+      "duration_years": 4
+    },
+    {
+      "code": "7480107TD",
+      "name": "Quản trị và phân tích dữ liệu",
+      "name_short": "QTPADL",
+      "chi_tieu": 30,
+      "to_hop": [
+        "C01",
+        "A01",
+        "D01",
+        "X02"
+      ],
+      "khoi_hoc_phi": "khoi_v",
+      "duration_years": 4
+    },
+    {
+      "code": "7480201",
+      "name": "Công nghệ thông tin (Cử nhân)",
+      "name_short": "CNTT",
+      "chi_tieu": 400,
+      "to_hop": [
+        "A00",
+        "A01",
+        "D01",
+        "X26"
+      ],
+      "khoi_hoc_phi": "khoi_v",
+      "duration_years": 4
+    },
+    {
+      "code": "7480201VJ",
+      "name": "CNTT (Việt-Nhật)",
+      "name_short": "CNTT-VN",
+      "chi_tieu": 30,
+      "to_hop": [
+        "A00",
+        "A01",
+        "D01",
+        "X26"
+      ],
+      "khoi_hoc_phi": "khoi_v",
+      "duration_years": 4
+    },
+    {
+      "code": "7510302",
+      "name": "CNKT điện tử-viễn thông",
+      "name_short": "CNKT ĐT-VT",
+      "chi_tieu": 100,
+      "to_hop": [
+        "A00",
+        "A01",
+        "C01",
+        "X06"
+      ],
+      "khoi_hoc_phi": "khoi_v",
+      "duration_years": 4
+    },
+    {
+      "code": "7510401",
+      "name": "CNKT hóa học",
+      "name_short": "CNKT Hóa",
+      "chi_tieu": 38,
+      "to_hop": [
+        "A00",
+        "B00",
+        "D07",
+        "C02"
+      ],
+      "khoi_hoc_phi": "khoi_v",
+      "duration_years": 4
+    },
+    {
+      "code": "7520503",
+      "name": "KT trắc địa-bản đồ",
+      "name_short": "KT TĐ-BĐ",
+      "chi_tieu": 20,
+      "to_hop": [
+        "D01",
+        "X25",
+        "D84",
+        "A04",
+        "C01"
+      ],
+      "khoi_hoc_phi": "khoi_v",
+      "duration_years": 4
+    },
+    {
+      "code": "7580101",
+      "name": "Kiến trúc",
+      "name_short": "Kiến trúc",
+      "chi_tieu": 105,
+      "to_hop": [
+        "V00",
+        "V01",
+        "V02",
+        "V12"
+      ],
+      "khoi_hoc_phi": "khoi_v",
+      "duration_years": 5
+    },
+    {
+      "code": "7580211",
+      "name": "Địa kỹ thuật xây dựng",
+      "name_short": "ĐKTXD",
+      "chi_tieu": 20,
+      "to_hop": [
+        "D01",
+        "X25",
+        "D84",
+        "A04",
+        "C02"
+      ],
+      "khoi_hoc_phi": "khoi_v",
+      "duration_years": 4
+    },
+    {
+      "code": "7760101",
+      "name": "Công tác xã hội",
+      "name_short": "CTXH",
+      "chi_tieu": 47,
+      "to_hop": [
+        "C00",
+        "D01",
+        "C03",
+        "X01",
+        "C14",
+        "D06"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7850101",
+      "name": "QL tài nguyên & môi trường",
+      "name_short": "QLTN&MT",
+      "chi_tieu": 27,
+      "to_hop": [
+        "X01",
+        "C14",
+        "C04",
+        "X21",
+        "A09",
+        "D01"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    },
+    {
+      "code": "7850105",
+      "name": "QL an toàn, sức khỏe & môi trường",
+      "name_short": "QLATSK&MT",
+      "chi_tieu": 25,
+      "to_hop": [
+        "A00",
+        "B00",
+        "D10",
+        "X01",
+        "C14"
+      ],
+      "khoi_hoc_phi": "khoi_vii",
+      "duration_years": 4
+    }
+  ],
+  "phuong_thuc": [
+    {
+      "id": "XTT",
+      "name": "Xét tuyển thẳng / ưu tiên",
+      "mo_ta": "Không quá 10% chỉ tiêu/ngành"
+    },
+    {
+      "id": "THPT",
+      "name": "Dùng kết quả thi THPT",
+      "mo_ta": "Xét theo tổ hợp môn thi THPT"
+    },
+    {
+      "id": "HB",
+      "name": "Xét học bạ THPT",
+      "mo_ta": "Xét theo điểm trung bình lớp 12"
+    },
+    {
+      "id": "NL",
+      "name": "Dùng kết quả thi đánh giá năng lực",
+      "mo_ta": "Thi đánh giá năng lực Hà Nội/TP.HCM"
+    },
+    {
+      "id": "KH",
+      "name": "Xét tuyển kết hợp",
+      "mo_ta": "Ngành Kiến trúc dùng KH-5b (kết hợp môn Vẽ mỹ thuật ≥ 5,00)"
+    }
+  ],
+  "diem_cong": {
+    "max_pct": "10% thang điểm",
+    "items": [
+      {
+        "type": "Giải quốc gia/quốc tế Nhất",
+        "value": "3đ/30"
+      },
+      {
+        "type": "Giải tỉnh/TP Nhất",
+        "value": "1,5đ/30"
+      },
+      {
+        "type": "HSG chuyên 3 năm",
+        "value": "1,5đ/30"
+      },
+      {
+        "type": "Chứng chỉ ngoại ngữ B1",
+        "value": "0,5đ/30"
+      },
+      {
+        "type": "Chứng chỉ ngoại ngữ B2",
+        "value": "1đ/30"
+      },
+      {
+        "type": "Chứng chỉ ngoại ngữ C1-C2",
+        "value": "1,5đ/30"
+      }
+    ],
+    "note": "Chứng chỉ phải còn hạn đến 03/8/2026; không chấp nhận bản Home Edition"
+  },
+  "non_offered": [
+    "Toán học",
+    "Sinh học",
+    "Địa lý",
+    "Khoa học máy tính",
+    "Tin học"
+  ]
+}

@@ -1,6 +1,6 @@
 // @spec(plan-warmup-ux-20260705-111031 §3.2 / §5 Phase 3)
 // ChatLayout — top-level container that wires backend readiness UX.
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useChatStream } from '@/hooks/useChatStream';
 import { useBackendReadiness, type ReadinessStage } from '@/hooks/useBackendReadiness';
@@ -9,6 +9,9 @@ import { ChatSidebar } from './ChatSidebar';
 import { ChatMessages } from './ChatMessages';
 import { ChatInput } from './ChatInput';
 import { SuggestedQuestions } from './SuggestedQuestions';
+import type { Message } from '@/lib/chat-types';
+import { buildSessionHistory, removeExchange } from '@/lib/session-history';
+import { deriveFollowUpQuestions } from '@/lib/follow-up-questions';
 
 interface BannerState {
   visible: boolean;
@@ -37,8 +40,8 @@ function WarmingBanner({ stage }: { stage: ReadinessStage }) {
     : `⏳ Đang kết nối tới máy chủ... (${seconds}s)`;
   const tail = isFailed ? '' : '';
   const cls = isFailed
-    ? 'border-red-400 bg-red-50 text-red-900 dark:border-red-700 dark:bg-red-950/40 dark:text-red-100'
-    : 'border-blue-400 bg-blue-50 text-blue-900 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100';
+    ? 'border-red-600 bg-red-50 text-red-900 dark:border-red-700 dark:bg-red-950/40 dark:text-red-100'
+    : 'border-blue-600 bg-blue-50 text-blue-900 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100';
 
   return (
     <motion.div
@@ -58,9 +61,9 @@ function WarmingBanner({ stage }: { stage: ReadinessStage }) {
 }
 
 export function ChatLayout() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeConversationId, setActiveConversationId] = useState(null);
+  const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
 
   const readiness = useBackendReadiness({ pollMs: 2000 });
 
@@ -69,23 +72,38 @@ export function ChatLayout() {
     onMessagesChange: setMessages,
   });
 
+  const history = useMemo(() => buildSessionHistory(messages), [messages]);
+  const followUps = useMemo(() => deriveFollowUpQuestions(messages), [messages]);
+
   const handleSendMessage = useCallback(
-    (content) => {
+    (content: string) => {
       send(content);
     },
     [send],
   );
 
   const handleSelectQuestion = useCallback(
-    (question) => {
+    (question: string) => {
       handleSendMessage(question);
     },
     [handleSendMessage],
   );
 
+  const handleSelectEntry = useCallback((messageId: string) => {
+    setActiveMessageId(messageId);
+    setIsSidebarOpen(false);
+    const target = document.querySelector(`[data-message-id="${messageId}"]`);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const handleDeleteEntry = useCallback((messageId: string) => {
+    setMessages((current) => removeExchange(current, messageId));
+    setActiveMessageId((current) => (current === messageId ? null : current));
+  }, []);
+
   const handleNewChat = useCallback(() => {
     setMessages([]);
-    setActiveConversationId(null);
+    setActiveMessageId(null);
     setIsSidebarOpen(false);
   }, []);
 
@@ -95,8 +113,10 @@ export function ChatLayout() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         onNewChat={handleNewChat}
-        activeConversationId={activeConversationId}
-        onSelectConversation={setActiveConversationId}
+        history={history}
+        activeMessageId={activeMessageId}
+        onSelectEntry={handleSelectEntry}
+        onDeleteEntry={handleDeleteEntry}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -115,16 +135,18 @@ export function ChatLayout() {
           messages={messages}
           isTyping={isTyping}
           backendReady={readiness.ready}
+          activeMessageId={activeMessageId}
+          onRetryMessage={handleSendMessage}
         />
 
         <AnimatePresence>
-          {messages.length === 0 && !isTyping && readiness.ready && (
+          {followUps.length > 0 && !isTyping && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
             >
-              <SuggestedQuestions onSelect={handleSelectQuestion} />
+              <SuggestedQuestions questions={followUps} onSelect={handleSelectQuestion} />
             </motion.div>
           )}
         </AnimatePresence>

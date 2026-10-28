@@ -365,3 +365,511 @@ def test_full_overwrite_tags_preingest_before_drop(
 
     table = temp_db.open_table("husc_chunks")
     assert table.count_rows() == 1  # overwrite replaced the old row
+
+
+# ---------------------------------------------------------------------------
+# Test 8 — T1.5-bl vector-reuse accounting (reuse vs re-embed)
+# ---------------------------------------------------------------------------
+
+
+def _ingest_style_row(
+    doc_id: str, text: str, data_year: int, metadata_json: str = "{}"
+) -> Dict[str, Any]:
+    """A pre-existing row shaped exactly like what ingest_lancedb writes, so a
+    hand-seeded table is schema-compatible with the incremental merge path."""
+    return {
+        "id": doc_id,
+        "doc_id": doc_id,
+        "release_id": "legacy",
+        "text": text,
+        "summary": None,
+        "vector": [0.1] * 1024,
+        "data_year": data_year,
+        "scope": "admissions",
+        "doc_type": "chunk",
+        "status": "current",
+        "effective_from": 0,
+        "effective_to": 99991231,
+        "is_tombstone": False,
+        "superseded_by": None,
+        "metadata_json": metadata_json,
+        "is_reference": False,
+        "crawl_date": None,
+    }
+
+
+def test_vector_reuse_accounting_reuses_existing_vectors(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """Pins the T1.5-bl vector-reuse accounting LOGIC behind the production
+    'reuse 1634 / re-embed 45' claim. In an overwrite rebuild every id is
+    re-hashed (G9) so the id-keyed guardrail never matches — a chunk whose
+    content-hash already exists in the CURRENT table must reuse its stored
+    vector instead of re-embedding. Absolute numbers are live-corpus-specific,
+    so this synthetic fixture pins the mechanism: 1 reused + 1 embedded.
+
+    NOTE: pins EXISTING behavior — green immediately is valid (TDD exception)."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    reused_text = "Nội dung cũ"
+    new_text = "Nội dung hoàn toàn mới"
+
+    # Pre-existing table simulating a prior corpus that already embedded the
+    # chunk whose text we are about to re-ingest.
+    temp_db.create_table(
+        "husc_chunks",
+        data=[
+            {
+                **_ingest_style_row("old1", reused_text, 2025),
+                "vector": [0.5] * 1024,
+                "metadata_json": json.dumps(
+                    {"content_hash": mod._content_hash(reused_text)},
+                    ensure_ascii=False,
+                ),
+            }
+        ],
+    )
+
+    chunk_file = tmp_workspace / "chunked_reuse.jsonl"
+    _write_jsonl(chunk_file, [
+        {"id": "r1", "text": reused_text, "metadata": {"data_year": 2026}},
+        {"id": "r2", "text": new_text, "metadata": {"data_year": 2026}},
+    ])
+
+    _patch_ingest(mod, monkeypatch, temp_db, chunk_file)
+
+    encoded_texts: List[str] = []
+    original_encode = mod.EmbeddingService.encode_documents
+
+    def spy_encode(self, texts):
+        encoded_texts.extend(texts)
+        return original_encode(self, texts)
+
+    monkeypatch.setattr(mod.EmbeddingService, "encode_documents", spy_encode)
+
+    result = mod.ingest_lancedb(incremental=False)  # overwrite rebuild
+    assert result is True
+
+    # Only the genuinely-new chunk may hit the embedding service.
+    assert encoded_texts == [new_text]
+
+    table = temp_db.open_table("husc_chunks")
+    assert table.count_rows() == 2
+
+    by_doc = {r["doc_id"]: r for r in table.to_arrow().to_pylist()}
+    # r1 reused the stored [0.5] vector; r2 was freshly embedded ([0.1]).
+    assert np.allclose(np.asarray(by_doc["r1"]["vector"]), np.full(1024, 0.5))
+    assert np.allclose(np.asarray(by_doc["r2"]["vector"]), np.full(1024, 0.1))
+
+
+# ---------------------------------------------------------------------------
+# Test 9 — empty-records guard preserves the table
+# ---------------------------------------------------------------------------
+
+
+def test_empty_records_guard_preserves_table(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """Pins the empty-records guard at ingest_lancedb.py:493-497: if no record
+    can be written, ingest must abort (return False) and leave the existing
+    table untouched — never a silent full-overwrite that destroys rows.
+
+    NOTE: pins EXISTING behavior — green immediately is valid (TDD exception)."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    temp_db.create_table(
+        "husc_chunks",
+        data=[{"id": "old1", "text": "existing", "vector": [0.1] * 1024}],
+    )
+
+    chunk_file = tmp_workspace / "chunked_empty_records.jsonl"
+    _write_jsonl(chunk_file, [
+        {"id": "e1", "text": "new chunk", "metadata": {"data_year": 2026}},
+    ])
+
+    _patch_ingest(mod, monkeypatch, temp_db, chunk_file)
+
+    # Embedding returns no vectors → every chunk is skipped as vector-less →
+    # records is empty → the guard must abort.
+    monkeypatch.setattr(
+        mod.EmbeddingService, "encode_documents", lambda self, texts: []
+    )
+
+    result = mod.ingest_lancedb(incremental=False)
+    assert result is False
+
+    table = temp_db.open_table("husc_chunks")
+    assert table.count_rows() == 1  # preserved, not overwritten
+
+
+# ---------------------------------------------------------------------------
+# Test 10 — list_tables() .tables defensive branch
+# ---------------------------------------------------------------------------
+
+
+class _ListTablesWrapper:
+    """Delegates to the real LanceDB connection but stubs list_tables() so the
+    ingest defensive branch at ingest_lancedb.py:329-331 is exercised for both
+    the ListTablesResponse-object (.tables field) and plain-list shapes."""
+
+    def __init__(self, db: Any, response: Any):
+        self._db = db
+        self._response = response
+
+    def list_tables(self):
+        return self._response
+
+    def open_table(self, name):
+        return self._db.open_table(name)
+
+    def create_table(self, name, data=None, mode="create"):
+        return self._db.create_table(name, data, mode=mode)
+
+
+def _list_tables_response_cases():
+    class _ListTablesResponse:
+        tables = ["husc_chunks"]
+
+    return [
+        pytest.param(["husc_chunks"], id="plain-list"),
+        pytest.param(_ListTablesResponse(), id="object-with-tables-field"),
+    ]
+
+
+@pytest.mark.parametrize("list_tables_response", _list_tables_response_cases())
+def test_list_tables_branch_detects_table_both_shapes(
+    list_tables_response: Any,
+    tmp_workspace: Path,
+    temp_db: Any,
+    monkeypatch: Any,
+):
+    """Pins the defensive branch at ingest_lancedb.py:329-331: lancedb 0.29
+    list_tables() returns a ListTablesResponse object with a `.tables` field
+    (not a plain list), so `target in response` is always False. Both response
+    shapes must resolve table_exists=True so the incremental MERGE path runs
+    instead of a destructive create_table.
+
+    NOTE: pins EXISTING behavior — green immediately is valid (TDD exception)."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    temp_db.create_table(
+        "husc_chunks",
+        data=[_ingest_style_row("old1", "old row", 2025)],
+    )
+
+    chunk_file = tmp_workspace / "chunked_listtables.jsonl"
+    _write_jsonl(chunk_file, [
+        {"id": "n1", "text": "New content", "metadata": {"data_year": 2026}},
+    ])
+
+    _patch_ingest(mod, monkeypatch, temp_db, chunk_file)
+
+    def fake_connect(uri):
+        return _ListTablesWrapper(temp_db, list_tables_response)
+
+    monkeypatch.setattr(mod.lancedb, "connect", fake_connect)
+
+    result = mod.ingest_lancedb(incremental=True)
+    assert result is True
+
+    table = temp_db.open_table("husc_chunks")
+    # Merged the new row into the existing table (no overwrite/no re-create).
+    assert table.count_rows() == 2
+
+
+# ---------------------------------------------------------------------------
+# Test 11 — is_reference string parsing
+# ---------------------------------------------------------------------------
+
+
+def test_is_reference_string_parsing(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """Pins the defensive parse at ingest_lancedb.py:483-485: bool passes
+    through unchanged; strings ('True'/'false'/'yes'/'1'/'0'/'no'/None) are
+    normalized via str(...).lower() in ('1','true','yes').
+
+    NOTE: pins EXISTING behavior — green immediately is valid (TDD exception)."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    cases = [
+        ("bool-true", {"is_reference": True}, True),
+        ("bool-false", {"is_reference": False}, False),
+        ("str-True", {"is_reference": "True"}, True),
+        ("str-false", {"is_reference": "false"}, False),
+        ("str-yes", {"is_reference": "yes"}, True),
+        ("str-1", {"is_reference": "1"}, True),
+        ("str-0", {"is_reference": "0"}, False),
+        ("str-no", {"is_reference": "no"}, False),
+        ("none", {"is_reference": None}, False),
+        ("missing", {}, False),
+    ]
+
+    chunk_file = tmp_workspace / "chunked_isref.jsonl"
+    _write_jsonl(chunk_file, [
+        {"id": cid, "text": f"text-{cid}", "metadata": meta}
+        for cid, meta, _ in cases
+    ])
+
+    _patch_ingest(mod, monkeypatch, temp_db, chunk_file)
+
+    result = mod.ingest_lancedb(incremental=True)
+    assert result is True
+
+    table = temp_db.open_table("husc_chunks")
+    rows = table.to_arrow().to_pylist()
+    assert len(rows) == len(cases)
+
+    by_doc = {r["doc_id"]: r["is_reference"] for r in rows}
+    for cid, _meta, expected in cases:
+        assert bool(by_doc[cid]) is expected, (
+            f"case {cid}: expected {expected}, got {by_doc[cid]}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test 12 — `id: null` fallback never collides
+# ---------------------------------------------------------------------------
+
+
+def test_id_null_fallback_does_not_collide(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """Pins the fallback at ingest_lancedb.py:172: `id: null` must not
+    stringify to 'None' (two such rows would collide on _unique_id and silently
+    overwrite in a rebuild). Fallback order: chunk_id, then a stable per-row
+    index chunk_{len(all_chunks)}.
+
+    NOTE: pins EXISTING behavior — green immediately is valid (TDD exception)."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    chunk_file = tmp_workspace / "chunked_nullid.jsonl"
+    _write_jsonl(chunk_file, [
+        {"id": None, "text": "Row A"},
+        {"id": None, "text": "Row B"},
+        {"id": None, "chunk_id": "manual-id", "text": "Row C"},
+        {"id": "explicit", "text": "Row D"},
+    ])
+
+    _patch_ingest(mod, monkeypatch, temp_db, chunk_file)
+
+    result = mod.ingest_lancedb(incremental=True)
+    assert result is True
+
+    table = temp_db.open_table("husc_chunks")
+    rows = table.to_arrow().to_pylist()
+    assert len(rows) == 4
+
+    doc_ids = {r["doc_id"] for r in rows}
+    assert doc_ids == {"chunk_0", "chunk_1", "manual-id", "explicit"}
+
+    # Row ids are globally-unique hashes — the two null-id rows must not collide.
+    row_ids = {r["id"] for r in rows}
+    assert len(row_ids) == 4
+
+
+# ---------------------------------------------------------------------------
+# Test 13 — T7: vector-reuse key is date-sensitive
+# ---------------------------------------------------------------------------
+
+
+def test_content_hash_date_variants_distinct():
+    """T7 RED: two texts differing ONLY by a date must NOT collide in the
+    content→vector reuse key. `_normalize_for_hash` stripped \\d{2}/\\d{2}/\\d{4}
+    before hashing, so 'ngày 12/01/2026' and 'ngày 01/01/2026' hashed to the
+    same key — a date-only variant would silently reuse the other text's
+    embedding. Date tokens must be PRESERVED in the hashed text."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    a = "Hạn nộp hồ sơ là ngày 12/01/2026"
+    b = "Hạn nộp hồ sơ là ngày 01/01/2026"
+    assert mod._content_hash(a) != mod._content_hash(b)
+
+
+def test_content_hash_byte_identical_reuse_same_key():
+    """T7 pin: byte-identical texts must still map to the SAME reuse key, and
+    boilerplate whitespace normalization must be preserved (only the date
+    stripping is dropped). Pins EXISTING behavior — green immediately is valid
+    (TDD exception)."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    text = "Nội dung tuyển sinh 2026"
+    assert mod._content_hash(text) == mod._content_hash(text)
+    # Whitespace collapse remains intact alongside date preservation.
+    assert mod._content_hash("  Nội  dung  ") == mod._content_hash("Nội dung")
+
+
+def test_vector_reuse_preserved_across_hash_scheme_change(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """T7: the fix must NOT trigger re-embeds for the existing corpus (measured
+    0 date-only-variant collision pairs). A row persisted under the OLD scheme
+    (date-stripped content_hash in metadata_json) whose text contains a date
+    must still be REUSED by a byte-identical re-ingest. The reuse map must key
+    from the immutable `text` column (recompute), not the persisted hash, so a
+    date-sensitive `_content_hash` never orphans an already-embedded row.
+
+    Pins behavior that is green under the CURRENT code (both old/new hashes
+    coincide there) but RED under a wrong fix that only edits the hash without
+    rekeying the reuse map — that regression would re-embed every date-bearing
+    chunk."""
+    import hashlib
+    import re as _re
+
+    import rag2025.scripts.ingest_lancedb as mod
+
+    text = "Hạn nộp hồ sơ là ngày 12/01/2026"
+
+    # Reproduce the OLD scheme (date-stripping) hash a pre-fix row would carry.
+    old_scheme_hash = hashlib.sha256(
+        " ".join(_re.sub(r"\d{2}/\d{2}/\d{4}", "", text).split()).encode("utf-8")
+    ).hexdigest()
+    assert old_scheme_hash != mod._content_hash(text)  # schemes must differ now
+
+    temp_db.create_table(
+        "husc_chunks",
+        data=[
+            {
+                **_ingest_style_row("legacy1", text, 2026),
+                "vector": [0.5] * 1024,
+                "metadata_json": json.dumps(
+                    {"content_hash": old_scheme_hash},
+                    ensure_ascii=False,
+                ),
+            }
+        ],
+    )
+
+    chunk_file = tmp_workspace / "chunked_scheme_migration.jsonl"
+    _write_jsonl(chunk_file, [
+        {"id": "n1", "text": text, "metadata": {"data_year": 2026}},
+    ])
+
+    _patch_ingest(mod, monkeypatch, temp_db, chunk_file)
+
+    encoded_texts: List[str] = []
+    original_encode = mod.EmbeddingService.encode_documents
+
+    def spy_encode(self, texts):
+        encoded_texts.extend(texts)
+        return original_encode(self, texts)
+
+    monkeypatch.setattr(mod.EmbeddingService, "encode_documents", spy_encode)
+
+    result = mod.ingest_lancedb(incremental=False)  # overwrite rebuild
+    assert result is True
+
+    # Reuse, not re-embed — the date-bearing chunk already has a vector.
+    assert encoded_texts == [], f"expected vector reuse, got re-embeds: {encoded_texts}"
+
+    table = temp_db.open_table("husc_chunks")
+    rows = table.to_arrow().to_pylist()
+    assert len(rows) == 1
+    assert np.allclose(np.asarray(rows[0]["vector"]), np.full(1024, 0.5))
+
+
+# ---------------------------------------------------------------------------
+# Test 14 — STEP 8a: header/title + breadcrumbs inherit into metadata_json
+# (metadata-only, no text mutation → no re-embed)
+# ---------------------------------------------------------------------------
+
+
+def test_heading_and_breadcrumbs_land_on_text_section_row(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """STEP 8a: a chunk whose JSONL row carries a top-level `breadcrumbs` list
+    and a metadata `name` (heading) must have BOTH inherited onto the persisted
+    text_section row's metadata_json — as metadata, NOT by mutating `text`
+    (heading injection into text would change content_hash and force a full
+    ~2h re-embed of the existing corpus).
+
+    NOTE: RED under the current ingest path — `_load_chunks` drops the
+    top-level `breadcrumbs` field and the record writer keeps no `title`.
+    The fix is metadata-only, so `text` stays byte-identical."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    chunk_file = tmp_workspace / "chunked_title.jsonl"
+    _write_jsonl(chunk_file, [
+        {
+            "id": "t1",
+            "text": "Nội dung thông báo tuyển sinh",
+            "metadata": {"name": "Thông báo tuyển sinh 2026", "data_year": 2026},
+            "breadcrumbs": ["TB123", "Thông báo tuyển sinh 2026"],
+        },
+    ])
+
+    _patch_ingest(mod, monkeypatch, temp_db, chunk_file)
+
+    result = mod.ingest_lancedb(incremental=True)
+    assert result is True
+
+    table = temp_db.open_table("husc_chunks")
+    rows = table.to_arrow().to_pylist()
+    assert len(rows) == 1
+
+    meta = json.loads(rows[0]["metadata_json"])
+    assert meta.get("breadcrumbs") == ["TB123", "Thông báo tuyển sinh 2026"]
+    assert meta.get("title") == "Thông báo tuyển sinh 2026"
+    # text is UNCHANGED — no heading injected, existing embeddings stay valid.
+    assert rows[0]["text"] == "Nội dung thông báo tuyển sinh"
+
+
+# ---------------------------------------------------------------------------
+# Test 15 — STEP 8b: ingest-time size-gate flags oversized/undersized rows
+# (LOG-AND-FLAG, never silently drop, count surfaced at end of run)
+# ---------------------------------------------------------------------------
+
+
+def test_oversized_record_is_flagged_not_dropped(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """STEP 8b: a synthetic record exceeding HARD_MAX_TOKENS (512) must be
+    WRITTEN and flagged `oversized` in metadata_json — never silently dropped,
+    never silently accepted without a marker."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    long_text = " ".join(["đại học sư phạm huế tuyển sinh"] * 400)  # 6000 tokens
+    assert mod._count_tokens(long_text) > 512
+
+    chunk_file = tmp_workspace / "chunked_oversize.jsonl"
+    _write_jsonl(chunk_file, [
+        {"id": "o1", "text": long_text, "metadata": {"data_year": 2026}},
+    ])
+
+    _patch_ingest(mod, monkeypatch, temp_db, chunk_file)
+
+    result = mod.ingest_lancedb(incremental=True)
+    assert result is True
+
+    table = temp_db.open_table("husc_chunks")
+    rows = table.to_arrow().to_pylist()
+    assert len(rows) == 1  # NOT dropped
+    meta = json.loads(rows[0]["metadata_json"])
+    assert meta.get("size_flag") == "oversized"
+
+
+def test_undersized_record_is_flagged_not_dropped(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """STEP 8b: a synthetic record below SOFT_MIN_TOKENS (50) must be WRITTEN
+    and flagged `undersized` in metadata_json — never silently dropped."""
+    import rag2025.scripts.ingest_lancedb as mod
+
+    short_text = "Ngắn"  # 3 tokens
+    assert mod._count_tokens(short_text) < 50
+
+    chunk_file = tmp_workspace / "chunked_undersize.jsonl"
+    _write_jsonl(chunk_file, [
+        {"id": "u1", "text": short_text, "metadata": {"data_year": 2026}},
+    ])
+
+    _patch_ingest(mod, monkeypatch, temp_db, chunk_file)
+
+    result = mod.ingest_lancedb(incremental=True)
+    assert result is True
+
+    table = temp_db.open_table("husc_chunks")
+    rows = table.to_arrow().to_pylist()
+    assert len(rows) == 1  # NOT dropped
+    meta = json.loads(rows[0]["metadata_json"])
+    assert meta.get("size_flag") == "undersized"

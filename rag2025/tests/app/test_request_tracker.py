@@ -123,3 +123,107 @@ async def test_in_flight_property_is_readonly_snapshot(rt_module):
         assert snap2 == 1
     snap3 = rt.in_flight
     assert snap3 == 0
+
+
+@pytest.mark.asyncio
+async def test_gate_closes_admission_for_the_body(rt_module):
+    """Admission is closed from before the body until after it returns.
+
+    This is the property the swap depends on: a request admitted inside the body
+    would read the runtime being replaced.
+    """
+    rt = rt_module.RequestTracker()
+    observed: list[bool] = []
+
+    async with rt.gate(timeout=0.5) as drained:
+        observed.append(rt.admitting)
+        assert drained is True
+    observed.append(rt.admitting)
+
+    assert observed == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_gate_blocks_track_until_it_reopens(rt_module):
+    """A ``track()`` arriving mid-gate waits for the reopen instead of proceeding.
+
+    The count it would have incremented is the one the drain just proved zero.
+    """
+    rt = rt_module.RequestTracker()
+    entered = asyncio.Event()
+
+    async def late_request():
+        async with rt.track():
+            entered.set()
+
+    async with rt.gate(timeout=0.5):
+        task = asyncio.create_task(late_request())
+        # Let the task reach the admission wait; it must not get in.
+        await asyncio.sleep(0.01)
+        assert not entered.is_set()
+        assert rt.in_flight == 0
+
+    await asyncio.wait_for(task, timeout=1.0)
+    assert entered.is_set()
+
+
+@pytest.mark.asyncio
+async def test_gate_drains_before_yielding(rt_module):
+    """The drain happens before the body: in-flight work is gone when it starts."""
+    rt = rt_module.RequestTracker()
+    release = asyncio.Event()
+
+    async def in_flight_request():
+        async with rt.track():
+            await release.wait()
+
+    task = asyncio.create_task(in_flight_request())
+    await asyncio.sleep(0.01)
+    assert rt.in_flight == 1
+
+    async def release_soon():
+        await asyncio.sleep(0.05)
+        release.set()
+
+    asyncio.create_task(release_soon())
+    async with rt.gate(timeout=2.0) as drained:
+        assert drained is True
+        assert rt.in_flight == 0
+    await task
+
+
+@pytest.mark.asyncio
+async def test_gate_reopens_admission_when_the_body_raises(rt_module):
+    """A raising body must not strand admission closed — every later request waits forever."""
+    rt = rt_module.RequestTracker()
+
+    with pytest.raises(RuntimeError, match="swap blew up"):
+        async with rt.gate(timeout=0.5):
+            raise RuntimeError("swap blew up")
+
+    assert rt.admitting is True
+    # Proof it is usable, not merely flagged open.
+    async with rt.track():
+        assert rt.in_flight == 1
+
+
+@pytest.mark.asyncio
+async def test_gate_reports_false_on_timeout_and_still_reopens(rt_module):
+    """On timeout the caller is told, and admission is reopened regardless."""
+    rt = rt_module.RequestTracker()
+    release = asyncio.Event()
+
+    async def stuck_request():
+        async with rt.track():
+            await release.wait()
+
+    task = asyncio.create_task(stuck_request())
+    await asyncio.sleep(0.01)
+
+    async with rt.gate(timeout=0.05) as drained:
+        assert drained is False
+        assert rt.admitting is False
+
+    assert rt.admitting is True
+    release.set()
+    await task

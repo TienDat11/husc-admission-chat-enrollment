@@ -59,8 +59,6 @@ def _build_generator(monkeypatch):
     gen.generation_system_prompt = "BẠN LÀ TƯ VẤN VIÊN."
     gen.gen_model = "fake-primary"
     gen.gen_fallback_model = "fake-fallback"
-    gen.zai_client = None
-    gen.groq_client = None
     gen.unified_client = fake_unified
     gen.unified_fallback_client = fake_unified_fb
     gen.has_any_provider = True

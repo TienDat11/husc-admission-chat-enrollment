@@ -117,7 +117,7 @@ async def run_one(q: Dict, pipeline, retriever, embedding, generator) -> Dict:
         "intent": str(intent) if not isinstance(intent, str) else intent,
         "complexity": int(complexity) if hasattr(complexity, "__int__") else complexity,
         "latency_s": round(latency, 2),
-        "provider": gen_provider if 'gen_provider' in locals() else "mimo-v2.5-pro",
+        "provider": gen_provider if 'gen_provider' in locals() else "gpt-6-luna",
         "chunk_ids": [d.chunk_id for d in (docs_used if 'docs_used' in locals() else [])],
     }
 

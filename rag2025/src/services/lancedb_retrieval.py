@@ -6,7 +6,9 @@ Includes temporal filtering: auto-prefer newest year, exclude superseded.
 """
 from __future__ import annotations
 
+import asyncio
 import json
+import math
 import re
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -18,6 +20,58 @@ from loguru import logger
 from config.settings import RAGSettings
 from src.infrastructure.lancedb_adapter import LanceDBAdapter
 from services._metadata_helpers import get_legacy_source
+# Server-side tombstone gate, used by the dense arm (adapter.search) when the
+# table carries the `is_tombstone` column. Verified against lancedb 0.30.2:
+# a bare `is_tombstone = false` EXCLUDES NULL values (3-valued-logic), so
+# the explicit `OR IS NULL` keeps un-stamped rows in the result set.
+#
+# SCHEMA GATE (T15 regression fix): legacy tables (the `rag2025` fixture,
+# the chaos-drill publish/rollback tables) predate this column and raise
+# LanceError(Schema) if it is referenced. `retrieve()` consults
+# `adapter.has_tombstone_column()` and passes `where_clause=None` when the
+# column is absent — the post-fetch belt in `_apply_temporal_filter` still
+# covers the metadata-mirror stamping convention in that case.
+TOMBSTONE_PREDICATE = "(is_tombstone = false OR is_tombstone IS NULL)"
+
+
+def _current_as_of_int() -> int:
+    """Today as a YYYYMMDD int on the temporal authority's testable clock."""
+    from services.temporal_authority import _now
+    d = _now().date()
+    return d.year * 10000 + d.month * 100 + d.day
+
+
+def _drop_by_effectiveness(row: Dict[str, Any], meta: Dict[str, Any],
+                           as_of: int) -> bool:
+    """T15 effectiveness law (D1 R03): a served row is current and
+    inside its effective window.
+
+    Belt-level (post-fetch), schema-gated by NULL: every writer stamps
+    flat `status="current"` and `effective_from=0`/`effective_to=99991231`,
+    so a NULL/absent column means an un-stamped legacy row → KEEP.
+
+    Flat `status`: drop iff present AND != "current". Metadata `status`:
+    explicit-deny (draft/review/approved/archived) — legacy rows may carry an
+    unrelated `status` key, so served-set membership would drop them.
+    """
+    _status = row.get("status")
+    if _status is not None and _status != "current":
+        return True
+    _meta_status = meta.get("status")
+    if _meta_status in ("draft", "review", "approved", "archived"):
+        return True
+    _ef = row.get("effective_from")
+    if isinstance(_ef, float) and math.isnan(_ef):
+        _ef = None
+    _et = row.get("effective_to")
+    if isinstance(_et, float) and math.isnan(_et):
+        _et = None
+    if _ef is not None and _ef > as_of:
+        return True
+    if _et is not None and _et < as_of:
+        return True
+    return False
+
 
 # --- Temporal Configuration ---
 def _detect_current_admission_year() -> int:
@@ -61,6 +115,32 @@ HISTORICAL_QUERY_PATTERN = re.compile(
     r"\b(so sánh|so sanh|đối chiếu|doi chieu|thay đổi|thay doi|tăng|giảm|so với|so voi|năm\s+\b20\d{2}\b|năm\s+(trước đó|năm trước)|trước|cũ|historical|vs|năm\s+20\d{2})\b",
     re.IGNORECASE,
 )
+
+
+def _pick_promoted_row(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Deterministically pick ONE row when a logical doc_id matches several.
+
+    Ticket 45 (Loi B): after the canonical ingest, several physical rows
+    can share one ``doc_id`` (measured: up to 3 per doc_id on the live
+    table). Resolving a symbolic booster id must therefore be a
+    *function of the row set*, not of LanceDB scan order — reordering the
+    input must return the same winner.
+
+    Promotion rule (documented, in order):
+      1. Non-``legacy`` release wins over ``legacy`` (a promoted canonical
+         row supersedes the legacy-ingest duplicate).
+      2. Largest ``data_year`` wins (newest admission cycle).
+      3. Smallest ``id`` lexicographically breaks any remaining tie
+         (stable across runs; no reliance on storage order).
+    """
+    def key(row: Dict[str, Any]) -> tuple:
+        try:
+            year = int(row.get("data_year") or 0)
+        except (TypeError, ValueError):
+            year = 0
+        return (str(row.get("release_id") or "") == "legacy", -year, str(row.get("id") or ""))
+
+    return min(rows, key=key)
 
 
 class RetrievalError(Enum):
@@ -171,51 +251,34 @@ class LanceDBRetriever:
         # gives enough room to drop prior-year rows and still return
         # `limit` current-year / year-agnostic stable chunks.
         #
-        # `adapter.search` is therefore always called with
-        # `where_clause=None` — no code path may emit a `data_year` SQL
-        # clause. (The param is retained for future non-year filters.)
-        temporal_intent = None
-        admission_ctx: Optional[Dict[str, Any]] = None
-        classification_query = (
-            query
-            if query is not None
-            else (metadata_filter or {}).get("query")
-        )
-        if classification_query:
-            try:
-                from services.temporal_intent import (
-                    TemporalIntent,
-                    classify_temporal,
-                )
-                admission_ctx = self.get_admission_context()
-                year = int(admission_ctx["year"])
-                has_data = bool(admission_ctx["has_data"])
-                temporal_intent = classify_temporal(classification_query, year)
-                admission_ctx = {
-                    "year": year,
-                    "has_data": has_data,
-                    "season": admission_ctx["season"],
-                }
-            except Exception as exc:
-                # Fail-safe: a year-resolution error (e.g. APP_ENV=prod with
-                # CURRENT_ADMISSION_YEAR unset → RuntimeError) must NOT crash
-                # retrieval. Fall back to no hard filter (legacy soft path).
-                logger.warning(f"Temporal classification skipped: {exc}")
-                temporal_intent = None
-                admission_ctx = None
-
+        # The `where_clause` passed to `adapter.search` is the tombstone
+        # gate (T15): it excludes rows stamped `is_tombstone = true`
+        # server-side and keeps un-stamped (NULL) rows. It is NOT a
+        # `data_year` clause — that remains forbidden. The belt is the
+        # hard-drop in `_apply_temporal_filter` below.
+        #
+        # Schema gate: legacy tables predate the `is_tombstone` column and
+        # raise `LanceError(Schema)` when it is referenced; when the
+        # column is absent, `where_clause=None` and the post-fetch belt
+        # (metadata-mirror stamp) still excludes tombstoned rows.
+        try:
+            tombstone_gate = (
+                TOMBSTONE_PREDICATE
+                if self._adapter.has_tombstone_column()
+                else None
+            )
+        except Exception:
+            # A schema probe error must not crash retrieval: fail safe to
+            # no server-side gate (post-fetch belt covers the stamp).
+            tombstone_gate = None
         try:
             rows = self._adapter.search(
                 query_vector=query_vector,
                 top_k=max(limit * 5, limit),
-                where_clause=None,
+                where_clause=tombstone_gate,
             )
-            rows = self._apply_filter(rows, metadata_filter)
-            rows = self._apply_temporal_filter(
-                rows,
-                metadata_filter,
-                temporal_intent=temporal_intent,
-                admission_ctx=admission_ctx,
+            rows = self.apply_post_fetch_filters(
+                rows, metadata_filter, query=query
             )
             docs = self._normalize_rows(rows[:limit])
             if not docs:
@@ -290,6 +353,7 @@ class LanceDBRetriever:
         from services.season import SeasonPhase
         from services.temporal_intent import TemporalIntent
         current_year = int(get_current_admission_year())
+        as_of = _current_as_of_int()
 
         # Determine whether the hard-EXCLUDE path is active.
         # Both temporal_intent AND admission_ctx must be supplied. If only
@@ -333,6 +397,23 @@ class LanceDBRetriever:
         for row in rows:
             raw_meta = row.get("metadata_json") or row.get("metadata") or "{}"
             meta = json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
+            # T15: a tombstoned row is NEVER valid — no historical-query
+            # exemption, no legacy soft path. Check the top-level column
+            # first, then the metadata mirror, so either stamping
+            # convention is caught. (The server-side predicate in
+            # `adapter.search` already excludes these rows; this is the
+            # belt that covers any caller that bypasses it.)
+            is_tombstone = row.get("is_tombstone")
+            if is_tombstone is None:
+                is_tombstone = meta.get("is_tombstone")
+            if is_tombstone:
+                continue
+
+            # T15 effectiveness law (D1 R03): status + effective window.
+            # Unconditional (not gated on hard_exclude_active) so the legacy
+            # soft path (query=None) obeys the same law. NULL/absent = KEEP.
+            if _drop_by_effectiveness(row, meta, as_of):
+                continue
 
             # Rule 2: Exclude superseded chunks (unless historical query)
             is_superseded = meta.get("is_superseded", False)
@@ -500,6 +581,58 @@ class LanceDBRetriever:
         season = get_season_phase(year, has_data)
         return {"year": year, "has_data": has_data, "season": season}
 
+    def apply_post_fetch_filters(
+        self,
+        rows: List[Dict[str, Any]],
+        metadata_filter: Optional[Dict[str, Any]] = None,
+        query: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """The post-fetch eligibility rule every retrieval arm must obey.
+
+        Extracted from `retrieve()` so the dense arm and the BM25 arm
+        (`HybridSearchService`) apply ONE rule rather than two copies that
+        drift — a missing second copy is exactly how the BM25 arm ended up
+        with no filter at all while dense dropped prior-year rows.
+        """
+        if not rows:
+            return rows
+
+        temporal_intent = None
+        admission_ctx: Optional[Dict[str, Any]] = None
+        classification_query = (
+            query if query is not None else (metadata_filter or {}).get("query")
+        )
+        if classification_query:
+            try:
+                from services.temporal_intent import (
+                    TemporalIntent,
+                    classify_temporal,
+                )
+                admission_ctx = self.get_admission_context()
+                year = int(admission_ctx["year"])
+                has_data = bool(admission_ctx["has_data"])
+                temporal_intent = classify_temporal(classification_query, year)
+                admission_ctx = {
+                    "year": year,
+                    "has_data": has_data,
+                    "season": admission_ctx["season"],
+                }
+            except Exception as exc:
+                # Fail-safe: a year-resolution error (e.g. APP_ENV=prod with
+                # CURRENT_ADMISSION_YEAR unset → RuntimeError) must NOT crash
+                # retrieval. Fall back to no hard filter (legacy soft path).
+                logger.warning(f"Temporal classification skipped: {exc}")
+                temporal_intent = None
+                admission_ctx = None
+
+        rows = self._apply_filter(rows, metadata_filter)
+        return self._apply_temporal_filter(
+            rows,
+            metadata_filter,
+            temporal_intent=temporal_intent,
+            admission_ctx=admission_ctx,
+        )
+
     def _apply_filter(
         self,
         rows: List[Dict[str, Any]],
@@ -508,11 +641,17 @@ class LanceDBRetriever:
         if not metadata_filter:
             return rows
 
+        # `query` is a HINT, not a constraint: it exists so the temporal
+        # classifier can read the user's wording, and no row carries a
+        # `query` field. Matching it as equality dropped EVERY row, which
+        # made the dense arm return EMPTY_RESULT on every hybrid call
+        # (HybridSearchService injects this key). Same reasoning as
+        # `or_conditions`, which is likewise skipped here.
         def match_condition(row: Dict[str, Any], cond: Dict[str, Any]) -> bool:
             raw = row.get("metadata_json") or row.get("metadata") or "{}"
             metadata = json.loads(raw) if isinstance(raw, str) else (raw or {})
             for key, value in cond.items():
-                if key == "or_conditions":
+                if key in ("or_conditions", "query"):
                     continue
                 row_value = row.get(key)
                 if row_value is None:
@@ -558,23 +697,56 @@ class LanceDBRetriever:
         return documents
 
     def fetch_by_id(self, chunk_id: str) -> Optional[RetrievedDocument]:
-        """Fetch a single chunk by its chunk_id using server-side filter (no full-table scan).
+        """Fetch a single chunk by its id using server-side filter (no full-table scan).
 
         Used by the Phase E aggregation booster to inject canonical summary chunks.
+
+        Ticket 45 (Loi B) — two ID spaces, resolved in order:
+          1. ``id`` column (hash / physical point id). This is the original
+             contract and the path GraphRAG's single-fetch uses; unchanged.
+          2. ``doc_id`` column (logical/symbolic id, e.g.
+             ``tuyensinh_overview_2026_v2``). Booster rules reference symbolic
+             ids that live ONLY in ``doc_id`` — the id lookup could never
+             resolve them, so the booster silently de-boosted
+             (``BOOSTER_CHUNK_MISS``). When the doc_id path matches several
+             physical rows, ``_pick_promoted_row`` selects the promoted one
+             deterministically.
+
+        ``chunk_id`` on the returned document is the ID the caller asked for
+        whenever it was resolved via ``doc_id`` (symbolic in == symbolic out,
+        so the booster's seen_ids/retag share the requested space); on the
+        hash path it keeps the row's own id semantics. ``fetch_by_ids`` (the
+        batch/hash path) is intentionally unchanged.
         """
         try:
             self._adapter.ensure_table()
-            # Use server-side 'id =' predicate to avoid full to_pandas() scan.
+            # Use server-side 'id IN (...)' predicate to avoid full to_pandas() scan.
             rows = self._adapter.fetch_rows_by_ids([chunk_id])
+            via = "id"
+            if not rows:
+                # Ticket 45: symbolic ids live in doc_id, not the hash id column.
+                rows = self._adapter.fetch_rows_by_doc_ids([chunk_id])
+                via = "doc_id"
             if not rows:
                 return None
-            row = rows[0]
+            row = _pick_promoted_row(rows) if len(rows) > 1 else rows[0]
+            # T15 belt: server-side predicate already excludes tombstoned
+            # rows; this guard catches any caller path that bypasses it.
+            _ts = row.get("is_tombstone")
+            if _ts is None:
+                _ts = (json.loads(row.get('metadata_json') or '{}') or {}).get('is_tombstone')
+            if _ts:
+                return None
             raw_meta = row.get('metadata_json')
             metadata = json.loads(raw_meta) if isinstance(raw_meta, str) and raw_meta else {}
+            # T15 effectiveness law: never serve a non-current / out-of-window
+            # row through the booster or GraphRAG single-fetch. NULL = KEEP.
+            if _drop_by_effectiveness(row, metadata, _current_as_of_int()):
+                return None
             return RetrievedDocument(
                 text=row.get('text', '') if 'text' in row else '',
                 source=row.get('source') or get_legacy_source({'metadata': metadata}),
-                chunk_id=row.get('chunk_id') or row.get('id') or "",
+                chunk_id=chunk_id if via == "doc_id" else (row.get('chunk_id') or row.get('id') or ""),
                 metadata=metadata,
                 score=1.0,  # injected priority
                 point_id=str(row.get('id')) if row.get('id') is not None else None,
@@ -612,6 +784,17 @@ class LanceDBRetriever:
                     continue
                 raw_meta = row.get('metadata_json')
                 metadata = json.loads(raw_meta) if isinstance(raw_meta, str) and raw_meta else {}
+                # T15 belt: skip tombstoned rows (server-side predicate
+                # already excludes them; this catches bypassed callers).
+                _ts = row.get('is_tombstone')
+                if _ts is None:
+                    _ts = metadata.get('is_tombstone')
+                if _ts:
+                    continue
+                # T15 effectiveness law: same as fetch_by_id, for the
+                # GraphRAG batched expander. NULL/absent = KEEP.
+                if _drop_by_effectiveness(row, metadata, _current_as_of_int()):
+                    continue
                 result[str(row_id)] = RetrievedDocument(
                     text=row.get('text', ''),
                     source=row.get('source') or get_legacy_source({'metadata': metadata}),
@@ -641,8 +824,48 @@ class LanceDBRetriever:
             "exists": True,
             "name": self._config.table_name,
             "vectors_count": self._adapter.count(),
+            "vector_dim": self._adapter.vector_dim(),
             "status": "ready",
         }
+
+    async def healthcheck(self) -> bool:
+        """Can this retriever serve? Used by /admin/reload-table before swapping.
+
+        The route calls this on the *candidate* retriever, so a table that does
+        not exist, or exists but is empty, must fail here rather than being
+        swapped in and failing on the first query. Probes the real table through
+        :meth:`check_collection` instead of returning a constant: a green
+        healthcheck that cannot go red is not a healthcheck.
+
+        ``to_thread`` because the probe hits LanceDB synchronously; the route
+        awaits this on the event loop and must not block other requests.
+        """
+        try:
+            status = await asyncio.to_thread(self.check_collection)
+        except Exception as exc:
+            logger.warning(
+                f"healthcheck: table {self._config.table_name!r} probe raised {exc!r}"
+            )
+            return False
+        # An empty table is a real failure mode for a swap: it would serve zero
+        # documents for every query, which looks like "no data for your
+        # question" rather than an outage.
+        return bool(status.get("exists")) and int(status.get("vectors_count") or 0) > 0
+
+    async def close(self) -> None:
+        """Release the LanceDB handle held by this retriever.
+
+        Exists so /admin/reload-table's ``_safe_close`` has something to call on
+        the *old* retriever after a swap. Dropping the adapter reference is the
+        whole job — LanceDB connections are not pooled here — but it must be
+        idempotent: the route also closes a retriever it built and then failed to
+        healthcheck.
+        """
+        adapter = getattr(self, "_adapter", None)
+        self._adapter = None
+        table = getattr(adapter, "_table", None)
+        if table is not None:
+            adapter._table = None
 
 
 _default_retriever: Optional[LanceDBRetriever] = None

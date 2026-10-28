@@ -349,7 +349,7 @@ if /I "%RUN_MODE%"=="INCREMENTAL" (
 if !errorlevel! neq 0 (
     echo.
     echo %RED%[ERROR]%RESET% Graph build failed!
-    echo %RED%[ERROR]%RESET% Please check RAMCLOUDS_API_KEY / GROQ_API_KEY and the errors above
+    echo %RED%[ERROR]%RESET% Please check NS24_API_KEY and the errors above
     pause
     exit /b 1
 )

@@ -19,16 +19,14 @@ import config.env_loader  # noqa: F401
 
 import asyncio
 from typing import Any, Callable, Dict, List, Literal, Optional
-from collections import defaultdict, deque
 from dataclasses import replace
 from asyncio import FIRST_COMPLETED, Lock, create_task
-from threading import Lock as ThreadingLock
 import time
 import uuid
 import json
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -38,19 +36,47 @@ from pydantic import BaseModel, Field
 
 # Import new services
 from src.services.query_enhancer import query_enhancer
-from src.services.lancedb_retrieval import get_retriever, LanceDBRetrieverConfig
+from src.services.lancedb_retrieval import (
+    get_retriever,
+    LanceDBRetriever,
+    LanceDBRetrieverConfig,
+)
+from src.app.request_tracker import RequestTracker
 from src.services.llm_generator import get_llm_generator
-from src.services.reranker import RerankerService
+from src.services.reranker import (
+    LOAD_STATE_DISABLED_BY_CONFIG,
+    LOAD_STATE_LOAD_FAILED,
+    RerankerService,
+)
 from src.services.query_cache import QueryCache
 from src.services.guardrail import GuardrailService
 from src.services.llm_generator import _chunk_text_for_stream as _chunk_answer_for_stream
 
+# FIX-05 (ticket 44): `is_generation_failure` derives the degraded-generation
+# signal from the generator's `provider` tag as a safety net, so a caller that
+# forgets the explicit `generation_failed` flag still cannot publish a
+# fallback answer as SUCCESS.
+from src.services.llm_generator import is_generation_failure, is_policy_refusal
+from src.services.abstention_policy import refusal_footer  # T10: refusal trailer for student abstentions
+# Ticket 7: unanswered-questions queue and feedback log.
+from src.services.unanswered_queue import UnansweredQueueService
+from src.services.log_redaction import safe_query, redact_pii
+from src.services import serve_probe as _serve_probe
+from src.services.rate_limit import FixedWindowLimiter
+
 # Keep existing imports for backward compatibility
 from config.settings import RAGSettings
+from config.request_context import set_request_id, reset_request_id
 from chunker import ChunkConfig, Chunker
 
 # Embedding service for provider-aware query/document encoding
 from services.embedding import EmbeddingService
+
+# Ticket 10: claim-level citation contract (services/citation.py). The model
+# is defined in the service module and flows into this schema so the FE type
+# is GENERATED from it (export_openapi.py -> api/openapi.json ->
+# gen-api-types.mjs), never hand-copied.
+from services.citation import ClaimCitation
 
 # Initialize settings
 settings = RAGSettings()
@@ -59,13 +85,9 @@ settings = RAGSettings()
 MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "1000"))
 MAX_GRAPH_UPDATE_CHUNKS = int(os.getenv("MAX_GRAPH_UPDATE_CHUNKS", "100"))
 MAX_GRAPH_CHUNK_TEXT_LENGTH = int(os.getenv("MAX_GRAPH_CHUNK_TEXT_LENGTH", "5000"))
-ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN", "")
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
 GROUNDING_THRESHOLD = float(os.getenv("GROUNDING_THRESHOLD", "0.18"))
 
-# Simple in-memory rate limiter
-_rate_limit_lock = ThreadingLock()
-_rate_limit_buckets: dict[str, deque[float]] = defaultdict(deque)
 _graph_update_lock = Lock()
 
 # Lightweight in-memory metrics (no external dependencies)
@@ -85,6 +107,9 @@ _metrics = {
     "unified_query_low_groundedness": 0,
     "unified_query_total_latency_ms": 0.0,
     "unified_query_count_latency": 0,
+    # Ticket 40: bumped once per rerank bypass caused by a dead model,
+    # counted at every call seam (legacy /query, /v2 gate, /v3 gate).
+    "reranker_bypass_load_failed": 0,
 }
 
 
@@ -153,7 +178,21 @@ def _metrics_snapshot() -> Dict[str, Any]:
             float(_metrics.get("unified_query_total_latency_ms", 0.0)) / unified_count
             if unified_count else 0.0
         ),
+        "reranker_bypass_load_failed": int(_metrics.get("reranker_bypass_load_failed", 0)),
     }
+
+
+# Ticket 40: the only trace values a caller may ever see. Anything else
+# (MagicMock attribute objects, unknown strings) normalizes to None so a
+# duck-typed test double can neither forge nor suppress a bypass trace.
+_RERANK_TRACE_REASONS = (LOAD_STATE_LOAD_FAILED, LOAD_STATE_DISABLED_BY_CONFIG)
+
+
+def _rerank_trace_reason(reranker_service: Any) -> Optional[str]:
+    """Normalized ``rerank_skipped_reason`` for a (possibly fake) service."""
+    reason = getattr(reranker_service, "skip_reason", None)
+    return reason if reason in _RERANK_TRACE_REASONS else None
+
 
 def _client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
@@ -165,40 +204,25 @@ def _client_ip(request: Request) -> str:
 
 
 async def _enforce_rate_limit(request: Request) -> None:
-    if RATE_LIMIT_PER_MINUTE <= 0:
-        return
-    ip = _client_ip(request)
-    now = time.time()
-    window_start = now - 60.0
+    """Limit anonymous query traffic per client IP.
 
-    def _evict_then_record(ip: str, now: float, window_start: float) -> None:
-        cutoff = window_start - 60.0
-        with _rate_limit_lock:
-            empty = [k for k, b in _rate_limit_buckets.items()
-                     if not b or b[-1] < cutoff]
-            for k in empty:
-                _rate_limit_buckets.pop(k, None)
-            bucket = _rate_limit_buckets[ip]
-            while bucket and bucket[0] < window_start:
-                bucket.popleft()
-            if len(bucket) >= RATE_LIMIT_PER_MINUTE:
-                raise _RateLimited()
-            bucket.append(now)
-
-    # run_in_threadpool is best-effort: under heavy load ~1-2 requests may race
-    # past the cutoff check before the bucket is updated.  This is acceptable for
-    # rate limiting (no asyncio.Lock guard needed).
-    try:
-        await run_in_threadpool(_evict_then_record, ip, now, window_start)
-    except _RateLimited:
-        raise HTTPException(status_code=429, detail="Too many requests")
+    The counter itself is :class:`FixedWindowLimiter`; this wrapper only binds
+    the IP key. Rejection surfaces as 429 (the dependency raises it) — the
+    previous inline version raised an undefined ``_RateLimited``, so the limit
+    never applied to anyone.
+    """
+    await _query_rate_limiter(request)
 
 
-def require_admin_token(x_admin_token: Optional[str] = Header(default=None)) -> None:
-    if not ADMIN_API_TOKEN:
-        raise HTTPException(status_code=503, detail="Admin token is not configured")
-    if x_admin_token != ADMIN_API_TOKEN:
-        raise HTTPException(status_code=403, detail="Forbidden")
+# Anonymous query limiter, keyed by client IP. The budget is read through a
+# callable rather than captured so a test can change it without reimporting
+# this module. Admin traffic is deliberately *not* metered here: it has its own
+# limiter keyed by actor (``src/routers/admin_rate_limit.py``), so one admin
+# cannot spend another's budget or the anonymous pool's.
+_query_rate_limiter = FixedWindowLimiter(
+    limit=lambda: RATE_LIMIT_PER_MINUTE,
+    key_fn=_client_ip,
+)
 
 
 # Configure logger
@@ -229,6 +253,34 @@ async def lifespan(app: FastAPI):
     # Initialize the warmup stage BEFORE any task starts so /health can
     # report 'warming' immediately.
     app.state.warmup_stage = "warming"
+
+    # Canonical admissions store (ticket 12). File-backed under
+    # settings.CANONICAL_STORE_ROOT; the admin lifecycle endpoints read it from
+    # app.state. Fully guarded — a bad root or an unresolvable import must
+    # degrade those endpoints to their 503 branch, never take down the API.
+    try:
+        try:
+            from app.lifecycle import configure_canonical_record_store
+        except ModuleNotFoundError:
+            from rag2025.src.app.lifecycle import configure_canonical_record_store  # type: ignore
+        configure_canonical_record_store(app)
+    except Exception as exc:
+        logger.error(f"Canonical record store wiring failed: {exc}", exc_info=True)
+    # Ticket 7: the unanswered-questions queue. File-backed beneath the
+    # canonical-store root; the admin surface and the /v2 hook read it from
+    # app.state. Fail-soft: a queue that cannot be attached never takes down
+    # startup, and the admin routes degrade to their 503 branch while /v2
+    # keeps serving answers (the hook swallows queue write failures).
+    try:
+        app.state.unanswered_queue = UnansweredQueueService(
+            data_dir=settings.CANONICAL_STORE_ROOT
+        )
+        logger.info(
+            "unanswered queue attached at %s",
+            app.state.unanswered_queue.queue_path,
+        )
+    except Exception as exc:
+        logger.warning(f"unanswered queue wiring failed: {exc}")
 
     # ── Fast, synchronous warmups (no executor needed) ──
     try:
@@ -284,21 +336,9 @@ async def lifespan(app: FastAPI):
         )
 
     def _init_hybrid():
-        global hybrid_search_service, lancedb_retriever_service
-        if not (settings.USE_HYBRID_RETRIEVAL and lancedb_retriever_service):
-            return
-        from services.hybrid_search import HybridSearchService as _HybridSearchService
-        svc = _HybridSearchService(
-            lancedb_retriever=lancedb_retriever_service,
-            settings=settings,
-        )
-        if not svc.build_bm25_index():
-            logger.warning(
-                "HybridSearchService: BM25 index build failed — disabling hybrid search"
-            )
-            hybrid_search_service = None
-        else:
-            hybrid_search_service = svc
+        global hybrid_search_service
+        hybrid_search_service = build_hybrid_service(lancedb_retriever_service)
+        if hybrid_search_service is not None:
             logger.info("HybridSearchService: BM25 index built successfully")
 
     def _init_lancedb():
@@ -347,12 +387,12 @@ async def lifespan(app: FastAPI):
 
     # Share service references on app.state so extracted routers can
     # read them via request.app.state (avoiding module-name coupling).
-    app.state.lancedb_retriever_service = lancedb_retriever_service
+    # The retrieval aliases go through the same publisher a runtime swap uses,
+    # so startup and swap cannot disagree about which attributes exist.
     app.state.embedding_service = embedding_service
     app.state.reranker_service = reranker_service
-    app.state.unified_pipeline = unified_pipeline
-    app.state.hybrid_search_service = hybrid_search_service
     app.state._metrics_snapshot = _metrics_snapshot
+    _publish_retrieval_aliases(app.state)
 
     yield
 
@@ -375,6 +415,66 @@ app._health_reranker = lambda: reranker_service
 app._health_pipeline = lambda: unified_pipeline
 app._health_hybrid = lambda: hybrid_search_service
 app._health_metrics = lambda: _metrics_snapshot
+
+
+# ============================================================================
+# /admin/reload-table runtime dependencies (RequestTracker + retriever builder)
+#
+# The route requires ``app.state.request_tracker`` and
+# ``app.state.build_retriever`` and 503s without them. Neither was ever
+# assigned in src/ — only tests assigned them — so the route was dead in
+# production while every test passed: each test built the binding the code
+# reads, which is exactly how the P1 "swap is decorative" bug survived before.
+# Both are wired here, at import time, so a real app has them before any
+# request arrives.
+# ============================================================================
+
+
+async def build_retriever_for_table(table_name: str) -> LanceDBRetriever:
+    """Build a retriever for ``table_name`` — the reload route's candidate.
+
+    Same construction path as startup (``LanceDBRetriever`` over
+    ``settings.LANCEDB_URI``), differing only in which table it opens, so a
+    reload and a restart cannot produce differently-configured retrievers.
+
+    Raises whatever construction raises — notably ``FileNotFoundError`` from
+    ``ensure_table`` when the table does not exist — because the route turns
+    that into a 503 naming the failure. A retriever that silently fell back to
+    the current table would make a typo'd ``table_name`` look like a successful
+    reload that changed nothing.
+
+    Blocking LanceDB work runs in a thread: the route awaits this on the event
+    loop, and opening a table must not stall every other in-flight request.
+    """
+    config = LanceDBRetrieverConfig(
+        uri=settings.LANCEDB_URI,
+        table_name=table_name,
+        embedding_dim=settings.EMBEDDING_DIM,
+        default_top_k=5,
+    )
+    return await asyncio.to_thread(lambda: LanceDBRetriever(config=config))
+
+
+app.state.request_tracker = RequestTracker()
+app.state.build_retriever = build_retriever_for_table
+
+
+@app.middleware("http")
+async def _track_in_flight_requests(request: Request, call_next):
+    """Count in-flight requests so reload/rollback can drain before swapping.
+
+    Without this, ``tracker.drain()`` observes a counter that nothing
+    increments: it returns "drained" instantly and the route closes the old
+    retriever while queries are still reading it.
+
+    ``/admin/*`` is skipped: the reload route itself holds ``_reload_lock``
+    while draining, so counting it would make the drain wait on the very
+    request performing it, and it could only ever time out.
+    """
+    if request.url.path.startswith("/admin/"):
+        return await call_next(request)
+    async with app.state.request_tracker.track():
+        return await call_next(request)
 
 
 @app.exception_handler(HTTPException)
@@ -433,7 +533,7 @@ app.add_middleware(
     allow_origin_regex=_localhost_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "x-admin-token"],
+    allow_headers=["Authorization", "Content-Type", "x-admin-token", "Idempotency-Key"],
 )
 
 # Mount the /api/meta router (admission-year banner + data-freshness for the FE
@@ -450,6 +550,61 @@ app.include_router(recommender_router)
 # Mount the extracted /health router
 from routers.health import router as health_router
 app.include_router(health_router)
+
+# Mount the extracted /admin router. It contributes POST /admin/warmup,
+# POST /admin/reload-table (S13.4) and the ticket-12 canonical lifecycle
+# endpoints under /admin/records. Before this mount those endpoints existed but
+# were unreachable in the running app: nothing else in this module served an
+# /admin/* path (the admin-token guard on POST /v2/graph/update is a separate
+# route), so no path+method pair is registered twice.
+from routers.admin import router as admin_router
+app.include_router(admin_router)
+
+# Mount the password-login session router (ticket T08). This router is
+# mounted *before* the admin router so its lockout counter is reachable even
+# when the admin rate limiter (keyed by actor) has not yet been satisfied —
+# the login route itself has no authenticated-actor key.
+from routers.admin_session import router as admin_session_router
+app.include_router(admin_session_router)
+
+# Mount the read-only /admin/audit router (ticket 14). It contributes only
+# GET /admin/audit/events, GET /admin/audit/events/{event_id} and
+# GET /admin/audit/verify — all behind require_action(RECORDS_READ). The
+# ledger is append-only by construction and this router deliberately has no
+# mutating route at all, so "no endpoint may delete or edit an event" holds
+# by absence rather than by a guard that could be removed.
+from routers.admin_audit import router as admin_audit_router
+app.include_router(admin_audit_router)
+
+# Mount the /v2/compare router (ticket 18). It contributes POST /v2/compare,
+# the multi-major comparison contract: only majors sharing an effective year
+# are grouped, every high-impact cell carries its own provenance, and a missing
+# cell is reported as missing rather than inferred. The router is thin — the
+# contract lives in src/domain/comparison.py and the service in
+# src/services/comparison_service.py — and it declares its own /v2 prefix, so
+# nothing else in this module serves that path+method pair.
+from routers.comparison import router as comparison_router
+app.include_router(comparison_router)
+
+# Mount the review diff + preview router (ticket 25). It contributes only
+# GET /admin/records/{record_id}/review-diff and
+# POST /admin/records/{record_id}/review-preview — both read-only behind
+# require_action(RECORDS_READ), and neither mutates a record: submitting for
+# review from the preview screen goes through the existing lifecycle
+# transitions route (ticket 12), so there is no second submit endpoint to
+# drift from it. The preview itself builds a throwaway index and runs the
+# real answer path; it never writes the production table, graph, or cache.
+from routers.admin_preview import router as admin_preview_router
+app.include_router(admin_preview_router)
+
+# Identity + RBAC (ticket 13). One dependency for every admin-authenticated
+# route in the process, including POST /v2/graph/update below, which used to
+# carry its own divergent token check (503 when unconfigured, optional header).
+# That route mutates the knowledge graph, so it keeps the machine credential:
+# role 'ops' is granted graph.update and no records.* action, which is what
+# makes "the shared token cannot publish admissions data" structural.
+from routers.admin_auth import require_action as require_admin_action
+from src.domain.admin_identity import AdminAction
 
 # Re-export HealthResponse for backward compat (extracted to routers/health)
 from routers.health import HealthResponse  # noqa: F401
@@ -556,6 +711,124 @@ chunk_config: ChunkConfig | None = None
 chunker: Chunker | None = None
 
 
+# ============================================================================
+# Runtime service swap seam (P1 fix, ticket 22 Part 0)
+#
+# The bug this closes: /admin/reload-table used to assign ``state.retriever``,
+# but every query path reads the module globals above — so the swap was
+# invisible to /query, /v2 and /v3 and the blue-green swap was decorative.
+# ``swap_runtime_services`` is now the ONE place that rebinds a retriever for a
+# running process, and both the reload route and the two-level rollback go
+# through it.
+# ============================================================================
+
+
+def build_hybrid_service(retriever: Any) -> Optional["HybridSearchService"]:
+    """The BM25/dense hybrid service over ``retriever``, or ``None``.
+
+    The single construction path: app startup and every runtime swap both call
+    this, so "which retriever does the sparse arm index" has exactly one answer
+    and a failed BM25 build disables the sparse arm instead of leaving one
+    indexing a table nobody serves.
+    """
+    if not (settings.USE_HYBRID_RETRIEVAL and retriever):
+        return None
+    from services.hybrid_search import HybridSearchService as _HybridSearchService
+
+    svc = _HybridSearchService(lancedb_retriever=retriever, settings=settings)
+    if not svc.build_bm25_index():
+        logger.warning(
+            "HybridSearchService: BM25 index build failed — disabling hybrid search"
+        )
+        return None
+    return svc
+
+
+def _publish_retrieval_aliases(app_state: Any) -> None:
+    """Point every ``app.state`` retrieval alias at the current globals.
+
+    ``state.retriever`` is the alias ``routers/meta.py`` reads for the
+    data-freshness banner; before this it was written only by
+    /admin/reload-table, so the banner kept describing the startup table while
+    queries served another one.
+    """
+    app_state.lancedb_retriever_service = lancedb_retriever_service
+    app_state.hybrid_search_service = hybrid_search_service
+    app_state.unified_pipeline = unified_pipeline
+    app_state.retriever = lancedb_retriever_service
+
+
+def swap_runtime_services(retriever: Any, *, app_state: Any = None) -> Dict[str, Any]:
+    """Rebind every place a query can read a retriever — the one swap seam.
+
+    Rebinds, in one call:
+
+    * ``lancedb_retriever_service`` — the global /query, /v2 and /v3 read;
+    * ``hybrid_search_service`` — rebuilt over ``retriever`` through
+      :func:`build_hybrid_service`, or ``None`` when hybrid retrieval is off or
+      its BM25 index cannot be built (a stale index over the *old* table would
+      otherwise keep serving mixed-release answers);
+    * ``unified_pipeline``'s chunk fetchers — the GraphRAG expander admits
+      PPR-only chunks through them, so they must come from the same table;
+    * the ``app.state`` aliases (via :func:`_publish_retrieval_aliases`).
+
+    The pipeline is **rebound, not rebuilt**: ``UnifiedRAGPipeline.from_disk``
+    re-reads the graph from disk and builds fresh LLM clients, which would
+    discard the in-memory graph updates applied through /v2/graph/update — and
+    the only retriever-bound part of the pipeline is the expander's fetcher
+    pair, so rebinding them moves the whole pipeline to the new table.
+
+    Ordering is the point: the slow part (the BM25 build) happens **before**
+    anything is rebound, and the rebind itself is a synchronous block with no
+    ``await`` — so a caller that holds the reload drain lock cannot be running
+    a query handler in the middle of it, and no answer can mix two releases.
+
+    Returns ``{"previous_retriever", "hybrid_rebuilt", "pipeline_rebound"}``.
+    The previous retriever is **returned, not closed**: the reload route closes
+    it after the swap, while a rollback keeps it as the compensation target.
+    """
+    global lancedb_retriever_service, hybrid_search_service
+
+    previous = lancedb_retriever_service
+    new_hybrid = build_hybrid_service(retriever)
+
+    lancedb_retriever_service = retriever
+    hybrid_search_service = new_hybrid
+
+    pipeline_rebound = False
+    if unified_pipeline is not None:
+        graphrag = getattr(unified_pipeline, "_graphrag", None)
+        if graphrag is not None:
+            graphrag._chunk_fetcher = getattr(retriever, "fetch_by_id", None)
+            graphrag._chunk_batch_fetcher = getattr(retriever, "fetch_by_ids", None)
+            pipeline_rebound = True
+
+    if app_state is not None:
+        _publish_retrieval_aliases(app_state)
+
+    logger.info(
+        "Runtime swap: retriever {} -> {} (hybrid_rebuilt={}, pipeline_rebound={})".format(
+            getattr(previous, "table_name", previous),
+            getattr(retriever, "table_name", retriever),
+            new_hybrid is not None,
+            pipeline_rebound,
+        )
+    )
+    return {
+        "previous_retriever": previous,
+        "hybrid_rebuilt": new_hybrid is not None,
+        "pipeline_rebound": pipeline_rebound,
+    }
+
+
+# The swap seam, reachable from a router that must not import this module by
+# name (main.py runs as ``main`` under uvicorn and as a loaded module in tests).
+# Same idiom as the ``_health_*`` accessors: a closure over THIS module's scope.
+app._swap_runtime_services = lambda retriever: swap_runtime_services(
+    retriever, app_state=app.state
+)
+
+
 # ========== API Endpoints ==========
 
 
@@ -570,7 +843,7 @@ async def root():
             "Provider-aware multilingual retrieval (Qwen/Harrier/BGE)",
             "Score boosting for near-matches",
             "LanceDB embedded vector store",
-            "Multi-LLM fallback (ramclouds/gemini → Groq → compat)"
+            "Ns24 gateway LLM with same-gateway fallback per role"
         ],
         "endpoints": {
             "POST /query": "Main RAG query endpoint (simple string input)",
@@ -628,8 +901,11 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
             detail="Services not initialized. Please check server logs."
         )
 
-    logger.info(f"Received query: {request.query[:100]}...")
+    logger.info(f"Received query: {safe_query(request.query, max_chars=100)}...")
     trace_id = str(uuid.uuid4())
+    # Attribute every ns24 call made while answering this query to its trace_id
+    # in the token ledger (same pattern as /v2's wrapper).
+    request_id_token = set_request_id(trace_id)
 
     await _metric_inc("query_total")
 
@@ -656,13 +932,19 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
                 public_code = guardrail_service.public_status(precheck.internal_code)
                 internal_code = precheck.internal_code if guardrail_service.expose_internal() else None
                 logger.info(
-                    f"guardrail_block trace_id={trace_id} query='{request.query[:80]}' internal_code={precheck.internal_code} reason={precheck.reason}"
+                    f"guardrail_block trace_id={trace_id} "
+                    f"query='{safe_query(request.query, max_chars=80)}' "
+                    f"internal_code={precheck.internal_code} reason={precheck.reason}"
                 )
                 response_payload = {
                     "original_query": request.query,
                     "enhanced_query": request.query,
                     "query_type": "out_of_scope",
-                    "answer": precheck.short_answer,
+                    "answer": (
+                        precheck.short_answer + refusal_footer()
+                        if (not precheck.pii_detected and "📞 Hotline:" not in precheck.short_answer)
+                        else precheck.short_answer
+                    ),
                     "sources": [],
                     "confidence": 0.0,
                     "top_k_used": 0,
@@ -851,6 +1133,16 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
                 confidence = 0.0
 
             if chunks and reranker_service:
+                # Ticket 40: rerank() silently returns the input order when
+                # the model is dead. Count and log the bypass at this seam —
+                # a dead reranker must not degrade answer quality in silence.
+                _rr_reason = _rerank_trace_reason(reranker_service)
+                if _rr_reason == LOAD_STATE_LOAD_FAILED:
+                    await _metric_inc("reranker_bypass_load_failed")
+                    logger.warning(
+                        f"query_rerank_bypass trace_id={trace_id} "
+                        "reason=load_failed"
+                    )
                 chunks = reranker_service.rerank(
                     query=original_query,
                     chunks=chunks,
@@ -872,7 +1164,9 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
                     no_result.internal_code if guardrail_service.expose_internal() else None
                 )
                 logger.info(
-                    f"no_result_classification query='{original_query[:80]}' internal_code={no_result.internal_code} reason={no_result.reason}"
+                    f"no_result_classification "
+                    f"query='{safe_query(original_query, max_chars=80)}' "
+                    f"internal_code={no_result.internal_code} reason={no_result.reason}"
                 )
 
             logger.info(f"After deduplication: {len(chunks)} unique chunks, avg_confidence={confidence:.3f}")
@@ -894,8 +1188,28 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
 
             logger.info(f"Generated answer using {result['provider']}")
 
+            # FIX-05 (ticket 44): the same invariant holds on the legacy
+            # /query surface — a generator fallback must not be published as
+            # SUCCESS. Guarded on the untouched default so a data-gap
+            # classification (no chunks) keeps its more specific status.
+            generation_failed = bool(result.get("generation_failed")) or is_generation_failure(
+                result.get("provider")
+            )
+            if generation_failed and status_code == "SUCCESS":
+                status_code = "GENERATION_FAILED"
+                status_reason = "generation_failed"
+                internal_status_code = (
+                    "GENERATION_FAILED" if guardrail_service.expose_internal() else None
+                )
+                await _metric_inc("query_generation_failed")
+                logger.warning(
+                    f"query_generation_failed trace_id={trace_id} provider={result['provider']}"
+                )
+
             # Step 7: Groundedness scoring
-            groundedness = _safe_groundedness_score(result["answer"], chunks)
+            groundedness = await asyncio.to_thread(
+                _safe_groundedness_score, result["answer"], chunks
+            )
             if groundedness < GROUNDING_THRESHOLD and chunks:
                 await _metric_inc("query_low_groundedness")
                 logger.warning(
@@ -931,6 +1245,8 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
 
             if query_cache:
                 query_cache.set(cache_key, response_payload)
+            # T16 (K3): stamp when a returned chunk belongs to a probed release.
+            _stamp_probe_served(raw_request.app, chunks)
 
             return QueryResponse(**response_payload)
 
@@ -941,6 +1257,8 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
         await _metric_inc("query_errors")
         logger.exception(f"Query failed trace_id={trace_id}: {e}")
         raise HTTPException(status_code=500, detail="Query processing failed")
+    finally:
+        reset_request_id(request_id_token)
 
 
 # ========== Debug/Tools Endpoints ==========
@@ -1071,6 +1389,11 @@ class UnifiedQueryResponse(BaseModel):
     # Was List[str]; mismatch caused a 500 ValidationError on every real
     # query. Aligned to List[SourceChip] so the FE chip UX works on /v2.
     sources: List[SourceChip]
+    # Ticket 10: per-claim provenance for every high-impact number in the
+    # answer (cutoff / timeline / quota / tuition). Optional-by-default: a
+    # response without citations (canned auto-answer, guardrail block) is
+    # valid; a missing page inside a citation is valid too (acceptance #3).
+    citations: List[ClaimCitation] = Field(default_factory=list)
     confidence: float
     groundedness_score: float = 0.0
     router_info: Dict[str, Any]
@@ -1086,6 +1409,28 @@ class UnifiedQueryResponse(BaseModel):
     data_gap_hints: List[str] = Field(default_factory=list)
     internal_status_code: Optional[str] = None
     pii_detected: bool = False
+
+    # FIX-05 (ticket 44): answer-level confidence, SEPARATE from the
+    # retrieval-level `confidence` above. `None` whenever no model produced
+    # the answer (generation failed, or the answer was a canned auto-answer)
+    # — never a number, so the FE cannot mistake retrieval quality for
+    # answer quality. `confidence` keeps its retrieval meaning only.
+    answer_confidence: Optional[float] = None
+
+    # Ticket 40: why rerank was skipped, visible on BOTH /v2 paths:
+    # "load_failed" (model dead) | "disabled_by_config" (intentional) |
+    # None (rerank ran, or was outranked by confidence). Additive Optional
+    # with a safe default — existing consumers unaffected.
+    rerank_skipped_reason: Optional[str] = None
+
+    # Ticket 17: how the answer was produced, so the FE can tell an
+    # evidence-policy abstention apart from a model answer without
+    # classifying prose. "evidence-policy:{reason_code}" means the model
+    # was never called (the policy refusal is the whole answer);
+    # "evidence-policy:unresolved-conflict" is the conflict case;
+    # None means a model wrote it. Additive Optional — unaffected consumers
+    # keep working, and the FE keys its abstain/conflict states on this.
+    provider: Optional[str] = None
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -1166,9 +1511,13 @@ async def _synthesize_v2_answer(
             `async generate_answer(query, chunks, confidence, is_program_list_query)`.
 
     Returns:
-        Dict with keys: `answer`, `sources`, `confidence`, `provider`.
-        The shape matches `LLMGenerator.generate_answer()`'s return
-        so the /v2 response builder is unchanged.
+        Dict with keys: `answer`, `sources`, `confidence`, `provider`, plus the
+        FIX-05 signals `generation_failed` (the generator produced no model
+        output) and `model_answer` (`False` for both a failed generation and a
+        canned router auto-answer — it is what gates `answer_confidence` on the
+        response payload). The shape is a superset of
+        `LLMGenerator.generate_answer()`'s return so the /v2 response builder
+        is unchanged for existing consumers.
     """
     router_result = getattr(rag_result, "router_result", None)
 
@@ -1183,6 +1532,11 @@ async def _synthesize_v2_answer(
             "sources": [],
             "confidence": float(getattr(rag_result, "confidence", 1.0) or 1.0),
             "provider": "auto_answer",
+            # FIX-05: no generator round-trip happened, so nothing failed —
+            # but no model wrote this answer either (`model_answer=False`),
+            # which keeps `answer_confidence` null on the payload.
+            "generation_failed": False,
+            "model_answer": False,
         }
 
     # 2) Normal path: build chunks and route through LLMGenerator so the
@@ -1198,11 +1552,35 @@ async def _synthesize_v2_answer(
         history=history,
     )
     # Ensure the contract keys the /v2 response builder reads are present.
+    #
+    # FIX-05 (ticket 44): `provider` is a generator-internal diagnostic. The
+    # public signal is `generation_failed`, taken from the explicit flag the
+    # generator now returns, with `is_generation_failure(provider)` as a
+    # derived safety net (covers "Fallback(Error) + season-fallback" style
+    # suffixed tags and any caller path that predates the flag).
+    provider = gen_result.get("provider", "unknown")
+    generation_failed = bool(gen_result.get("generation_failed")) or is_generation_failure(provider)
     return {
         "answer": gen_result.get("answer", ""),
         "sources": list(gen_result.get("sources", [])),
+        # Ticket 10: pass the generator's claim-level citations through to
+        # the /v2 payload builder. Without this line the response field would
+        # exist but always be empty (Main's FIX-05 condition #3).
+        "citations": list(gen_result.get("citations", [])),
         "confidence": float(getattr(rag_result, "confidence", 0.0) or 0.0),
-        "provider": gen_result.get("provider", "unknown"),
+        "provider": provider,
+        "generation_failed": generation_failed,
+        # FIX-05: `model_answer` gates `answer_confidence` on the payload, so
+        # it must mean "a model wrote this" — not merely "nothing failed".
+        # A T11 policy refusal is intentional (generation_failed=False) but
+        # model-free, and `not generation_failed` alone marked it True, which
+        # published a groundedness number as the refusal's answer confidence:
+        # measured live, a year-mismatch refusal shipped
+        # answer_confidence=0.8696876764297485 for text no model wrote, and the
+        # FE renders that number (useChatStream.ts reads answer_confidence).
+        # A fabricated confidence on an abstention is exactly the
+        # "unsafe confident-answer" the abstention policy exists to prevent.
+        "model_answer": not generation_failed and not is_policy_refusal(provider),
     }
 
 
@@ -1222,9 +1600,29 @@ async def _build_v2_query_payload(
     """Run the /v2 pipeline end-to-end and return the response_payload dict
     shaped for `UnifiedQueryResponse(**payload)`. Raises HTTPException on
     guardrail precheck / 503 (caller decides whether to short-circuit
-    streaming or surface the JSON error)."""
+    streaming or surface the JSON error).
+
+    The request's trace_id is bound as the LLM request id, so every ns24 call
+    made while answering this query is attributed to it in the token ledger.
+    """
     await _enforce_rate_limit(raw_request)
     trace_id = str(uuid.uuid4())
+    token = set_request_id(trace_id)
+    try:
+        return await _build_v2_query_payload_inner(
+            request, raw_request, progress_cb, trace_id
+        )
+    finally:
+        reset_request_id(token)
+
+
+async def _build_v2_query_payload_inner(
+    request: UnifiedQueryRequest,
+    raw_request: Request,
+    progress_cb: Optional[Callable[[str], None]],
+    trace_id: str,
+) -> Dict[str, Any]:
+    """Body of `_build_v2_query_payload`; trace_id is supplied by the wrapper."""
     await _metric_inc("unified_query_total")
 
     cache_key = f"v2:{request.query.strip().lower()}|top_k:{request.top_k}|route:{request.force_route or 'auto'}"
@@ -1240,6 +1638,11 @@ async def _build_v2_query_payload(
             logger.info(f"Unified query cache hit trace_id={trace_id}")
             payload = dict(cached_response)
             payload["trace_id"] = trace_id
+            await _queue_unanswered(
+                getattr(raw_request.app.state, "unanswered_queue", None),
+                trace_id, request.query,
+                payload["route"], payload["status_code"],
+            )
             return payload
 
     if guardrail_service is not None:
@@ -1254,7 +1657,8 @@ async def _build_v2_query_payload(
                 await _metric_inc("query_pii_blocks")
                 pii_answer = guardrail_service._pii_warning_answer()
                 logger.info(
-                    f"v2_pii_block trace_id={trace_id} query='{request.query[:80]}'"
+                    f"v2_pii_block trace_id={trace_id} "
+                    f"query='{safe_query(request.query, max_chars=80)}'"
                 )
                 oos_payload = {
                     "query": request.query,
@@ -1292,6 +1696,17 @@ async def _build_v2_query_payload(
         except Exception as _guard_exc:
             logger.warning(f"v2_pii_precheck_error: {_guard_exc}")
 
+    # ── Ticket 35 / resolution (A): calibrated retrieval confidence ───────
+    # `retrieval_confidence` is the CALIBRATED (dense-cosine scale) value the
+    # adaptive rerank gate consumes. Hybrid documents carry RRF fusion scores
+    # (max 0.6/61 + 0.4/61 = 0.01639) — a ranking scale, not a relevance
+    # scale — while the gate compares against
+    # RERANKER_ADAPTIVE_CONFIDENCE=0.5, so feeding it an RRF score would make
+    # the comparison always true and rerank nearly every query (~+1.8s),
+    # destroying the fast path. It stays None on the dense path, which
+    # already produces this value, so flag-off behavior is unchanged (C2).
+    retrieval_confidence: Optional[float] = None
+
     async def _compute_baseline() -> list:
         """Compute the PaddedRAG baseline_docs for the /v2 hot path.
 
@@ -1302,18 +1717,69 @@ async def _build_v2_query_payload(
         latencies); running them in parallel turns that into max(). All
         existing try/except fallbacks, the booster call, and the
         `request.top_k * 3` slicing are preserved EXACTLY.
+
+        Ticket 35: when `hybrid_search_service` is wired (USE_HYBRID_RETRIEVAL
+        = true and the BM25 index built at startup), the fused dense+BM25
+        list supplies the RANKING while `retrieval_confidence` carries the
+        calibrated confidence for the rerank gate. When it is None the dense
+        call below is the single retrieval, exactly as before.
         """
+        nonlocal retrieval_confidence
         baseline_docs: list = []
         if lancedb_retriever_service and embedding_service:
             try:
                 query_vec = await run_in_threadpool(
                     lambda: embedding_service.encode_query(request.query).tolist()
                 )
-                result = lancedb_retriever_service.retrieve(
-                    query_vector=query_vec,
-                    top_k=request.top_k * 3,
-                    query=request.query,
-                )
+                if hybrid_search_service:
+                    # Hybrid arm — reuses the query_vec encoded above (never
+                    # re-encode: that is ~1.1s). `retrieve()` has no separate
+                    # `query` plumbing to the dense arm; it injects the query
+                    # text into `metadata_filter` itself so the temporal
+                    # classifier still sees it, hence metadata_filter=None.
+                    result = await hybrid_search_service.retrieve(
+                        query=request.query,
+                        query_vector=query_vec,
+                        top_k=request.top_k * 3,
+                        metadata_filter=None,
+                    )
+                    # Resolution (A): `result.documents[*].score` stays the RRF
+                    # fusion score — that IS the ranking. The gate's input is
+                    # re-derived from the dense arm on the cosine scale: the
+                    # same quantity, from the same call parameters, that the
+                    # dense path feeds the gate. Measured at ~52-63ms, and it
+                    # runs inside max() with the ~5s router leg.
+                    probe = lancedb_retriever_service.retrieve(
+                        query_vector=query_vec,
+                        top_k=request.top_k * 3,
+                        query=request.query,
+                    )
+                    if probe.is_success and probe.documents:
+                        retrieval_confidence = float(probe.documents[0].score)
+                    else:
+                        # No dense candidate at all → no calibrated evidence.
+                        # Use the cosine-scale FLOOR (0.0) rather than letting
+                        # `rag_result.confidence` fall through: that value is an
+                        # RRF score (max 0.0164) which is *always* below 0.5, so
+                        # the gate would be driven by a scale-mismatched number
+                        # again — the exact defect this resolution removes. 0.0
+                        # is a real cosine value and keeps the invariant "the
+                        # gate only ever compares cosine-scale confidences".
+                        # The gate then reranks, which is the conservative
+                        # choice: a sparse-only pool is the least reliable
+                        # ordering and the most valuable to rerank.
+                        retrieval_confidence = 0.0
+                        logger.info(
+                            "v2_hybrid_confidence_unavailable: dense probe "
+                            "returned no documents; using cosine floor 0.0 "
+                            "so the rerank gate never sees an RRF score"
+                        )
+                else:
+                    result = lancedb_retriever_service.retrieve(
+                        query_vector=query_vec,
+                        top_k=request.top_k * 3,
+                        query=request.query,
+                    )
                 if result.is_success:
                     baseline_docs = result.documents
             except Exception as exc:
@@ -1368,9 +1834,11 @@ async def _build_v2_query_payload(
             "Xin lỗi, câu hỏi này nằm ngoài phạm vi tư vấn tuyển sinh HUSC. "
             "Bạn vui lòng hỏi về ngành, điểm chuẩn, học phí, tổ hợp hoặc "
             "phương thức xét tuyển của Trường Đại học Khoa học - Đại học Huế."
+            + refusal_footer()
         )
         logger.info(
-            f"v2_router_scope_block trace_id={trace_id} query='{request.query[:80]}' "
+            f"v2_router_scope_block trace_id={trace_id} "
+            f"query='{safe_query(request.query, max_chars=80)}' "
             f"reason={router_result.reasoning}"
         )
         oos_payload = {
@@ -1405,6 +1873,11 @@ async def _build_v2_query_payload(
         }
         if query_cache:
             query_cache.set(cache_key, oos_payload)
+        await _queue_unanswered(
+            getattr(raw_request.app.state, "unanswered_queue", None),
+            trace_id, request.query,
+            oos_payload["route"], oos_payload["status_code"],
+        )
         return oos_payload
 
     status_code = "SUCCESS"
@@ -1463,6 +1936,25 @@ async def _build_v2_query_payload(
             )
             logger.info("Route override applied: graph_rag")
 
+        # ── Ticket 35 / resolution (A): calibrated retrieval confidence ──
+        # Every route above derives `confidence` from the ranking scores,
+        # which are RRF fusion scores whenever hybrid supplies the ranking
+        # (max 0.6/61 + 0.4/61 = 0.01639). The adaptive gate below compares
+        # that value against RERANKER_ADAPTIVE_CONFIDENCE=0.5 — a cosine-scale
+        # threshold — so an RRF value would fire rerank on essentially every
+        # query and destroy the fast path. Restore the calibrated value
+        # measured in `_compute_baseline`; the ranking order is untouched.
+        # `None` means the dense path already produced a calibrated value and
+        # must be left alone (C2: flag-off is byte-identical to before).
+        # Guarded on `documents` so the auto-answer / empty-retrieval paths,
+        # which never consult the gate, keep their existing confidence.
+        if retrieval_confidence is not None and rag_result.documents:
+            rag_result.confidence = retrieval_confidence
+        # Ticket 40: pipeline trace the caller reads to learn rerank was
+        # skipped and why. Set in the dead/off branch below; stays None when
+        # the reranker ran or was legitimately outranked by confidence.
+        rerank_skipped_reason: Optional[str] = None
+
         # ── Adaptive reranker gate ────────────────────────────────────────
         # When the reranker is enabled AND the retrieval confidence is below
         # the adaptive threshold, rerank the top RERANKER_POOL candidates to
@@ -1518,6 +2010,31 @@ async def _build_v2_query_payload(
                 f"v2_rerank_skipped trace_id={trace_id} "
                 f"conf={rag_result.confidence:.3f} >= thr={reranker_service.adaptive_confidence}"
             )
+        elif rag_result.documents and reranker_service is not None:
+            # Ticket 40: documents exist and the reranker exists as an object
+            # but cannot run — either the model is dead (load failed) or it
+            # was turned off on purpose. Both must be visible; only the dead
+            # model bumps the bypass counter.
+            rerank_skipped_reason = _rerank_trace_reason(reranker_service)
+            if rerank_skipped_reason == LOAD_STATE_LOAD_FAILED:
+                await _metric_inc("reranker_bypass_load_failed")
+                logger.warning(
+                    f"v2_rerank_bypass trace_id={trace_id} reason=load_failed"
+                )
+            elif rerank_skipped_reason is not None:
+                logger.info(
+                    f"v2_rerank_skipped trace_id={trace_id} "
+                    f"reason={rerank_skipped_reason}"
+                )
+
+        # Ticket 35 / resolution (A): the rerank branch above rewrites
+        # `confidence` from the reordered top document, whose score is an RRF
+        # fusion score while hybrid supplies the ranking. Re-apply the
+        # calibrated value so the response payload — and the tier the
+        # `v2_adaptive_rerank` log line reports — never carry an RRF number.
+        # The gate's decision above already used the calibrated value.
+        if retrieval_confidence is not None and rag_result.documents:
+            rag_result.confidence = retrieval_confidence
 
         if llm_generator_service is None:
             raise HTTPException(
@@ -1535,11 +2052,45 @@ async def _build_v2_query_payload(
         answer = synthesis["answer"]
         sources = synthesis["sources"]
 
-        groundedness = _safe_groundedness_score(answer, [
-            {"text": d.text, "summary": d.text, "text_plain": d.text}
-            for d in rag_result.documents
-        ])
-        if groundedness < GROUNDING_THRESHOLD and rag_result.documents:
+        # ── FIX-05 (ticket 44): degraded generation is NOT SUCCESS ────────
+        # A fallback answer (no provider configured, or every provider
+        # raising) is a fixed Vietnamese string written by the generator,
+        # not a model completion. It used to reach the student labelled
+        # SUCCESS with a retrieval confidence attached, which reads as a
+        # real answer. Publish the degraded status instead.
+        #
+        # Precedence: the empty-retrieval classification above (INSUFFICIENT_DATA
+        # / HUSC_ENTITY_NOT_FOUND / …) wins when it already fired, because a
+        # data-gap diagnosis is the actionable one; the override applies while
+        # the status is still the untouched default, i.e. exactly the
+        # "documents exist but the LLM is dead" case this fix targets, plus the
+        # "no documents and the guardrail had nothing to classify" case which
+        # would otherwise leak SUCCESS.
+        generation_failed = bool(synthesis.get("generation_failed"))
+        if generation_failed and status_code == "SUCCESS":
+            status_code = "GENERATION_FAILED"
+            status_reason = "generation_failed"
+            internal_status_code = (
+                "GENERATION_FAILED"
+                if guardrail_service is not None and guardrail_service.expose_internal()
+                else None
+            )
+            await _metric_inc("unified_query_generation_failed")
+            logger.warning(
+                f"v2_generation_failed trace_id={trace_id} "
+                f"provider={synthesis.get('provider')} "
+                f"documents={len(rag_result.documents)}"
+            )
+
+        groundedness = await asyncio.to_thread(
+            _safe_groundedness_score,
+            answer,
+            [
+                {"text": d.text, "summary": d.text, "text_plain": d.text}
+                for d in rag_result.documents
+            ],
+        )
+        if groundedness < GROUNDING_THRESHOLD and rag_result.documents and not generation_failed:
             await _metric_inc("unified_query_low_groundedness")
             logger.warning(
                 f"LOW_GROUNDEDNESS_UNIFIED trace_id={trace_id} score={groundedness:.3f} "
@@ -1556,8 +2107,18 @@ async def _build_v2_query_payload(
             "route": rag_result.route,
             "answer": answer,
             "sources": sources,
+            # Ticket 10: claim -> chunk -> record -> source trace, same dict
+            # on the JSON and SSE paths (synthesis covers both endpoints).
+            "citations": synthesis.get("citations", []),
             "confidence": rag_result.confidence,
             "groundedness_score": groundedness,
+            # FIX-05 (ticket 44): answer-level confidence. Null whenever no
+            # model wrote the answer — a failed generation or a canned
+            # router auto-answer. It is never a substitute for the retrieval
+            # `confidence` above, and never a fabricated default.
+            "answer_confidence": (
+                groundedness if synthesis.get("model_answer") else None
+            ),
             "router_info": {
                 "step_back": rag_result.router_result.step_back_query,
                 "intent": rag_result.router_result.intent,
@@ -1573,13 +2134,88 @@ async def _build_v2_query_payload(
             "data_gap_hints": data_gap_hints,
             "internal_status_code": internal_status_code,
             "pii_detected": pii_detected,
+            # Ticket 17: the generator already distinguishes an
+            # evidence-policy abstention from a model answer via
+            # `provider` ("evidence-policy:{reason_code}"), but the value
+            # was dropped here — so an abstention reached the FE as
+            # status_code SUCCESS with ordinary prose, indistinguishable
+            # from a real answer. Additive Optional; None on the model path.
+            "provider": synthesis.get("provider"),
+            # Ticket 40: "load_failed" | "disabled_by_config" | None.
+            "rerank_skipped_reason": rerank_skipped_reason,
         }
 
         if query_cache:
             query_cache.set(cache_key, response_payload)
+        # T16 (K3): stamp when a returned chunk belongs to a probed release.
+        _stamp_probe_served(raw_request.app, rag_result.documents)
+        await _queue_unanswered(
+            getattr(raw_request.app.state, "unanswered_queue", None),
+            trace_id, request.query,
+            response_payload["route"], response_payload["status_code"],
+        )
+    return response_payload
 
-        return response_payload
+# Ticket 7: hook into the /v2 answer path. When the pipeline returns an
+# answer that is NOT an answer (out of scope, no basis, provider failure),
+# push the redacted question into the unanswered queue. Fail-soft: a failed
+# queue must never disturb the answer being returned to the student.
 
+
+def _is_unanswerable(status_code: str) -> bool:
+    """Whether ``status_code`` means the question was not answered.
+
+    Three categories, exactly what the ticket wants queued: out of scope
+    (NOT_IN_HUSC_SCOPE), missing basis (the no_result classification:
+    INSUFFICIENT_DATA, HUSC_ENTITY_NOT_FOUND, ENTITY_PARSING_GAP, and any
+    future code the guardrail publishes), and provider failure
+    (GENERATION_FAILED). The sensitive-PII block is deliberately excluded:
+    the student received a hint answer ("Ẩn bớt thông tin định danh trước khi
+    gửi câu hỏi") rather than an unanswered question, so it is not queued.
+    """
+    return status_code not in ("SUCCESS", "SENSITIVE_PII_DETECTED")
+
+
+async def _queue_unanswered(svc: Any, trace_id: str, query: str, route: str,
+                            status_code: str) -> None:
+    """Push an unanswered question into the queue, fail-soft."""
+    # Only genuinely unanswered answers are queued: a SUCCESS answer and the
+    # sensitive-PII hint are not unanswered questions.
+    if not _is_unanswerable(status_code):
+        return
+    # A bare test app has no queue attached (lifespan never ran): skip
+    # instead of raising, so the answer path never depends on the queue.
+    if svc is None:
+        return
+    try:
+        await asyncio.to_thread(
+            svc.push, redact_pii(query), trace_id, route, status_code
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"unanswered_queue push failed: {exc}")
+
+
+def _stamp_probe_served(app: Any, chunks: Any) -> None:
+    """Stamp the T16 probe log's ``served_at`` when a returned chunk belongs
+    to a probed release (K3). Sync call inside query handlers: the stamping
+    itself is a small append-only file write, and it runs after the answer
+    is already built, so it never delays generation. Fail-soft, like
+    ``_queue_unanswered``: a missing data dir or IO error only logs."""
+    try:
+        queue = getattr(getattr(app, "state", None), "unanswered_queue", None)
+        queue_path = getattr(queue, "queue_path", None)
+        if queue_path is not None:
+            data_dir = queue_path.parent.parent
+        else:
+            data_dir = settings.CANONICAL_STORE_ROOT
+        probe_path = _serve_probe.probe_log_path(data_dir)
+        if not probe_path.is_file():
+            return
+        stamped = _serve_probe.stamp_served_from_chunks(data_dir, chunks or [])
+        if stamped:
+            logger.info(f"T16 probe: stamped served_at for {stamped} release(s)")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"T16 probe stamp failed: {exc}")
 
 def _format_sse(event: str, data: Dict[str, Any]) -> bytes:
     """Render a single SSE frame as bytes: `event: <name>\\ndata: <json>\\n\\n`.
@@ -1599,7 +2235,7 @@ async def unified_query(request: UnifiedQueryRequest, raw_request: Request):
     - Simple 1-hop queries → PaddedRAG (faster, ~150ms)
     - Multi-hop / comparative → GraphRAG (+PPR, ~400ms)
 
-    Routing is performed by HyDE + Step-Back classification using gemini-2.5-flash.
+    Routing is performed by HyDE + Step-Back classification using gemini-3.5-flash-lite.
     """
     if not unified_pipeline:
         # Phase-1 contract: tell the FE to back off with both the RFC 7231
@@ -1687,8 +2323,35 @@ async def unified_query_stream(request: UnifiedQueryRequest, raw_request: Reques
                             "route": response_payload.get("route"),
                             "sources": response_payload.get("sources", []),
                             "status_code": response_payload.get("status_code"),
-                            "data_gap_hints": response_payload.get("data_gap_hints", []),
+                            # FIX-05 (ticket 44): the stream must carry the
+                            # SAME status surface as the non-stream response,
+                            # otherwise a degraded generation renders as a
+                            # normal answer on the SSE path only.
+                            "status_reason": response_payload.get("status_reason"),
+                            "internal_status_code": response_payload.get("internal_status_code"),
+                            "answer_confidence": response_payload.get("answer_confidence"),
+                            # Ticket 17: retrieval confidence. The FE renders
+                            # one confidence per source chip, so a meta frame
+                            # without this field forces it to invent a default
+                            # and every streamed chip carries a fabricated
+                            # number while the non-stream path carries the
+                            # real one. Same value, both paths.
+                            "confidence": response_payload.get("confidence"),
+                            # Ticket 10: the streamed answer must carry the
+                            # same per-claim citations as the JSON response;
+                            # the FE reconciles them on the `done` frame.
+                            "citations": response_payload.get("citations", []),
                             "trace_id": response_payload.get("trace_id"),
+                            # Ticket 17: the streamed surface must classify an
+                            # evidence-policy abstention exactly like the JSON
+                            # one. Without this the FE cannot tell the streamed
+                            # refusal from a normal answer.
+                            "provider": response_payload.get("provider"),
+                            # Ticket 40: the stream must carry the same
+                            # rerank-skipped trace as the non-stream response.
+                            "rerank_skipped_reason": response_payload.get(
+                                "rerank_skipped_reason"
+                            ),
                         }
                     elif isinstance(result, str):
                         yield _format_sse("stage", {"stage": result})
@@ -1798,6 +2461,9 @@ async def v3_query(request: V3QueryRequest, raw_request: Request):
             payload["trace_id"] = trace_id
             return V3QueryResponse(**payload)
 
+    # Attribute every ns24 call made while answering this query to its trace_id
+    # in the token ledger (same pattern as /v2's wrapper).
+    request_id_token = set_request_id(trace_id)
     try:
         # Stage 1: Embedding
         query_vec = await run_in_threadpool(
@@ -1855,8 +2521,13 @@ async def v3_query(request: V3QueryRequest, raw_request: Request):
                 max_inject=2,
             )
 
+        rerank_executed = False
+        rerank_skipped_reason: Optional[str] = None
+
         async def _rerank_task():
+            nonlocal rerank_executed, rerank_skipped_reason
             if reranker_service is not None and reranker_service.enabled:
+                rerank_executed = True
                 return await run_in_threadpool(
                     lambda: reranker_service.rerank(
                         query=request.query,
@@ -1865,6 +2536,17 @@ async def v3_query(request: V3QueryRequest, raw_request: Request):
                         apply_lost_in_middle=request.apply_lost_in_middle,
                     )
                 )
+            # Ticket 40: the static gate is closed — expose WHY, and count
+            # only the silent-quality-collapse case (dead model). A duck-typed
+            # fake without a known skip_reason normalizes to None: no bump,
+            # no forged trace.
+            if chunks_for_rerank and reranker_service is not None:
+                rerank_skipped_reason = _rerank_trace_reason(reranker_service)
+                if rerank_skipped_reason == LOAD_STATE_LOAD_FAILED:
+                    await _metric_inc("reranker_bypass_load_failed")
+                    logger.warning(
+                        f"v3_rerank_bypass trace_id={trace_id} reason=load_failed"
+                    )
             return list(chunks_for_rerank[: request.top_k])
 
         booster_result, rerank_result = await asyncio.gather(
@@ -1888,8 +2570,13 @@ async def v3_query(request: V3QueryRequest, raw_request: Request):
             chunks_top = list(chunks_for_rerank[: request.top_k])
         else:
             chunks_top = list(rerank_result)
-            stages["reranker_used"] = True
-            stages["lost_in_middle"] = request.apply_lost_in_middle
+            # Ticket 40: `reranker_used` must reflect ACTUAL execution.
+            # Before this fix a dead reranker still flipped it to True,
+            # because the fallback list arrived without an exception.
+            stages["reranker_used"] = rerank_executed
+            if rerank_executed:
+                stages["lost_in_middle"] = request.apply_lost_in_middle
+        stages["rerank_skipped_reason"] = rerank_skipped_reason
 
         confidence = float(chunks_top[0].get("score", 0.0)) if chunks_top else 0.0
 
@@ -1927,6 +2614,8 @@ async def v3_query(request: V3QueryRequest, raw_request: Request):
 
         if query_cache:
             query_cache.set(cache_key, response_payload)
+        # T16 (K3): a chunk of a probed release was just served.
+        _stamp_probe_served(raw_request.app, chunks_top)
 
         return V3QueryResponse(**response_payload)
 
@@ -1935,13 +2624,15 @@ async def v3_query(request: V3QueryRequest, raw_request: Request):
     except Exception as exc:
         logger.exception(f"v3_query failed trace_id={trace_id}: {exc}")
         raise HTTPException(status_code=500, detail="V3 query processing failed")
+    finally:
+        reset_request_id(request_id_token)
 
 
 @app.post("/v2/graph/update")
 async def incremental_graph_update(
     request: Dict[str, Any],
     raw_request: Request,
-    _: None = Depends(require_admin_token),
+    _: None = Depends(require_admin_action(AdminAction.GRAPH_UPDATE)),
 ):
     """Incrementally add new chunks to the knowledge graph.
 
@@ -2006,6 +2697,74 @@ async def graph_stats():
     if not unified_pipeline:
         return {"error": "Pipeline not initialized"}
     return unified_pipeline._graphrag.graph_stats
+
+
+class FeedbackRequest(BaseModel):
+    """Feedback on a served answer (public endpoint for the student)."""
+
+    trace_id: str = Field(..., description="trace_id of the answer being rated")
+    helpful: bool = Field(..., description="True for 👍, False for 👎")
+    reason: str | None = Field(default=None, description="Optional free-text reason")
+    # T07: the question that produced this answer, when the client has
+    # it. A negative rating on a SUCCESS trace is promoted into the
+    # unanswered queue under this question (redacted by the service) so
+    # officer triage sees the actual question, not an empty marker.
+    question: str | None = Field(
+        default=None,
+        description="The question that produced this answer, when the client has it",
+    )
+
+
+class FeedbackResponse(BaseModel):
+    """What the feedback call recorded."""
+
+    trace_id: str
+    helpful: bool
+    recorded: bool
+    reason: str | None = None
+
+
+@app.post("/v2/feedback", response_model=FeedbackResponse, tags=["feedback"])
+async def feedback(
+    request: FeedbackRequest,
+    raw_request: Request,
+) -> FeedbackResponse:
+    """Student 👍/👎 feedback on a served answer.
+
+    Public endpoint: no authentication — it is the student talking to the
+    system, not the office. Idempotent by ``trace_id``: a second rating for
+    the same answer returns the existing record instead of appending a
+    duplicate. The feedback is anchored to the unanswered queue when a queued
+    item exists for the same ``trace_id``.
+
+    Malformed input (empty/oversized ``trace_id``, oversized ``reason``) is
+    refused with 400 — the queue service's ``ValueError`` contract — rather
+    than surfacing as an unhandled 500. A malformed request must never
+    register as a server fault.
+    """
+    svc = getattr(raw_request.app.state, "unanswered_queue", None)
+    if svc is None:
+        return FeedbackResponse(
+            trace_id=request.trace_id,
+            helpful=request.helpful,
+            recorded=False,
+            reason=request.reason,
+        )
+    try:
+        stored = svc.feedback(
+            request.trace_id,
+            request.helpful,
+            request.reason,
+            question=request.question,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FeedbackResponse(
+        trace_id=stored["trace_id"],
+        helpful=stored["helpful"],
+        recorded=True,
+        reason=stored["reason"],
+    )
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import tiktoken
 from loguru import logger
@@ -26,7 +26,7 @@ from loguru import logger
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from config.settings import RAGSettings
+from config.settings import settings
 from services.temporal_authority import get_current_admission_year
 
 STAGING_HTML = Path(__file__).parent.parent / "data" / "staging" / "html"
@@ -34,22 +34,142 @@ STAGING_PDF = Path(__file__).parent.parent / "data" / "staging" / "pdf"
 CHUNKED_DIR = Path(__file__).parent.parent / "data" / "chunked"
 
 ENCODING = "cl100k_base"
-TEXT_CHUNK_SIZE = 220
-TEXT_OVERLAP = 50
+# Chunk-budget knobs (target size, overlap, hard cap, soft floor) are driven by
+# config.settings so .env remains the single authoritative source. Removing the
+# previously hardcoded TEXT_CHUNK_SIZE=220 / TEXT_OVERLAP=50 / HARD_MAX_TOKENS=512
+# / SOFT_MIN_TOKENS=50 here; each function resolves its knob at call time.
 MIN_TOKENS = 25
 WIDE_TABLE_MIN_COLS = 8
 WIDE_TABLE_MIN_ROWS = 1
 SMALL_TABLE_MAX_ROWS = 6
 PROGRAM_GROUP_MAX_TOKENS = 500
-# T1.8 chunk size gates — hard cap (split) + soft floor (merge neighbors).
-HARD_MAX_TOKENS = 512  # any single chunk above this is split into <=512 pieces
-SOFT_MIN_TOKENS = 50   # chunks below this are merged into a neighbor (best-effort)
 
 
 STOPWORDS = {
     "và", "các", "của", "có", "được", "cho", "trong", "là", "một", "này",
     "để", "với", "theo", "từ", "đã", "sẽ", "không", "khi", "bằng",
 }
+
+# ST-6c: a pipe-table row is any line that starts with a pipe (optional leading
+# whitespace). Rows are ATOMIC — a chunk boundary must never land inside one
+# (mirrors the pipe-row guard in src/chunker.py; fixes chunked_24 chunk_100→101
+# dropping a subject-combo table row).
+_PIPE_TABLE_LINE_RE = re.compile(r"^\s*\|", re.MULTILINE)
+
+# ── Ticket 32: merged (rowspan) cell provenance ──
+# A table that merges an identity cell ("Số TT" / "mã ngành" / "tên ngành")
+# vertically prints that value on ONE line of the block; the continuation lines
+# reach the parser with those cells empty. Emitted as-is they assert a figure
+# (điểm chuẩn / chỉ tiêu / học phí) for a programme the chunk never names —
+# confidently wrong. The empty cell has three shapes on the real pages
+# (ticket 04 evidence: pages 12, 24, 55, 57 of THONG_TIN_TUYEN_SINH_202611.pdf):
+#   * rowspan continuation (p12 rows 4-5, p12_kinhte row 4, p57 row 3): the row
+#     is an option of the block above it — inheriting that block's identity is
+#     correct;
+#   * wrapped header fragment (p12/p55: "(Mã xét", "hợp môn", "đào tạo"): the
+#     row is header text, not data — copying it labels a row with header garbage;
+#   * genuinely blank data cell (p57 row 1 "Phương thức tuyển sinh"): the page
+#     prints it blank — inheriting "THPT" asserts a method the document never
+#     states for that programme.
+# Only the first shape is inherited, only from a row that owns an identity cell,
+# and never across columns; everything else is reported (see RowSpan).
+_STT_SHAPE_RE = re.compile(r"^\d{1,3}(?:\s+\S.*)?$")  # "5", "1  Luật", "16  VII"
+_CODE_SHAPE_RE = re.compile(r"^\d{6,7}$")  # "7380101"
+
+# ── Ticket 32: the visible marker for a row whose label could not be resolved ──
+# An unresolved row is KEPT (deleting it loses the name<->mã ngành link the page
+# prints across two rows) but it must not read as a clean data row: the reason it
+# could not be attributed is written INTO the chunk ``text``, because metadata is
+# invisible on the answer path (llm_generator._build_context reads only data_year
+# / notification_id / info_type / source). The wording is digit-free on purpose:
+# services/citation.py indexes every number in a chunk as a grounded value, so a
+# marker carrying a row/column index would fabricate a citable claim.
+ROWSPAN_MARKER_PREFIX = "[KHÔNG XÁC ĐỊNH ĐƯỢC NHÃN"
+_ROWSPAN_MARKER_RE = re.compile(r"\s*\[KHÔNG XÁC ĐỊNH ĐƯỢC NHÃN[^\]]*\]")
+# A leading enumeration prefix ("3. Ngữ văn") is a combo code, not a figure.
+_ORDINAL_PREFIX_RE = re.compile(r"^\s*\d+[.)]\s+")
+# span.kind -> why the label could not be resolved (mirrors span.reason, which is
+# kept verbatim in metadata for the citation note).
+_REASON_CLAUSES = {
+    "no-anchor": "không có dòng nào phía trên sở hữu các ô trống",
+    "sibling": "dòng trên là một dòng khác của cùng các cột",
+    "header": "dòng trên chỉ mang chữ của tiêu đề",
+    "wrapped": "dòng trên là mảnh ô bị gãy",
+}
+_FIGURES_CLAUSE = "số trong dòng không gán được cho ngành nào"
+
+# Wording that only ever appears in a table header on these pages (ticket 04
+# hand-transcription). A cell equal to one of these is header text that a
+# wrapped header left in a data row — never an identity.
+_HEADER_LABELS = frozenset({
+    "tt", "stt", "số tt", "ngành", "tên ngành", "chương trình đào tạo",
+    "đào tạo", "mã ngành", "mã xét tuyển", "tổ hợp môn",
+    "mã tổ hợp môn xét tuyển", "xét tuyển", "phương thức", "chỉ tiêu",
+    "dự kiến", "ghi chú", "tín chỉ", "năm học", "học phí", "khối",
+    "trình độ",
+})
+# First words of those headers: a wrapped header leaves single words in data
+# cells ("khóa", "tuyển)", "hợp môn"), which are refused as identity values.
+# Kept to words no programme/trường name starts with — "Kiến trúc", "Văn học",
+# "Giáo dục", "Phân hiệu" must stay inheritable.
+_HEADER_WORDS = frozenset({
+    "tt", "stt", "số", "ngành", "tên", "chương", "trình", "mã", "tổ", "hợp",
+    "phương", "thức", "chỉ", "tiêu", "dự", "đào", "tuyển", "xét", "ghi",
+    "chú", "tín", "khối", "năm",
+})
+
+
+def _is_identity_value(value: str, header_values: frozenset[str], lead: bool) -> bool:
+    """May ``value`` be inherited into a row's identity column (ticket 32)?
+
+    Refused, in order:
+    * a wrapped header fragment — a verbatim header cell, unbalanced parentheses
+      such as "(Mã xét", or header wording ("khóa", "tuyển)", "hợp môn");
+    * any other cell carrying a digit: a quota, a score, a tuition figure or a
+      combo code ("1. Toán, Vật lý, Hóa học", "Đọc: 425 - 450") must never
+      become the label of a row. Only the two identity shapes carry digits — a
+      mã ngành / mã xét tuyển (6-7 digits) and an ordinal "số TT", optionally
+      merged with the programme name in one cell ("1  Luật", "16  VII").
+    * a bare word: an identity names a programme or a school, so a lone token is
+      a cell fragment, not a label ("Academic", "khóa").
+
+    ``lead`` marks the anchor's own first identity cell, the only column where a
+    bare ordinal ("5") is an identity.
+    """
+    v = " ".join(value.split())
+    if not v:
+        return False
+    if v in header_values:
+        return False
+    if v.count("(") != v.count(")"):
+        return False
+    if v.lower() in _HEADER_LABELS:
+        return False
+    if v.split()[0].lower().strip(".,;:()") in _HEADER_WORDS:
+        return False
+    if _CODE_SHAPE_RE.match(v):  # mã ngành / mã xét tuyển
+        return True
+    if _STT_SHAPE_RE.match(v):  # số TT, or "số TT + tên ngành" merged in one cell
+        return lead or any(ch.isalpha() for ch in v)
+    if any(ch.isdigit() for ch in v):  # a data number is never a label
+        return False
+    return len(v.split()) >= 2 and any(ch.isalpha() for ch in v)
+
+class RowSpan(NamedTuple):
+    """Ticket 32: provenance for one row that leans on a merged (rowspan) cell."""
+
+    row: int  # data-row index inside its table
+    anchor_row: int | None  # nearest preceding row that owns an identity cell
+    identity: str  # label inherited from the anchor ("" when unresolved)
+    cells: dict[int, str]  # identity cells inherited, keyed by column index
+    skipped: dict[int, str]  # anchor cells refused by the identity guard
+    columns: tuple[int, ...]  # empty identity cells this row leans on
+    reason: str  # "" when resolved, otherwise why it could not be
+    kind: str = ""  # reason class for an unresolved span (see _REASON_CLAUSES)
+
+    @property
+    def resolved(self) -> bool:
+        return self.anchor_row is not None
 
 
 def count_tokens(text: str, enc) -> int:
@@ -148,27 +268,27 @@ class MarkdownTable:
         program_keywords = ["ngành", "mã ngành", "chuyên ngành", "ngành học", "trình độ", " chương trình"]
         return any(kw in header_lower for kw in program_keywords)
 
-    def group_rows_by_program(self) -> list[list[str]]:
-        """Group data rows by program prefix (first column content changes)."""
+    def group_row_indices_by_program(self) -> list[list[int]]:
+        """Group data-row indices by program prefix (first column content changes)."""
         if not self.data_rows:
             return []
 
-        groups: list[list[str]] = []
-        current_group: list[str] = []
+        groups: list[list[int]] = []
+        current_group: list[int] = []
         prev_prefix = ""
 
-        for row in self.data_rows:
-            # Extract first column as group key
-            cells = [c.strip() for c in row.split("|") if c.strip()]
+        for index, row in enumerate(self.data_rows):
+            # Extract first non-empty column as group key
+            cells = [c for c in self._cells_of(row) if c]
             prefix = cells[0] if cells else ""
 
             # New group when: prefix changes from non-empty to non-empty
             # OR prefix is non-empty and current group is already started
             if prefix and prev_prefix and prefix != prev_prefix and current_group:
                 groups.append(current_group)
-                current_group = [row]
+                current_group = [index]
             else:
-                current_group.append(row)
+                current_group.append(index)
 
             if prefix:
                 prev_prefix = prefix
@@ -176,7 +296,115 @@ class MarkdownTable:
         if current_group:
             groups.append(current_group)
 
-        return groups if groups else [self.data_rows]
+        return groups if groups else [list(range(len(self.data_rows)))]
+
+    @staticmethod
+    def _cells_of(line: str) -> list[str]:
+        """Cells of one pipe row, position preserved (unlike `num_cols`)."""
+        return [c.strip() for c in line.strip().strip("|").split("|")]
+
+    def rowspan_provenance(self) -> list[RowSpan]:
+        """Ticket 32: resolve every row that leans on a merged (rowspan) cell.
+
+        A row is reported when it carries content while its leading cells — the
+        columns left of its first value, i.e. the identity region (Số TT / mã
+        ngành / tên ngành) — are empty and something above fills them. Such a
+        row is attached to the nearest preceding row that OWNS an identity cell
+        (one that starts further left and shares no column with it), and only
+        that row's identity cells are inherited — never a header fragment, never
+        a data number, never a value from another column. A row that cannot be
+        attached that way is reported unresolved rather than silently emitted.
+
+        Anchor-driven, not a blanket rule: a table whose rows all start in the
+        same column has no owner to inherit from and yields nothing (the p24
+        negative control); a row that fills a column its neighbour also fills
+        owns its own identity and is left alone (p57, where two programmes are
+        both printed with Số TT "5").
+        """
+        if not self.data_rows:
+            return []
+
+        header_cells = self._cells_of(self.header_line) if self.header_line else []
+        header_values = frozenset(c for c in header_cells if c)
+        header_populated = {j for j, c in enumerate(header_cells) if c}
+        rows = [self._cells_of(row) for row in self.data_rows]
+        populated = [{j for j, c in enumerate(row) if c} for row in rows]
+        first = [min(cols) if cols else None for cols in populated]
+
+        spans: list[RowSpan] = []
+        for i, cols in enumerate(populated):
+            first_content = first[i]
+            if first_content is None or first_content == 0:
+                continue  # owns the leading column: nothing merged to inherit
+            filled_above = set(header_populated)
+            for k in range(i):
+                filled_above |= populated[k]
+            columns = tuple(j for j in range(first_content) if j in filled_above)
+            if not columns:
+                continue  # leading cells empty in every row: not an identity region
+
+            anchor = next(
+                (k for k in range(i - 1, -1, -1)
+                 if first[k] is not None and first[k] < first_content),
+                None,
+            )
+            if anchor is None:
+                spans.append(RowSpan(
+                    i, None, "", {}, {}, columns,
+                    "no row above starts left of this row, so nothing owns the empty cells",
+                    "no-anchor",
+                ))
+                continue
+            if populated[anchor] & cols:
+                spans.append(RowSpan(
+                    i, None, "", {}, {}, columns,
+                    f"row {anchor} above is another row of the same columns "
+                    "(this row carries its own identity)",
+                    "sibling",
+                ))
+                continue
+
+            cells: dict[int, str] = {}
+            skipped: dict[int, str] = {}
+            region = [j for j in range(first_content) if j in populated[anchor]]
+            for position, j in enumerate(region):
+                value = rows[anchor][j]
+                if _is_identity_value(value, header_values, lead=position == 0):
+                    cells[j] = value
+                else:
+                    skipped[j] = value
+            # One PDF cell wrapped over several markdown columns arrives as text
+            # fragments ("lịch; Kinh" | "tế và quản" | "lý tài" — page 12 of the
+            # 2026 prospectus). Such an anchor owns no identity: only a cell
+            # with a Số TT / mã ngành marker carries digits past the guard above.
+            wrapped_fragment = (
+                len(region) > 1
+                and bool(cells)
+                and not any(ch.isdigit() for value in cells.values() for ch in value)
+            )
+            if wrapped_fragment:
+                skipped.update(cells)
+                cells = {}
+            if not cells:
+                reason = (
+                    f"row {anchor} above carries wrapped cell fragments in columns {region} "
+                    "with no Số TT / mã ngành marker: not an identity"
+                    if wrapped_fragment
+                    else f"row {anchor} above carries only header text / data numbers "
+                    "in the empty cells"
+                )
+                spans.append(RowSpan(
+                    i, None, "", {}, skipped, columns, reason,
+                    "wrapped" if wrapped_fragment else "header",
+                ))
+                continue
+            spans.append(RowSpan(
+                i, anchor,
+                " / ".join(cells[j] for j in sorted(cells)),
+                cells, skipped, columns, "",
+            ))
+
+        return spans
 
     def to_chunk_text(self, rows: list[str] | None = None) -> str:
         """Build chunk text with header + separator + specified rows."""
@@ -203,126 +431,417 @@ def chunk_table(table: MarkdownTable, base_meta: dict, doc_id: str, enc, start_i
     soft floor 50 tokens) before returning.
     """
     chunks = _chunk_table(table, base_meta, doc_id, enc, start_idx)
-    return _enforce_size_gates(chunks, base_meta, doc_id, enc)
+    chunks = _enforce_size_gates(chunks, base_meta, doc_id, enc)
+    _assert_unresolved_rows_marked(chunks, doc_id)
+    return chunks
+
+
+def _rowspan_metadata(
+    spans: list[RowSpan],
+    row_indices: list[int],
+    annotations: dict[int, dict] | None = None,
+) -> dict:
+    """Ticket 32: the rowspan provenance belonging to one emitted chunk."""
+    wanted = set(row_indices)
+    attributed = [
+        {
+            "row": s.row,
+            "anchor_row": s.anchor_row,
+            "identity": s.identity,
+            "cells": {str(col): value for col, value in sorted(s.cells.items())},
+            **({"skipped": {str(col): value for col, value in sorted(s.skipped.items())}} if s.skipped else {}),
+        }
+        for s in spans if s.resolved and s.row in wanted
+    ]
+    unresolved = [
+        {
+            "row": s.row,
+            "columns": list(s.columns),
+            "reason": s.reason,
+            "marker": (annotations or {}).get(s.row, {}).get("marker", ""),
+            "figures": (annotations or {}).get(s.row, {}).get("figures", False),
+            **({"skipped": {str(col): value for col, value in sorted(s.skipped.items())}} if s.skipped else {}),
+        }
+        for s in spans if not s.resolved and s.row in wanted
+    ]
+    if attributed and unresolved:
+        return {"rowspan_attribution": attributed, "rowspan_unresolved": unresolved}
+    if attributed:
+        return {"rowspan_attribution": attributed}
+    if unresolved:
+        return {"rowspan_unresolved": unresolved}
+    return {}
+
+
+def _absorb_rowspan(target: dict, incoming: dict) -> None:
+    """Ticket 32: folding a chunk into its neighbour must not drop its rowspan
+    provenance.
+
+    The merged text carries the absorbed chunk's rows too, so its attribution and
+    its unresolved reports still belong to the emitted chunk. Dropping them would
+    put the row back into the corpus with neither a traceable label nor a warning
+    — the silent state this ticket removes. Row indices are table-scoped and every
+    chunk merged here comes from one `chunk_table` call for one table, so a row
+    can never be claimed twice.
+    """
+    for key in ("rowspan_attribution", "rowspan_unresolved"):
+        entries = incoming.get(key)
+        if not entries:
+            continue
+        kept = list(target.get(key, []))
+        rows = {entry["row"] for entry in kept}
+        kept.extend(entry for entry in entries if entry["row"] not in rows)
+        target[key] = kept
+
+
+def _row_carries_figures(cells: list[str]) -> bool:
+    """Does this row assert a number (điểm chuẩn / chỉ tiêu / học phí)?
+
+    A bare enumeration prefix ("3. Ngữ văn") is a combo code, not a figure, so it
+    is stripped before the digit test. Everything else with a digit counts: on the
+    real pages those are exactly the quota / score / tuition cells.
+    """
+    return any(
+        any(ch.isdigit() for ch in _ORDINAL_PREFIX_RE.sub("", cell, count=1))
+        for cell in cells if cell
+    )
+
+
+def _marker_column(cells: list[str], span: RowSpan) -> int:
+    """Where inside the row the marker goes.
+
+    The rightmost EMPTY cell of the leading identity region the row leans on, and
+    never column 0: services/citation.py takes ``cells[0]`` as a row's label and
+    treats a row as leaning only while ``cells[0]`` is empty, so a marker in the
+    first cell would become the row's identity. A declared (non-empty) cell is
+    never overwritten either — the marker only ever fills a cell the page prints
+    blank. Falls back to appending a trailing cell when the region has no other
+    empty slot.
+    """
+    candidates = [j for j in span.columns if j != 0 and not cells[j]]
+    if candidates:
+        return max(candidates)
+    return len(cells)
+
+
+def _rowspan_marker(span: RowSpan, cells: list[str]) -> str:
+    """The visible text for one unresolved row (see ROWSPAN_MARKER_PREFIX)."""
+    clause = _REASON_CLAUSES.get(span.kind, "")
+    if _row_carries_figures(cells):
+        clause = f"{clause}; {_FIGURES_CLAUSE}" if clause else _FIGURES_CLAUSE
+    return f"{ROWSPAN_MARKER_PREFIX}: {clause}]" if clause else ROWSPAN_MARKER_PREFIX + "]"
+
+
+def _annotated_rows(table: MarkdownTable, spans: list[RowSpan]) -> tuple[list[str], dict[int, dict]]:
+    """``table.data_rows`` with a marker inserted for every unresolved row.
+
+    Returns the annotated rows plus the per-row annotation (the marker text and
+    whether the row carries figures), so the metadata entry and the visible text
+    are built from one source. Line<->row identity is preserved — exactly one
+    line per row, no line added or dropped — so ticket 33's row-index handoff
+    (``_piece_rows``) keeps mapping pieces to the right table rows, and each row
+    stays a single atomic pipe line (ST-6c), so a split carries its marker with
+    the row it annotates.
+
+    The marker only ever lands on a cell the row itself declares empty, inside
+    the leading identity region it leans on, and never on column 0 unless that
+    region is column 0 alone (in which case it is appended past the last cell).
+    ``services/citation.py`` reads a row's label from ``cells[0]`` and calls a
+    row "leaning" only while ``cells[0]`` is empty, so this placement keeps both
+    the label and the leaning-row classification of the annotated row identical
+    to the raw row the provenance entries were computed from.
+    """
+    rows = list(table.data_rows)
+    annotations: dict[int, dict] = {}
+    for span in spans:
+        if span.resolved:
+            continue
+        cells = MarkdownTable._cells_of(rows[span.row])
+        figures = _row_carries_figures(cells)
+        marker = _rowspan_marker(span, cells)
+        col = _marker_column(cells, span)
+        if col < len(cells):
+            cells[col] = marker
+        else:
+            cells.append(marker)
+        rows[span.row] = "| " + " | ".join(cells) + " |"
+        annotations[span.row] = {"marker": marker, "figures": figures}
+    return rows, annotations
+
+
+def strip_rowspan_markers(text: str) -> str:
+    """The chunk text as the page printed it (ticket 32's marker removed).
+
+    Consumers that compare a chunk line with its source row, or that index the
+    row's cells, must see the document's own text; the marker is the chunker's
+    annotation, not content.
+    """
+    return _ROWSPAN_MARKER_RE.sub("", text)
+
+
+def _assert_unresolved_rows_marked(chunks: list[dict], doc_id: str) -> None:
+    """Ticket 32 ô 4: no row is emitted without its marker (guard, not luck).
+
+    ``_chunk_table`` filters nothing — every data row of the table reaches a chunk
+    — so the only thing standing between an unattributable row and the corpus is
+    this invariant: for every emitted chunk, each ``rowspan_unresolved`` entry
+    must have its marker present in that chunk's ``text``, as many times as there
+    are entries declaring it. Counted per marker (not merely ``in text``) so a
+    table with several same-kind unresolved rows cannot pass on one surviving
+    marker. Raises instead of warning: a silent row is exactly the state this
+    ticket removes, and a warning is invisible to the student.
+    """
+    for chunk in chunks:
+        entries = chunk["metadata"].get("rowspan_unresolved") or []
+        needed: dict[str, int] = {}
+        for entry in entries:
+            marker = str(entry.get("marker") or "")
+            needed[marker] = needed.get(marker, 0) + 1
+        for marker, count in needed.items():
+            if not marker:
+                raise RuntimeError(
+                    f"Ticket 32: {doc_id}: an unresolved rowspan row carries no marker text"
+                )
+            found = chunk["text"].count(marker)
+            if found < count:
+                raise RuntimeError(
+                    f"Ticket 32: {doc_id}: {count} unresolved rowspan row(s) declare marker "
+                    f"{marker!r} but the emitted text carries it {found} time(s) — a row with "
+                    "no traceable label would reach the corpus without saying so"
+                )
 
 
 def _chunk_table(table: MarkdownTable, base_meta: dict, doc_id: str, enc, start_idx: int) -> list[dict]:
-    """Inner table-chunking logic (v4 Phase 3 hybrid strategy)."""
+    """Inner table-chunking logic (v4 Phase 3 hybrid strategy).
+
+    Ticket 32: the table's rowspan provenance is resolved once here and attached
+    to every chunk that carries the rows it belongs to. Rows that lean on a
+    merged cell without being attributable are warned about on this path (the
+    production path), never emitted silently.
+    """
     chunks = []
+
+    spans = table.rowspan_provenance()
+    for span in spans:
+        if not span.resolved:
+            logger.warning(
+                "Ticket 32: {} row {} carries values but leans on a merged/rowspan cell it "
+                "does not carry (columns {} empty, filled above) and cannot be attributed: {} | {}",
+                doc_id, span.row, list(span.columns), span.reason,
+                table.data_rows[span.row][:120],
+            )
+
+    # Ticket 32: the emitted text is the annotated rows — every unresolved row
+    # carries its visible marker. Routing (is_wide / is_small / program grouping)
+    # and the provenance scan above stay on the RAW rows, so a marker can never
+    # become an inheritable identity or change how the table is chunked.
+    annotated, annotations = _annotated_rows(table, spans)
+    all_rows = list(range(len(annotated)))
+
+    def emit(idx: int, text: str, rows: list[int], **meta) -> dict:
+        """Ticket 33: a table chunk hands the size gate the table-scoped indices
+        of the rows it carries, so the gate can keep each provenance entry with
+        the piece that actually owns its rows. Private handoff — popped by
+        ``_enforce_size_gates`` before the chunk is returned — and only carried
+        when there is provenance to scope."""
+        chunk = _make_chunk(doc_id, idx, text, base_meta, **meta)
+        if any(key.startswith("rowspan_") for key in chunk["metadata"]):
+            chunk["_rowspan_row_indices"] = list(rows)
+        return chunk
 
     # ── Rule 1: Wide-table bypass ──
     if table.is_wide:
-        text = table.to_chunk_text()
+        text = table.to_chunk_text(annotated)
         tok = count_tokens(text, enc)
         # Even if oversized, keep as single chunk per Phase 3
-        chunks.append(_make_chunk(
-            doc_id, start_idx, text, base_meta,
+        chunks.append(emit(
+            start_idx, text, all_rows,
             chunk_type="wide_table", table_dims=f"{len(table.data_rows)}x{table.num_cols}",
-            token_count=tok,
+            token_count=tok, **_rowspan_metadata(spans, all_rows, annotations),
         ))
         return chunks
 
     # ── Rule 2: Small-table fallback ──
     if table.is_small:
-        text = table.to_chunk_text()
+        text = table.to_chunk_text(annotated)
         tok = count_tokens(text, enc)
         if tok >= MIN_TOKENS:
-            chunks.append(_make_chunk(
-                doc_id, start_idx, text, base_meta,
+            chunks.append(emit(
+                start_idx, text, all_rows,
                 chunk_type="small_table", table_dims=f"{len(table.data_rows)}x{table.num_cols}",
-                token_count=tok,
+                token_count=tok, **_rowspan_metadata(spans, all_rows, annotations),
             ))
         return chunks
 
     # ── Rule 3: Program-grouped tables ──
     if table.has_program_column():
-        groups = table.group_rows_by_program()
+        groups = table.group_row_indices_by_program()
         idx = start_idx
         for group in groups:
-            text = table.to_chunk_text(group)
+            text = table.to_chunk_text([annotated[j] for j in group])
             tok = count_tokens(text, enc)
             if tok < MIN_TOKENS:
                 continue
-            chunks.append(_make_chunk(
-                doc_id, idx, text, base_meta,
+            chunks.append(emit(
+                idx, text, group,
                 chunk_type="program_group", table_dims=f"{len(group)}x{table.num_cols}",
-                token_count=tok,
+                token_count=tok, **_rowspan_metadata(spans, group, annotations),
             ))
             idx += 1
         return chunks
 
     # ── Rule 4: General row-packing with header ──
-    current_rows: list[str] = []
+    current_rows: list[int] = []
     current_tok = count_tokens(table.header_line + "\n" + table.separator_line, enc) if table.header_line else 0
     idx = start_idx
 
-    for row in table.data_rows:
+    for i, row in enumerate(annotated):
         row_tok = count_tokens(row, enc)
         if current_tok + row_tok > PROGRAM_GROUP_MAX_TOKENS and current_rows:
-            text = table.to_chunk_text(current_rows)
-            chunks.append(_make_chunk(
-                doc_id, idx, text, base_meta,
+            text = table.to_chunk_text([annotated[j] for j in current_rows])
+            chunks.append(emit(
+                idx, text, current_rows,
                 chunk_type="packed_table", table_dims=f"{len(current_rows)}x{table.num_cols}",
-                token_count=count_tokens(text, enc),
+                token_count=count_tokens(text, enc), **_rowspan_metadata(spans, current_rows, annotations),
             ))
             idx += 1
-            current_rows = [row]
+            current_rows = [i]
             current_tok = row_tok + (count_tokens(table.header_line + "\n" + table.separator_line, enc) if table.header_line else 0)
         else:
-            current_rows.append(row)
+            current_rows.append(i)
             current_tok += row_tok
 
     if current_rows:
-        text = table.to_chunk_text(current_rows)
+        text = table.to_chunk_text([annotated[j] for j in current_rows])
         tok = count_tokens(text, enc)
         if tok >= MIN_TOKENS:
-            chunks.append(_make_chunk(
-                doc_id, idx, text, base_meta,
+            chunks.append(emit(
+                idx, text, current_rows,
                 chunk_type="packed_table", table_dims=f"{len(current_rows)}x{table.num_cols}",
-                token_count=tok,
+                token_count=tok, **_rowspan_metadata(spans, current_rows, annotations),
             ))
 
     return chunks
 
 
-def _split_oversized_preserving(text: str, enc, max_tokens: int) -> list[str]:
-    """Split an oversized chunk into <=max_tokens pieces.
+def _flag_oversized_pipe_rows(pieces: list[str], enc, max_tokens: int) -> None:
+    """ST-6c: log a warning for any piece that still exceeds ``max_tokens``.
+
+    These are single atomic pipe-table rows too large to split; keeping them
+    whole is deliberate (a row must never be cut mid-row), so the warning
+    surfaces the data anomaly without breaking row integrity.
+    """
+    for p in pieces:
+        tok = count_tokens(p, enc)
+        if tok > max_tokens:
+            logger.warning(
+                "ST-6c: pipe-table row exceeds HARD_MAX_TOKENS ({} > {}) and is "
+                "kept whole: {}",
+                tok, max_tokens, p[:80],
+            )
+
+
+def _split_pieces_and_sources(
+    text: str, enc, max_tokens: int,
+) -> tuple[list[str], list[str] | None, list[list[int]] | None]:
+    """Split an oversized chunk into <=max_tokens pieces, tracking sources.
 
     Table-looking text is split at row boundaries (header + separator repeated on
     each piece) to preserve table structure; everything else uses a balanced
-    token-boundary split so no tiny tail piece is produced.
+    token-boundary split so no tiny tail piece is produced. ST-6c: pipe-table
+    rows are ATOMIC — a single oversized row is kept whole and flagged, never
+    cut mid-row, and any pipe-table text is split at line boundaries before a
+    balanced token split is ever used.
+
+    Ticket 33: along with the pieces this returns the line list they were cut
+    from and, per piece, the indices of the lines that piece carries. The
+    splitter is the only place that knows which line went where, and the size
+    gate needs exactly that to keep rowspan provenance inside the piece that
+    owns the rows it names. ``sources`` is None when the balanced token split
+    was used (there is no line boundary to map) — unreachable for table text,
+    which is line-preserving by construction.
     """
     if count_tokens(text, enc) <= max_tokens:
-        return [text]
+        lines = text.split("\n")
+        return [text], lines, [list(range(len(lines)))]
 
     stripped = text.strip()
     if stripped.startswith("|") and stripped.endswith("|"):
         lines = stripped.split("\n")
         header, separator, data_rows = "", "", []
-        for ln in lines:
+        header_i, separator_i = -1, -1
+        data_idx: list[int] = []
+        for i, ln in enumerate(lines):
             if re.match(r"^\|[\s\-|:]+\|$", ln) and not separator:
-                separator = ln
+                separator, separator_i = ln, i
             elif not header and ln.strip().startswith("|"):
-                header = ln
+                header, header_i = ln, i
             elif ln.strip().startswith("|"):
                 data_rows.append(ln)
+                data_idx.append(i)
         if header and data_rows:
             head_tok = count_tokens(header + "\n" + separator, enc)
-            pieces, current, cur_tok = [], [], head_tok
-            for row in data_rows:
+            head_idx = ([header_i] if header_i >= 0 else []) + ([separator_i] if separator_i >= 0 else [])
+            pieces, blocks, current, cur_idx, cur_tok = [], [], [], [], head_tok
+            for i, row in zip(data_idx, data_rows):
                 row_tok = count_tokens(row, enc)
                 if cur_tok + row_tok > max_tokens and current:
                     pieces.append("\n".join([header, separator] + current))
-                    current, cur_tok = [row], head_tok + row_tok
+                    blocks.append(head_idx + cur_idx)
+                    current, cur_idx, cur_tok = [row], [i], head_tok + row_tok
                 else:
                     current.append(row)
+                    cur_idx.append(i)
                     cur_tok += row_tok
             if current:
                 pieces.append("\n".join([header, separator] + current))
+                blocks.append(head_idx + cur_idx)
             if all(count_tokens(p, enc) <= max_tokens for p in pieces):
-                return pieces
+                return pieces, lines, blocks
+            # ST-6c: row packing could not fit every row under the cap — at
+            # least one row is itself oversized. Rows are atomic, so keep the
+            # row-preserving pieces and flag the oversize instead of falling
+            # through to a balanced split that would cut a row mid-row.
+            _flag_oversized_pipe_rows(pieces, enc, max_tokens)
+            return pieces, lines, blocks
 
-    # Balanced token-boundary split (no tiny tail)
+    if _PIPE_TABLE_LINE_RE.search(text):
+        # ST-6c: pipe-table text (even mixed with surrounding prose) splits at
+        # line boundaries so no row is cut, before any balanced token split.
+        lines = text.split("\n")
+        pieces, blocks, current, cur_idx, cur_tok = [], [], [], [], 0
+        for i, line in enumerate(lines):
+            if not line.strip():
+                continue
+            line_tok = count_tokens(line, enc)
+            if line_tok > max_tokens:
+                # Single row above the cap: keep whole + flag, never cut.
+                # Flush any pending rows first so lines that precede this
+                # oversized row are not emitted after it (mirrors
+                # src/chunker.py:_split_oversized_pipe_safe).
+                if current:
+                    pieces.append("\n".join(current))
+                    blocks.append(cur_idx)
+                    current, cur_idx, cur_tok = [], [], 0
+                pieces.append(line)
+                blocks.append([i])
+                _flag_oversized_pipe_rows([line], enc, max_tokens)
+                continue
+            if cur_tok + line_tok > max_tokens and current:
+                pieces.append("\n".join(current))
+                blocks.append(cur_idx)
+                current, cur_idx, cur_tok = [line], [i], line_tok
+            else:
+                current.append(line)
+                cur_idx.append(i)
+                cur_tok += line_tok
+        if current:
+            pieces.append("\n".join(current))
+            blocks.append(cur_idx)
+        if pieces:
+            return pieces, lines, blocks
+
+    # Balanced token-boundary split (no tiny tail) — no line boundary to map.
     tokens = enc.encode(text)
     n = len(tokens)
     k = (n + max_tokens - 1) // max_tokens
@@ -334,31 +853,113 @@ def _split_oversized_preserving(text: str, enc, max_tokens: int) -> list[str]:
         if piece:
             pieces.append(piece)
         start = end
-    return pieces
+    return pieces, None, None
 
 
-def _enforce_size_gates(chunks: list[dict], base_meta: dict, doc_id: str, enc) -> list[dict]:
-    """T1.8: hard cap HARD_MAX_TOKENS + soft floor SOFT_MIN_TOKENS on chunk dicts.
+def _split_oversized_preserving(text: str, enc, max_tokens: int) -> list[str]:
+    """Split an oversized chunk into <=max_tokens pieces.
+
+    The line- and row-preserving rules live in ``_split_pieces_and_sources``;
+    this is the text-only view used by the rechunk scripts.
+    """
+    return _split_pieces_and_sources(text, enc, max_tokens)[0]
+
+
+def _piece_rows(
+    row_indices: list[int] | None, lines: list[str] | None,
+    blocks: list[list[int]] | None, text: str,
+) -> list[set[int]] | None:
+    """Ticket 33: the table-scoped row indices each split piece carries.
+
+    Row indices are TABLE-scoped (ticket 32's frame of reference): every chunk
+    of one ``chunk_table`` call re-emits that table's header, so a piece's rows
+    are its chunk's rows minus the leading header/separator lines. Returns None
+    when no line mapping exists (the split fell back to a token boundary, or the
+    chunk carried no rows), and the caller then leaves provenance untouched.
+    """
+    if row_indices is None or blocks is None or lines is None:
+        return None
+    if len(lines) != len(text.split("\n")) or len(lines) < len(row_indices):
+        return None
+    head = len(lines) - len(row_indices)
+    return [
+        {row_indices[i - head] for i in block if i >= head}
+        for block in blocks
+    ]
+
+
+def _rowspan_scoped_metadata(meta: dict, rows: set[int]) -> dict:
+    """Ticket 33: the provenance one split piece may carry.
+
+    A piece carries exactly the entries of the rows it holds. Row indices are
+    table-scoped and the pieces of one split hold *disjoint* row sets, so every
+    entry has exactly one home: the piece holding the row it labels. Two
+    consequences, and they are the two things this ticket asks for:
+
+    * a piece can no longer name a row that fell to a sibling piece — ticket
+      32's over-labelling, where a piece claimed provenance for a row it does
+      not contain;
+    * no entry is dropped anywhere, so the pieces of a split carry exactly the
+      entry set of the unsplit chunk.
+
+    The second point is why the rule is stated over the labelled row alone. An
+    attribution also names its ``anchor_row``, and a split boundary can fall
+    between the two (measured on ``data/staging/pdf/pdf_2.md``: 6 of the 66
+    entries in split parents). Requiring the anchor to be in the same piece
+    would drop those 6 from every piece at once — putting a leaning row back
+    into the corpus with neither attribution nor warning, the exact silent state
+    ticket 32 removes. Keeping them with the row they label costs nothing the
+    consumer relies on: the anchor is still a row of the same table (ticket 32
+    guarantees the anchor is in the chunk the entry was attached to) and the row
+    the entry names is always one the piece contains. Empty key sets are
+    dropped, matching ``_rowspan_metadata``'s shape.
+    """
+    scoped = {key: value for key, value in meta.items() if not key.startswith("rowspan_")}
+    for key in ("rowspan_attribution", "rowspan_unresolved"):
+        entries = meta.get(key)
+        if not entries:
+            continue
+        kept = [entry for entry in entries if entry["row"] in rows]
+        if kept:
+            scoped[key] = kept
+    return scoped
+
+
+def _enforce_size_gates(
+    chunks: list[dict], base_meta: dict, doc_id: str, enc,
+    hard_max_tokens: int | None = None, soft_min_tokens: int | None = None,
+) -> list[dict]:
+    """T1.8: hard cap (split) + soft floor (merge) driven by config.settings.
 
     Splits oversized chunks (preserving table rows), merges sub-floor chunks into
-    a neighbor without exceeding the cap, then re-indexes chunk ids.
+    a neighbor without exceeding the cap, then re-indexes chunk ids. Knobs resolve
+    from config.settings at call time unless explicit values are passed.
+
+    Ticket 33: a split piece carries only the provenance of the rows it holds —
+    each entry stays with the piece that owns its rows, and none is dropped.
     """
+    hard_max = hard_max_tokens if hard_max_tokens is not None else settings.HARD_MAX_TOKENS
+    soft_min = soft_min_tokens if soft_min_tokens is not None else settings.SOFT_MIN_TOKENS
+
     if not chunks:
         return chunks
 
     out: list[dict] = []
     for c in chunks:
+        row_indices = c.pop("_rowspan_row_indices", None)
         text = c.get("text", "")
         tok = count_tokens(text, enc)
-        if tok <= HARD_MAX_TOKENS:
+        if tok <= hard_max:
             out.append(c)
             continue
-        pieces = _split_oversized_preserving(text, enc, HARD_MAX_TOKENS)
+        pieces, lines, blocks = _split_pieces_and_sources(text, enc, hard_max)
         meta = {k: v for k, v in (c.get("metadata") or {}).items() if k != "token_count"}
+        rows_per_piece = _piece_rows(row_indices, lines, blocks, text)
         for si, piece in enumerate(pieces):
+            piece_meta = meta if rows_per_piece is None else _rowspan_scoped_metadata(meta, rows_per_piece[si])
             out.append(_make_chunk(
                 doc_id, len(out), piece, base_meta,
-                **meta, split_index=si, token_count=count_tokens(piece, enc),
+                **piece_meta, split_index=si, token_count=count_tokens(piece, enc),
             ))
 
     # Soft-floor merge into previous neighbor (keep hard cap).
@@ -367,10 +968,12 @@ def _enforce_size_gates(chunks: list[dict], base_meta: dict, doc_id: str, enc) -
         if merged:
             cur_tok = count_tokens(c.get("text", ""), enc)
             prev_tok = count_tokens(merged[-1].get("text", ""), enc)
-            if cur_tok < SOFT_MIN_TOKENS and prev_tok + cur_tok <= HARD_MAX_TOKENS:
+            if cur_tok < soft_min and prev_tok + cur_tok <= hard_max:
                 merged[-1]["text"] = f"{merged[-1].get('text', '')}\n\n{c.get('text', '')}"
                 merged[-1]["text_plain"] = merged[-1]["text"]
-                merged[-1].get("metadata", {})["token_count"] = prev_tok + cur_tok
+                prev_meta = merged[-1].setdefault("metadata", {})
+                prev_meta["token_count"] = prev_tok + cur_tok
+                _absorb_rowspan(prev_meta, c.get("metadata") or {})
                 continue
         merged.append(c)
 
@@ -416,8 +1019,14 @@ _VI_PHRASE_END = re.compile(
 )
 
 
-def chunk_text_sections(text: str, base_meta: dict, doc_id: str, enc, start_idx: int) -> list[dict]:
+def chunk_text_sections(
+    text: str, base_meta: dict, doc_id: str, enc, start_idx: int,
+    text_chunk_size: int | None = None, text_overlap: int | None = None,
+) -> list[dict]:
     """Split non-table text with sentence-boundary awareness."""
+    budget = text_chunk_size if text_chunk_size is not None else settings.CHUNK_SIZE_TOKENS
+    overlap = text_overlap if text_overlap is not None else settings.CHUNK_OVERLAP
+
     # Split by double newlines first
     paragraphs = re.split(r"\n\n+", text)
     paragraphs = [p.strip() for p in paragraphs if p.strip()]
@@ -425,12 +1034,12 @@ def chunk_text_sections(text: str, base_meta: dict, doc_id: str, enc, start_idx:
     # Further split long paragraphs at sentence boundaries
     parts = []
     for p in paragraphs:
-        if count_tokens(p, enc) <= TEXT_CHUNK_SIZE:
+        if count_tokens(p, enc) <= budget:
             parts.append(p)
         else:
             # Split by lines first
             lines = p.split("\n")
-            sub_parts = _pack_lines(lines, enc)
+            sub_parts = _pack_lines(lines, enc, budget, overlap)
             parts.extend(sub_parts)
 
     chunks = []
@@ -440,7 +1049,7 @@ def chunk_text_sections(text: str, base_meta: dict, doc_id: str, enc, start_idx:
         if tok < MIN_TOKENS:
             continue
         # Try to end at sentence boundary
-        part = _trim_to_sentence(part, enc)
+        part = _trim_to_sentence(part, enc, budget)
         chunks.append(_make_chunk(
             doc_id, idx, part, base_meta,
             chunk_type="text_section", token_count=count_tokens(part, enc),
@@ -450,8 +1059,13 @@ def chunk_text_sections(text: str, base_meta: dict, doc_id: str, enc, start_idx:
     return chunks
 
 
-def _pack_lines(lines: list[str], enc) -> list[str]:
+def _pack_lines(
+    lines: list[str], enc, text_chunk_size: int | None = None, text_overlap: int | None = None,
+) -> list[str]:
     """Pack lines into chunks respecting token budget and sentence boundaries."""
+    budget = text_chunk_size if text_chunk_size is not None else settings.CHUNK_SIZE_TOKENS
+    overlap = text_overlap if text_overlap is not None else settings.CHUNK_OVERLAP
+
     parts = []
     current: list[str] = []
     current_tok = 0
@@ -465,13 +1079,13 @@ def _pack_lines(lines: list[str], enc) -> list[str]:
 
         line_tok = count_tokens(line, enc)
 
-        if current_tok + line_tok > TEXT_CHUNK_SIZE and current:
+        if current_tok + line_tok > budget and current:
             # Try to complete the sentence by scanning ahead
             extended = list(current) + [line]
             extended_tok = current_tok + line_tok
             # Keep adding lines until we hit a sentence boundary or 2x budget
-            if extended_tok <= TEXT_CHUNK_SIZE * 2.0:
-                chunk_text = _complete_sentence(extended, enc, TEXT_CHUNK_SIZE * 2.0)
+            if extended_tok <= budget * 2.0:
+                chunk_text = _complete_sentence(extended, enc, budget * 2.0, budget)
                 if chunk_text:
                     parts.append(chunk_text)
                     current = []
@@ -482,7 +1096,7 @@ def _pack_lines(lines: list[str], enc) -> list[str]:
             chunk_text = "\n".join(current).strip()
             parts.append(chunk_text)
             # Start new chunk with overlap
-            overlap_lines = _get_overlap_lines(current, enc, TEXT_OVERLAP)
+            overlap_lines = _get_overlap_lines(current, enc, overlap)
             current = overlap_lines + [line]
             current_tok = sum(count_tokens(l, enc) for l in current if l.strip())
         else:
@@ -497,11 +1111,15 @@ def _pack_lines(lines: list[str], enc) -> list[str]:
     return parts
 
 
-def _complete_sentence(lines: list[str], enc, max_tokens: int) -> str | None:
+def _complete_sentence(
+    lines: list[str], enc, max_tokens: int, text_chunk_size: int | None = None,
+) -> str | None:
     """Try to extend lines until a sentence boundary is found within max_tokens.
 
     Returns the completed chunk text if a boundary is found, None otherwise.
     """
+    budget = text_chunk_size if text_chunk_size is not None else settings.CHUNK_SIZE_TOKENS
+
     result: list[str] = []
     total_tok = 0
 
@@ -516,7 +1134,7 @@ def _complete_sentence(lines: list[str], enc, max_tokens: int) -> str | None:
         if stripped and (_SENT_END_SOFT.search(stripped) or _VI_PHRASE_END.search(stripped)):
             text = "\n".join(result).strip()
             # Only return if we actually extended past the original budget somewhat
-            if total_tok > TEXT_CHUNK_SIZE * 0.8:
+            if total_tok > budget * 0.8:
                 return text
 
     return None
@@ -542,10 +1160,12 @@ def _get_overlap_lines(lines: list[str], enc, overlap_tokens: int) -> list[str]:
     return result
 
 
-def _trim_to_sentence(text: str, enc) -> str:
+def _trim_to_sentence(text: str, enc, text_chunk_size: int | None = None) -> str:
     """Try to end text at a sentence boundary without exceeding chunk size."""
+    budget = text_chunk_size if text_chunk_size is not None else settings.CHUNK_SIZE_TOKENS
+
     tok = count_tokens(text, enc)
-    if tok <= TEXT_CHUNK_SIZE:
+    if tok <= budget:
         return text
 
     # Find last sentence boundary within budget
@@ -555,13 +1175,13 @@ def _trim_to_sentence(text: str, enc) -> str:
 
     for line in lines:
         line_tok = count_tokens(line, enc)
-        if total_tok + line_tok > TEXT_CHUNK_SIZE and result:
+        if total_tok + line_tok > budget and result:
             # Check if current result ends at sentence/phrase boundary
             last_line = result[-1].strip()
             if _SENT_END_SOFT.search(last_line) or _VI_PHRASE_END.search(last_line):
                 break
             # If not, include this line to try to complete the sentence
-            if total_tok + line_tok <= TEXT_CHUNK_SIZE * 1.3:  # allow 30% overflow
+            if total_tok + line_tok <= budget * 1.3:  # allow 30% overflow
                 result.append(line)
                 total_tok += line_tok
             break

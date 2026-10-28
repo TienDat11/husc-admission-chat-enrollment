@@ -29,18 +29,32 @@ export const adminConfig: AdminConfigEntry[] = [
     howToChange: "Edit EMBEDDING_MODEL in rag2025/.env and re-run the embedding pipeline.",
   },
   {
-    key: "RAMCLOUDS_MODEL",
-    label: "RAM Clouds Model",
-    value: "gemini-3.6-flash-high",
-    source: "Loaded from .env (rag2025/.env)",
-    howToChange: "Edit RAMCLOUDS_MODEL in rag2025/.env and restart the server.",
+    key: "NS24_BASE_URL",
+    label: "ns24 Gateway Base URL",
+    value: "https://api.ns24.io/v1",
+    source: "config/settings.py default; overridable by NS24_BASE_URL in rag2025/.env",
+    howToChange: "Edit NS24_BASE_URL in rag2025/.env and restart the server.",
   },
   {
-    key: "RAMCLOUDS_BASE_URL",
-    label: "RAM Clouds Base URL",
-    value: "https://ramclouds.me/v1",
-    source: "Loaded from .env (rag2025/.env)",
-    howToChange: "Edit RAMCLOUDS_BASE_URL in rag2025/.env to point to your RAM Clouds deployment.",
+    key: "NS24_MODEL",
+    label: "Default Role Model",
+    value: "gemini-3.5-flash-lite",
+    source: "config/ns24_models.py ROLE_MODELS['default'] (fallback deepseek-v4.1-flash)",
+    howToChange: "Edit ROLE_MODELS in rag2025/config/ns24_models.py and restart the server.",
+  },
+  {
+    key: "NS24_ROUTER_MODEL",
+    label: "Router, NER, HyDE, Guardrail Model",
+    value: "gemini-3.5-flash-lite",
+    source: "config/ns24_models.py ROLE_MODELS (fallback deepseek-v4.1-flash)",
+    howToChange: "Edit ROLE_MODELS in rag2025/config/ns24_models.py and restart the server.",
+  },
+  {
+    key: "NS24_GEN_MODEL",
+    label: "Answer Generation Model",
+    value: "gpt-6-luna",
+    source: "config/ns24_models.py ROLE_MODELS['gen'] (fallback claude-haiku-5-5)",
+    howToChange: "Edit ROLE_MODELS in rag2025/config/ns24_models.py and restart the server.",
   },
   {
     key: "RERANKER_MODEL",
@@ -51,6 +65,5 @@ export const adminConfig: AdminConfigEntry[] = [
   },
 ];
 
-export const RAMCLOUDS_API_KEY = "[REDACTED]";
-export const RAMCLOUDS_API_KEY_NOTE =
-  "Set in .env, never display full value.";
+export const NS24_API_KEY = "[REDACTED]";
+export const NS24_API_KEY_NOTE = "Set in /srv/atlas-lab/shared/atlas.env on the server; never displayed.";

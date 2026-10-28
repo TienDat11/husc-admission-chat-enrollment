@@ -52,12 +52,8 @@ def _make_gen(answer_text: str = "Câu trả lời mặc định từ mô hình.
 
     gen = LLMGenerator.__new__(LLMGenerator)
     gen.generation_system_prompt = "TEST SYSTEM PROMPT"
-    gen.zai_client = None
-    gen.groq_client = None
     gen.has_any_provider = True
     gen.gen_model = "test-model"
-    gen.gen_fallback_model = "test-fallback"
-    gen.unified_fallback_client = None
 
     fake_unified = MagicMock()
     fake_unified._providers = ["primary"]
@@ -106,12 +102,20 @@ async def test_substantive_answer_with_empty_chunks_abstains():
     """The genuine hallucination-prevention case: the model produced a
     substantive answer (e.g. "Điểm chuẩn ngành CNTT là 24 điểm.") but
     there are ZERO retrieved chunks to ground it. Guard MUST replace
-    the answer with the standard abstain string (no fabrication)."""
+    the answer with the standard abstain string (no fabrication).
+
+    The query is deliberately NON-factual. T11's pre-generation evidence
+    gate (``abstention_policy.evaluate_evidence``) now owns factual
+    queries with zero evidence and refuses them *before* the model runs,
+    so a factual query never reaches this post-generation guard. This
+    test pins the residual case that gate leaves open: the model
+    volunteered an answer to a non-factual query with no grounding.
+    """
     gen = _make_gen(
         answer_text="Điểm chuẩn ngành CNTT là 24 điểm.",
     )
     result = await gen.generate_answer(
-        query="Điểm chuẩn ngành CNTT năm 2026?",
+        query="Trường có bao nhiêu ngành đào tạo?",
         chunks=[],
         confidence=0.6,
     )

@@ -15,9 +15,21 @@ from pydantic import BaseModel, Field
 
 from services._metadata_helpers import get_source_label, get_source_breadcrumb
 
-# T1.8 chunk size gates — hard cap (split) + soft floor (merge neighbors).
-HARD_MAX_TOKENS = 512  # any single chunk above this is split into <=512 pieces
-SOFT_MIN_TOKENS = 50   # chunks below this are merged into a neighbor (best-effort)
+# T1.8 chunk size gates (hard cap + soft floor) are driven by config.settings so
+# .env remains the single authoritative source for chunk-budget knobs.
+from config.settings import settings
+
+# ── ST-6 structure guards ───────────────────────────────────────────────────
+# DECISION (2026-08): do NOT pull in underthesea / pyvi / VnCoreNLP for sentence
+# splitting. A zero-dependency lookbehind regex over the Vietnamese sentence
+# terminators (. ? ! ; :) followed by whitespace is sufficient to keep chunk
+# edges off mid-sentence cuts. Revisit only if evals show weak-boundary failures.
+_SENTENCE_TERMINATOR_RE = re.compile(r"(?<=[.?!;:])\s+")
+# A markdown/pipe-table row is any line that starts with a pipe (optional
+# leading whitespace). Rows are ATOMIC — a chunk boundary must never land
+# inside one (fixes chunked_23 chunk_133 losing '407', chunked_24 chunk_100→101
+# dropping a subject-combo table row).
+_PIPE_TABLE_LINE_RE = re.compile(r"^\s*\|", re.MULTILINE)
 
 
 class ChunkProfile(BaseModel):
@@ -227,7 +239,22 @@ class Chunker:
 
         # 2) Fallback to separator split when structure split is weak
         if len(parts) <= 1:
+            has_pipe_rows = bool(_PIPE_TABLE_LINE_RE.search(text))
             for sep in profile.separator_priority:
+                # ST-6b: pipe-table rows are atomic — only newline-based
+                # separators may split table text (a boundary between lines can
+                # never land inside a row); skip ". " / " " and the like.
+                if has_pipe_rows and "\n" not in sep:
+                    continue
+                # ST-6a: prefer Vietnamese sentence terminators (. ? ! ; : +
+                # whitespace) over a plain-space split so chunk edges land at
+                # sentence boundaries, not mid-sentence. Only relevant for
+                # non-table text (rows are atomic, see above).
+                if sep == " " and not has_pipe_rows:
+                    if _SENTENCE_TERMINATOR_RE.search(text):
+                        parts = _SENTENCE_TERMINATOR_RE.split(text)
+                        separator_used = " "
+                        break
                 if sep in text:
                     parts = text.split(sep)
                     separator_used = sep
@@ -252,6 +279,14 @@ class Chunker:
                     if len(self.tokenizer.encode(chunk_text)) >= profile.min_tokens:
                         chunks.append(chunk_text)
 
+                # ST-6d: `overlap_text` re-prefixes the tail of the previous
+                # chunk onto the next one. This is INTENTIONAL
+                # CHUNK_OVERLAP-driven duplication — adjacent chunks share
+                # exactly the overlap window (the token span that appears in
+                # both boundaries), not redundant data. It is the same
+                # duplication produced by CHUNK_OVERLAP during normal
+                # chunking, and it is required for continuity when a boundary
+                # is split across two chunks.
                 overlap_text = self._get_overlap_text(current_chunk, profile.overlap)
                 current_chunk = [overlap_text, part] if overlap_text else [part]
                 current_tokens = len(self.tokenizer.encode(separator_used.join(current_chunk)))
@@ -267,24 +302,40 @@ class Chunker:
         logger.debug(f"Split {total_tokens} tokens into {len(chunks)} chunks")
         return chunks
 
-    def _enforce_size_gates(self, text_chunks: list[str]) -> list[str]:
-        """T1.8: hard cap HARD_MAX_TOKENS + soft floor SOFT_MIN_TOKENS.
+    def _enforce_size_gates(
+        self,
+        text_chunks: list[str],
+        hard_max_tokens: int | None = None,
+        soft_min_tokens: int | None = None,
+    ) -> list[str]:
+        """T1.8: hard cap (split) + soft floor (merge) driven by config.settings.
 
-        Split any chunk above the hard cap into balanced <=HARD_MAX_TOKENS
-        pieces, then merge chunks below the soft floor into a neighbor without
-        exceeding the cap (best-effort — a lone tiny chunk is kept as-is).
+        Split any chunk above the hard cap into balanced <=hard_max pieces, then
+        merge chunks below the soft floor into a neighbor without exceeding the
+        cap (best-effort — a lone tiny chunk is kept as-is). Knobs resolve from
+        config.settings at call time unless explicit values are passed.
         """
+        hard_max = hard_max_tokens if hard_max_tokens is not None else settings.HARD_MAX_TOKENS
+        soft_min = soft_min_tokens if soft_min_tokens is not None else settings.SOFT_MIN_TOKENS
+
         if not text_chunks:
             return text_chunks
 
-        # 1) Hard cap: split oversized chunks at balanced token boundaries.
+        # 1) Hard cap: split oversized chunks at balanced token boundaries,
+        #    EXCEPT pipe-table text, which must split at row boundaries instead.
         pieces: list[str] = []
         for chunk in text_chunks:
             tokens = self.tokenizer.encode(chunk)
-            if len(tokens) <= HARD_MAX_TOKENS:
+            if len(tokens) <= hard_max:
                 pieces.append(chunk)
                 continue
-            n_pieces = (len(tokens) + HARD_MAX_TOKENS - 1) // HARD_MAX_TOKENS
+            if _PIPE_TABLE_LINE_RE.search(chunk):
+                # ST-6b: pipe-table rows are atomic — never balanced-split a
+                # table (that is what cut chunked_23 chunk_133's '407' and
+                # dropped row 5 of the subject-combo table in chunked_24).
+                pieces.extend(self._split_oversized_pipe_safe(chunk, hard_max))
+                continue
+            n_pieces = (len(tokens) + hard_max - 1) // hard_max
             base, rem = divmod(len(tokens), n_pieces)
             start = 0
             for i in range(n_pieces):
@@ -300,11 +351,54 @@ class Chunker:
             if merged:
                 cur_tok = len(self.tokenizer.encode(chunk))
                 prev_tok = len(self.tokenizer.encode(merged[-1]))
-                if cur_tok < SOFT_MIN_TOKENS and prev_tok + cur_tok <= HARD_MAX_TOKENS:
+                if cur_tok < soft_min and prev_tok + cur_tok <= hard_max:
                     merged[-1] = f"{merged[-1]}\n\n{chunk}"
                     continue
             merged.append(chunk)
         return merged
+
+    def _split_oversized_pipe_safe(self, text: str, hard_max: int) -> list[str]:
+        """ST-6b: split oversized pipe-table text at row boundaries.
+
+        Every pipe-table line is atomic — a chunk boundary must never land
+        inside one. Lines are packed whole into pieces of at most ``hard_max``
+        tokens; a single line that still exceeds the cap is kept whole and
+        flagged with a warning (never cut mid-row).
+        """
+        lines = text.split("\n")
+        pieces: list[str] = []
+        current: list[str] = []
+        current_tokens = 0
+
+        def flush() -> None:
+            nonlocal current, current_tokens
+            if current:
+                pieces.append("\n".join(current))
+                current = []
+                current_tokens = 0
+
+        for line in lines:
+            if not line.strip():
+                continue  # blank separators carry no row content
+            line_tokens = len(self.tokenizer.encode(line))
+            if line_tokens > hard_max:
+                # Single row above the cap: keep whole + flag, never cut.
+                flush()
+                pieces.append(line)
+                logger.warning(
+                    "ST-6b: pipe-table row exceeds HARD_MAX_TOKENS ({} > {}) "
+                    "and is kept whole: {}",
+                    line_tokens,
+                    hard_max,
+                    line[:80],
+                )
+                continue
+            if current_tokens + line_tokens > hard_max:
+                flush()
+            current.append(line)
+            current_tokens += line_tokens
+        flush()
+        return pieces or [text]
 
     def _split_markdown_legal_blocks(self, text: str) -> list[str]:
         """Split text by markdown headings and legal heading markers."""

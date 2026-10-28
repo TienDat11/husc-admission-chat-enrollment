@@ -25,9 +25,9 @@ load_dotenv()
 RESULT_IN = "results/86q_thi_sinh_results_qwen.json"
 OUT = "results/ragas_lite_86q.json"
 EMB_MODEL = "Qwen/Qwen3-Embedding-0.6B"
-BASE = os.getenv("RAMCLOUDS_BASE_URL")
-KEY = os.getenv("RAMCLOUDS_API_KEY")
-GEN = os.getenv("RAMCLOUDS_GEN_MODEL", "gpt-5.4")
+BASE = os.getenv("NS24_BASE_URL")
+KEY = os.getenv("NS24_API_KEY")
+GEN = os.getenv("NS24_GEN_MODEL", "gpt-6-luna")
 
 # ---------- 1. corpus chunk_id -> text ----------
 def build_corpus():

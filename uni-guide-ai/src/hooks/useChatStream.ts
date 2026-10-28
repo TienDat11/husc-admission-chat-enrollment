@@ -11,6 +11,7 @@ import {
   type QueryErrorKind,
 } from '@/lib/api';
 import { mapSources, decorateAnswer } from '@/lib/chat-helpers';
+import type { SourceChip } from '@/lib/api-types';
 
 export interface UseChatStreamResult {
   /** Append a user message and run the streaming + fallback pipeline. */
@@ -87,7 +88,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
         id: assistantId,
         role: 'assistant',
         content: '',
-        stage: 'Dang phan tich cau hoi…',
+        stage: 'Đang phân tích câu hỏi…',
         timestamp: new Date(),
       };
 
@@ -108,6 +109,21 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
       let internalStatusCode: string | undefined;
       let confidence = 0.5;
       let sources: Source[] = [];
+      // Ticket 17: provenance of the answer text ("evidence-policy:<reason>"
+      // on abstain/conflict, model name otherwise). Copied verbatim from the
+      // meta frame / fallback response; never defaulted. Declared here because
+      // both the streamed onMeta handler and the non-stream fallback assign it.
+      let provider: string | null | undefined;
+      // answer_confidence, verbatim: undefined means the BE omitted the field,
+      // null means the generator explicitly declined to vouch for the text.
+      // No default is ever assigned (ticket 43 criterion 3).
+      let answerConfidence: number | null | undefined;
+      // Ticket 17: provenance of the answer text ("evidence-policy:<reason>"
+      // on abstain/conflict, model name otherwise). Copied verbatim from the
+      // meta frame / fallback response; never defaulted.
+      // Ticket T07: the BE stamps trace_id on the meta frame; the 👍/👎 buttons
+      // in MessageBubble need it to POST /v2/feedback.
+      let traceId: string | undefined;
 
       try {
         try {
@@ -116,7 +132,30 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
             {
               onMeta: (meta) => {
                 statusCode = meta.status_code || 'SUCCESS';
+                // FIX-05 (ticket 44): these three were emitted by the BE but
+                // dropped here, so a degraded generation rendered as a normal
+                // answer on the streamed path only.
+                statusReason = meta.status_reason || '';
+                internalStatusCode = meta.internal_status_code || undefined;
                 dataGapHints = meta.data_gap_hints || [];
+                // Ticket 17: the real retrieval confidence. Read it BEFORE
+                // mapSources — otherwise every chip carries the fabricated
+                // default (0.5) while the non-stream path carries the real
+                // number. Only fall back to the default when the BE omits it.
+                if (typeof meta.confidence === 'number') confidence = meta.confidence;
+                // Ticket 43: the self-trust the generator placed in its own
+                // text — null on a failed generation. Copied verbatim.
+                answerConfidence = meta.answer_confidence;
+                // Ticket 17: provenance of the answer text — the FE keys the
+                // abstain/conflict states off this string, never off a guess.
+                provider = meta.provider;
+                // The BE ships the citation set in the meta frame
+                // (main.py:1888-1894). Without this the streamed path renders
+                // an answer with no source chips, while the non-stream
+                // fallback below renders them — an inconsistency the user
+                // sees as "citations sometimes disappear".
+                sources = mapSources(meta.sources, confidence);
+                traceId = meta.trace_id;
               },
               onStage: (stage) => {
                 replacePlaceholder((list) =>
@@ -155,10 +194,20 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
                 ? {
                     ...m,
                     content: decorated,
+                    sources,
+                    confidence,
+                    answerConfidence,
+                    // The question that produced this answer, so a failed
+                    // generation can be re-sent verbatim (ticket 43).
+                    retryQuery: content,
+                    provider,
                     statusCode,
                     statusReason,
                     dataGapHints,
                     internalStatusCode,
+                    // Ticket T07: carry the trace id so the bubble's 👍/👎
+                    // buttons can POST /v2/feedback for this answer.
+                    traceId,
                   }
                 : m,
             ),
@@ -179,6 +228,10 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
         dataGapHints = response.data_gap_hints || [];
         internalStatusCode = response.internal_status_code || undefined;
         confidence = response.confidence ?? 0.5;
+        // Ticket 43: read the generator's self-trust verbatim — no default.
+        answerConfidence = response.answer_confidence;
+        // Ticket 17: the fallback path carries the same provider string.
+        provider = response.provider;
         const decorated = decorateAnswer(
           response.answer || '',
           statusCode,
@@ -194,11 +247,14 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
                   ...m,
                   content: decorated,
                   sources,
+                  provider,
                   statusCode,
                   statusReason,
                   dataGapHints,
                   internalStatusCode,
                   confidence,
+                  answerConfidence,
+                  retryQuery: content,
                 }
               : m,
           ),
@@ -220,6 +276,9 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
           // "Failed to fetch") is NEVER displayed to the user.
           content: '',
           errorKind: qe.kind,
+          // Ticket 17 criterion 5: transport failures must offer a retry of
+          // the SAME question, so the error bot carries the query verbatim.
+          retryQuery: content,
           timestamp: new Date(),
         };
         replacePlaceholder((list) =>

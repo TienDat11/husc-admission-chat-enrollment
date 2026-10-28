@@ -121,7 +121,9 @@ def _group_duplicates(
     """Group rows by EXACT stripped text where len<short_threshold.
 
     Returns a mapping ``text -> [rows in source order]`` containing only
-    short-text groups with >= 2 occurrences.
+    short-text groups with >= 2 occurrences. Already-superseded rows are
+    excluded so they can never be picked as the canonical copy (mirrors
+    ``_group_long_duplicates``).
     """
     buckets: Dict[str, List[Dict[str, Any]]] = {}
     for r in rows:
@@ -129,6 +131,12 @@ def _group_duplicates(
         if len(text) >= short_threshold:
             continue
         if not text:
+            continue
+        # Skip rows already flagged superseded — dead rows must never enter a
+        # group (idempotent re-run = no-op). Mirrors the guard in
+        # _group_long_duplicates.
+        meta = _parse_meta(r.get("metadata_json"))
+        if bool(meta.get("is_superseded")):
             continue
         # Use stripped text as group key. If the original has no extra
         # whitespace, this is the exact-match condition.
@@ -343,7 +351,16 @@ def dedup_boilerplate(
             group_rows,
             key=lambda r: str(r.get("chunk_id") or r.get("id") or ""),
         )
-        kept_row = sorted_rows[0]
+        # Defensive guard: never keep an already-superseded row as the canonical
+        # copy, even if one slipped into the group. The lowest-sort ACTIVE row
+        # wins (mirrors the long-pass guard in _group_long_duplicates).
+        kept_row = next(
+            (
+                r for r in sorted_rows
+                if not bool(_parse_meta(r.get("metadata_json")).get("is_superseded"))
+            ),
+            sorted_rows[0],
+        )
         kept_chunk_id = str(kept_row.get("chunk_id") or kept_row.get("id") or "")
         superseded_ids: List[str] = []
 

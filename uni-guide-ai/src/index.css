@@ -74,6 +74,16 @@
     --chat-bot-foreground: 222 47% 11%;
     --chat-user: 217 91% 60%;
     --chat-user-foreground: 0 0% 100%;
+    /* Ticket 23 a11y: chat-surface tokens measured to WCAG 2.2 AA.
+       --chat-link/--chat-strong/--chat-muted sit on --chat-bot;
+       --chat-user-from/-to carry white bubble text; --chat-focus-ring
+       is the visible focus outline. Ratios in tests/a11y/contrast.test.ts */
+    --chat-link: 217 91% 42%;
+    --chat-strong: 262 83% 45%;
+    --chat-muted: 222 12% 40%;
+    --chat-user-from: 217 91% 45%;
+    --chat-user-to: 262 83% 45%;
+    --chat-focus-ring: 217 91% 42%;
     
     --radius: 1.25rem;
   }
@@ -124,6 +134,13 @@
     --chat-bot-foreground: 210 40% 98%;
     --chat-user: 217 91% 60%;
     --chat-user-foreground: 0 0% 100%;
+    /* Ticket 23 a11y (dark) */
+    --chat-link: 217 91% 72%;
+    --chat-strong: 262 83% 72%;
+    --chat-muted: 215 20% 68%;
+    --chat-user-from: 217 91% 40%;
+    --chat-user-to: 262 83% 40%;
+    --chat-focus-ring: 217 91% 72%;
     
     /* Shadows - Bold in dark */
     --shadow-card: 0 4px 0 hsl(217 33% 12%);
@@ -226,7 +243,7 @@
   
   .chat-bubble-user {
     @apply rounded-3xl px-5 py-4 max-w-[85%];
-    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+    background: linear-gradient(135deg, hsl(var(--chat-user-from)) 0%, hsl(var(--chat-user-to)) 100%);
     color: hsl(var(--chat-user-foreground));
     border: 3px solid hsl(var(--primary-dark));
     box-shadow: 0 4px 0 hsl(var(--primary-dark));
@@ -303,24 +320,6 @@
   .locket-btn:active {
     transform: translateY(2px);
     box-shadow: 0 2px 0 hsl(var(--border));
-  }
-  
-  .locket-btn-primary {
-    @apply px-6 py-3 rounded-2xl font-bold text-base transition-all duration-200;
-    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
-    border: 3px solid hsl(var(--primary-dark));
-    box-shadow: 0 4px 0 hsl(var(--primary-dark));
-    color: white;
-  }
-  
-  .locket-btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 0 hsl(var(--primary-dark));
-  }
-  
-  .locket-btn-primary:active {
-    transform: translateY(2px);
-    box-shadow: 0 2px 0 hsl(var(--primary-dark));
   }
 
   /* Custom Scrollbar */
@@ -447,6 +446,14 @@
   /* Text readable on any background */
   .text-readable {
     text-shadow: 0 1px 2px hsl(0 0% 0% / 0.1);
+  }
+
+  /* Ticket 23 a11y: visible keyboard focus for chat-surface controls.
+     Plain CSS (not @apply ring-*) so it works without tailwindcss/forms
+     and survives outline-none resets. */
+  .chat-focus:focus-visible {
+    outline: 2px solid hsl(var(--chat-focus-ring));
+    outline-offset: 2px;
   }
 }
 
@@ -607,4 +614,251 @@
 /* Message appear animation */
 .message-appear {
   animation: message-slide-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Ticket T09 — HUSC teacher-admin token set (spec.md:244-259, 05-ux-spec §2).
+   Scoped to .husc-admin so the office surface never bleeds into the chat app.
+   18 px body, #143980 accent, 44 px targets, no gradient. */
+.husc-admin {
+  font-family: "Montserrat", "Inter", system-ui, sans-serif;
+  font-size: 18px;
+  line-height: 1.6;
+  color: #1a1a1a;
+  /* The office surface is light by contract: 05-ux-spec and the mockups ship
+     exactly one token set (styles.css:2-18, no dark block). The theme root
+     still puts `.dark` on <html> for a user whose OS prefers dark, which would
+     otherwise repaint every token utility inside this shell. Pin the light
+     values here so `.husc-admin` is light regardless of the root class, and
+     declare the shell light so form controls keep native light rendering. */
+  color-scheme: light;
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 262 83% 58%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 9% 46%;
+  --accent: 173 80% 40%;
+  --accent-foreground: 0 0% 100%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 217 91% 60%;
+  /* --destructive stays at the light value; `.dark` never overrides it, so a
+     token-based danger colour would be #ef4444 (3.76:1 on white) even here.
+     Pin a darker red (8.5:1 on white) so `text-destructive` is legible on the
+     office surface; `/admin` keeps the app default. */
+  --destructive: 0 65% 35%;
+  --destructive-foreground: 0 0% 100%;
+}
+.husc-admin h1 { font-size: 1.75rem; line-height: 1.3; margin: 0 0 16px; }
+.husc-admin h2 { font-size: 1.35rem; line-height: 1.35; margin: 28px 0 12px; }
+.husc-admin h3 { font-size: 1.15rem; margin: 20px 0 8px; }
+.husc-admin a { color: #143980; text-underline-offset: 3px; }
+.husc-admin :focus-visible { outline: 3px solid #143980; outline-offset: 3px; }
+
+/* Left nav (mockup styles.css:40-52, 05 §3). `.husc-admin .side a` (0,2,1)
+   beats both `.husc-admin a` and Tailwind's `text-white`, so the active item
+   keeps its white label on the accent background instead of inheriting the
+   accent colour on top of it. */
+.husc-admin .side { background: #f3f5f9; border-right: 1px solid rgba(95, 102, 112, 0.4); padding: 20px 12px; }
+.husc-admin .side ul { list-style: none; margin: 0; padding: 0; }
+.husc-admin .side a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: #1a1a1a;
+  text-decoration: none;
+  font-weight: 600;
+}
+.husc-admin .side a:hover { background: #e6ecf7; }
+.husc-admin .side a[aria-current="page"] { background: #143980; color: #ffffff; }
+.husc-admin .side .ico { width: 1.4em; text-align: center; }
+.husc-admin .side hr { border: 0; border-top: 1px solid #c3c9d2; margin: 12px 4px; }
+.husc-admin .side .tech a { font-weight: 500; color: #474747; }
+
+/* Checkbox rows (mockup .check): a 44 px row wrapping a 24 px box, so the row
+   clears U3 while the box itself stays visually small. */
+.husc-admin .check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.husc-admin .check input[type="checkbox"] { width: 24px; height: 24px; accent-color: #143980; }
+
+/* Buttons: min 44px target (U3). */
+.husc-admin .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 2px solid #143980;
+  background: #fff;
+  color: #143980;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+.husc-admin .btn:hover { background: #e6ecf7; }
+.husc-admin .btn-primary { background: #143980; color: #fff; }
+.husc-admin .btn-primary:hover { background: #1a4a9e; }
+.husc-admin .btn[disabled] { border-color: #9aa0a8; color: #6b7280; background: #f3f5f9; cursor: not-allowed; }
+.husc-admin .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+
+/* The shell hosts shadcn `size="sm"` buttons (RecordsGate's Đăng xuất/Thử lại),
+   which are 36 px tall — under U3. Floor every control in the office surface at
+   44 px so a size variant cannot regress the target. `.btn` above already
+   complies, so this only lifts the shadcn ones. */
+.husc-admin button,
+.husc-admin a.btn,
+.husc-admin [role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Cards. */
+.husc-admin .card {
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  padding: 20px;
+  background: #fff;
+}
+.husc-admin .card .num { font-size: 2.2rem; font-weight: 700; color: #143980; line-height: 1.1; }
+
+/* Status badges. */
+.husc-admin .status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.husc-admin .s-ok { background: #e7f4e8; color: #1b5e20; }
+.husc-admin .s-warn { background: #fff3dc; color: #6b3e00; }
+.husc-admin .s-bad { background: #fdecea; color: #8b1a1a; }
+.husc-admin .s-info { background: #e6ecf7; color: #143980; }
+.husc-admin .s-muted { background: #f3f5f9; color: #474747; }
+
+/* Notes / callouts. */
+.husc-admin .note {
+  border-left: 6px solid #d1d5db;
+  background: #f3f5f9;
+  padding: 14px 18px;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+.husc-admin .note.warn { border-color: #6b3e00; background: #fff3dc; color: #6b3e00; }
+.husc-admin .note.ok { border-color: #1b5e20; background: #e7f4e8; color: #1b5e20; }
+.husc-admin .note.bad { border-color: #8b1a1a; background: #fdecea; color: #8b1a1a; }
+.husc-admin .note.info { border-color: #143980; background: #e6ecf7; color: #1a1a1a; }
+
+/* Steps. */
+.husc-admin .steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+}
+.husc-admin .steps li {
+  padding: 8px 14px;
+  border: 2px solid #d1d5db;
+  border-radius: 999px;
+  font-weight: 600;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.husc-admin .steps li[aria-current="step"] { border-color: #143980; background: #143980; color: #fff; }
+.husc-admin .steps li.done { border-color: #1b5e20; color: #1b5e20; }
+
+/* Form fields. */
+.husc-admin .field { margin: 16px 0; }
+.husc-admin .field label { display: block; font-weight: 600; margin-bottom: 6px; }
+.husc-admin .hint { color: #474747; font-size: 0.95rem; margin: 4px 0 0; }
+.husc-admin input[type="text"], .husc-admin input[type="search"],
+.husc-admin input[type="password"], .husc-admin input[type="date"],
+.husc-admin select, .husc-admin textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 2px solid #5f6670;
+  border-radius: 8px;
+  font-size: 1rem;
+  background: #fff;
+  color: #1a1a1a;
+}
+.husc-admin textarea { min-height: 120px; }
+.husc-admin .row { display: flex; flex-wrap: wrap; gap: 16px; }
+.husc-admin .row .field { flex: 1 1 220px; }
+
+/* Drop zone. */
+.husc-admin .drop {
+  border: 3px dashed #5f6670;
+  border-radius: 12px;
+  padding: 32px;
+  text-align: center;
+  background: #f3f5f9;
+}
+
+/* Tables. */
+.husc-admin table { border-collapse: collapse; width: 100%; }
+.husc-admin th, .husc-admin td { text-align: left; padding: 12px; border-bottom: 1px solid #d1d5db; vertical-align: top; }
+.husc-admin th { background: #f3f5f9; font-weight: 700; }
+.husc-admin .table-wrap { overflow-x: auto; }
+
+/* Diff view. */
+.husc-admin .diff { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.husc-admin .diff .col { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; }
+.husc-admin .changed { background: #fff3dc; color: #6b3e00; font-weight: 600; padding: 0 4px; border-radius: 4px; }
+
+/* Answer box + citation. */
+.husc-admin .answer {
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  padding: 18px;
+  background: #f3f5f9;
+}
+.husc-admin .cite {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 2px solid #143980;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  margin: 8px 8px 0 0;
+  color: #143980;
+}
+
+/* Timeline. */
+.husc-admin .timeline { list-style: none; padding: 0; margin: 0; }
+.husc-admin .timeline li { border-left: 4px solid #143980; padding: 8px 0 16px 18px; }
+
+/* Dialog. */
+.husc-admin .dialog {
+  border: 2px solid #1a1a1a;
+  border-radius: 12px;
+  padding: 22px;
+  max-width: 34rem;
+  background: #fff;
+  box-shadow: 0 6px 24px rgba(0,0,0,.18);
 }

@@ -83,6 +83,21 @@ def _full_record(er) -> Any:
             "faithfulness": "Anchored to retrieved chunks.",
             "answer_relevancy": "Directly addresses the question.",
         },
+        # T12: token accounting fields
+        llm_tokens=er.LLMTokensTotal(
+            prompt_tokens=500,
+            completion_tokens=120,
+            total_tokens=620,
+            call_count=3,
+        ),
+        llm_token_calls=[
+            er.LLMTokens(prompt_tokens=200, completion_tokens=40,
+                        provider="ns24", model="gemini-3.5-flash-lite"),
+            er.LLMTokens(prompt_tokens=150, completion_tokens=50,
+                        provider="ns24", model="gemini-3.5-flash-lite"),
+            er.LLMTokens(prompt_tokens=150, completion_tokens=30,
+                        provider="ns24", model="deepseek-v4.1-flash"),
+        ],
     )
 
 
@@ -205,3 +220,32 @@ def test_latency_attribution_all_optional(er):
     assert a.router_inner_ms is None
     assert a.gen_ms is None
     assert a.rerank_ms is None
+
+
+# ---------- T12: LLM token accounting ----------
+
+
+def test_llm_tokens_optional_defaults_none(er):
+    payload = _full_record(er).model_dump()
+    del payload["llm_tokens"]
+    del payload["llm_token_calls"]
+    r = er.EvalRecord.model_validate(payload)
+    assert r.llm_tokens is None
+
+
+def test_llm_token_calls_round_trip(er):
+    r = _full_record(er)
+    r2 = er.EvalRecord.from_jsonl_line(r.to_jsonl_line())
+    assert r2.llm_tokens == r.llm_tokens
+    assert len(r2.llm_token_calls) == 3
+    assert r2.llm_token_calls[0].provider == "ns24"
+    assert r2.llm_tokens.total_tokens == 620
+    assert r2.llm_tokens.call_count == 3
+
+
+def test_llm_tokens_totals_field_types(er):
+    r = er.EvalRecord.model_validate(_full_record(er).model_dump())
+    assert isinstance(r.llm_tokens.prompt_tokens, int)
+    assert isinstance(r.llm_tokens.completion_tokens, int)
+    assert isinstance(r.llm_tokens.total_tokens, int)
+    assert isinstance(r.llm_tokens.call_count, int)

@@ -35,37 +35,29 @@ RAG_ROOT = Path(__file__).resolve().parents[2]
 SCOPE_FILE = RAG_ROOT / "data" / "major_codes" / "husc_majors_current.json"
 
 
-def _build_service_with_mock_groq(monkeypatch, is_in_scope: bool, call_counter=None):
-    monkeypatch.setenv("GROQ_API_KEY", "test-fake-groq-key")
+class _FakeLLM:
+    """Stands in for the ns24 guardrail role client; counts chat_json calls."""
 
+    def __init__(self, is_in_scope: bool, counter=None):
+        self._is_in_scope = is_in_scope
+        self._counter = counter
+        self.token_ledger = None
+        self._providers = []
+
+    async def chat_json(self, **kwargs):
+        if self._counter is not None:
+            self._counter["calls"] += 1
+        return {"is_in_scope": self._is_in_scope, "reason": "mocked"}
+
+
+def _build_service_with_mock_llm(monkeypatch, is_in_scope: bool, call_counter=None):
     from config.settings import RAGSettings
     from services import guardrail as guardrail_mod
 
-    class _FakeCompletions:
-        def __init__(self, counter):
-            self._counter = counter
-
-        async def create(self, *args, **kwargs):
-            if self._counter is not None:
-                self._counter["calls"] += 1
-            content_str = (
-                '{"is_in_scope": %s, "reason": "mocked"}' % str(is_in_scope).lower()
-            )
-            resp = MagicMock()
-            resp.choices[0].message.content = content_str
-            return resp
-
-    class _FakeChat:
-        completions = _FakeCompletions(call_counter)
-
-    class _FakeAsyncGroq:
-        def __init__(self, *a, **kw):
-            self.chat = _FakeChat()
-
-    monkeypatch.setattr(guardrail_mod, "AsyncGroq", _FakeAsyncGroq)
     guardrail_mod.GuardrailService.clear_major_scope_cache_for_testing()
-    settings = RAGSettings()
-    svc = guardrail_mod.GuardrailService(settings)
+    svc = guardrail_mod.GuardrailService(RAGSettings(_env_file=None))
+    svc._llm = _FakeLLM(is_in_scope, call_counter)
+    svc._model = "fake-guardrail-model"
     return svc, guardrail_mod
 
 
@@ -116,7 +108,7 @@ def test_valid_admission_queries_in_scope(monkeypatch, q):
     the keyword fast-path and reach in_scope without any LLM call.
     """
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=True, call_counter=counter
     )
     decision = asyncio.run(svc.precheck(q))
@@ -162,7 +154,7 @@ def test_denylist_and_other_school_still_blocked(monkeypatch, q):
     the hardening path still rejects them.
     """
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=False, call_counter=counter
     )
     decision = asyncio.run(svc.precheck(q))
@@ -191,7 +183,7 @@ COMPARISON_QUERIES = [
 @pytest.mark.parametrize("q", COMPARISON_QUERIES)
 def test_comparison_queries_in_scope(monkeypatch, q):
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=True, call_counter=counter
     )
     decision = asyncio.run(svc.precheck(q))
@@ -211,7 +203,7 @@ def test_one_char_guard_bare_toan_not_extracted(monkeypatch):
     fast-path — "học" alone is NOT an admission keyword, so it falls
     through to the LLM, but `_extract_major_phrase` must return None.)
     """
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=True)
+    svc, mod = _build_service_with_mock_llm(monkeypatch, is_in_scope=True)
     assert svc._extract_major_phrase("học toán ở đâu?") is None
     assert svc._extract_major_phrase("văn học lớp 12") is None
     assert svc._extract_major_phrase("lý thuyết") is None
@@ -223,7 +215,7 @@ def test_one_char_guard_ngành_toán_still_in_scope(monkeypatch):
     remain in_scope via the keyword fast-path.
     """
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=True, call_counter=counter
     )
     decision = asyncio.run(svc.precheck("ngành Toán HUSC điểm chuẩn?"))
@@ -238,7 +230,7 @@ def test_one_char_guard_denylist_still_blocks(monkeypatch):
     still blocked by Pattern 1 + denylist (case b in the precheck flow).
     """
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=True, call_counter=counter
     )
     decision = asyncio.run(svc.precheck("Ngành Kinh tế điểm chuẩn?"))
