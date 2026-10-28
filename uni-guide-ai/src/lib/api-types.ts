@@ -1119,7 +1119,7 @@ export type paths = {
          *     - Simple 1-hop queries → PaddedRAG (faster, ~150ms)
          *     - Multi-hop / comparative → GraphRAG (+PPR, ~400ms)
          *
-         *     Routing is performed by HyDE + Step-Back classification using gemini-2.5-flash.
+         *     Routing is performed by HyDE + Step-Back classification using gemini-3.5-flash-lite.
          */
         post: operations["unified_query_v2_query_post"];
         delete?: never;
@@ -2734,6 +2734,11 @@ export type components = {
         UnansweredItem: {
             /** Asked At */
             asked_at: string;
+            /**
+             * Out Of Scope
+             * @default false
+             */
+            out_of_scope: boolean;
             /** Question */
             question: string;
             /** Resolved */

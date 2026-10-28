@@ -3081,6 +3081,11 @@
             "title": "Asked At",
             "type": "string"
           },
+          "out_of_scope": {
+            "default": false,
+            "title": "Out Of Scope",
+            "type": "boolean"
+          },
           "question": {
             "title": "Question",
             "type": "string"
@@ -6341,7 +6346,7 @@
     },
     "/v2/query": {
       "post": {
-        "description": "Unified RAG query: auto-routes to PaddedRAG or GraphRAG.\n\n- Simple 1-hop queries → PaddedRAG (faster, ~150ms)\n- Multi-hop / comparative → GraphRAG (+PPR, ~400ms)\n\nRouting is performed by HyDE + Step-Back classification using gemini-2.5-flash.",
+        "description": "Unified RAG query: auto-routes to PaddedRAG or GraphRAG.\n\n- Simple 1-hop queries → PaddedRAG (faster, ~150ms)\n- Multi-hop / comparative → GraphRAG (+PPR, ~400ms)\n\nRouting is performed by HyDE + Step-Back classification using gemini-3.5-flash-lite.",
         "operationId": "unified_query_v2_query_post",
         "requestBody": {
           "content": {
