@@ -1,0 +1,178 @@
+{
+  "fixture_id": "ttts2026_p24_to_hop_mon_merge",
+  "source_document": "new_data/THONG_TIN_TUYEN_SINH_202611.pdf",
+  "source_pages": [
+    24
+  ],
+  "corpus_file": "rag2025/data/chunked/chunked_24.jsonl",
+  "corpus_chunk_ids": [
+    144,
+    149
+  ],
+  "chunk_path": "merge_small_table",
+  "notes": "To hop mon xet tuyen for a khoi nganh on page 24. The page is split by the extractor into consecutive small_table fragments that share the same header line; _merge_consecutive_table_chunks folds them back into one chunk. 144 and 149 overlap (both carry the '5. Ngu van, Toan, Tieng Anh / D01' row), so the merged chunk legitimately holds that row twice - the fixture counts duplicates, which is what makes a dropped row detectable. Rows here are contiguous, so this fixture is the negative control for the merged-cell warning: it must produce zero warnings.",
+  "fragments": [
+    {
+      "corpus_chunk_ids": [
+        144
+      ],
+      "markdown_lines": [
+        "|     |     | 4. Ngữ văn, Lịch sử, Tiếng Anh  | D14  |     |     |",
+        "| --- | --- | ------------------------------- | ---- | --- | --- |",
+        "|     |     | 5. Ngữ văn, Toán, Tiếng Anh     | D01  |     |     |",
+        "|     |     | 1. Toán, Vật lí, Hóa học        | A00  |     |     |"
+      ]
+    },
+    {
+      "corpus_chunk_ids": [
+        149
+      ],
+      "markdown_lines": [
+        "|     |     | 4. Ngữ văn, Lịch sử, Tiếng Anh  | D14  |     |     |",
+        "| --- | --- | ------------------------------- | ---- | --- | --- |",
+        "|     |     | 5. Ngữ văn, Toán, Tiếng Anh     | D01  |     |     |",
+        "|     |     | 1. Ngữ văn, Lịch sử, Địa lý     | C00  |     |     |",
+        "|     |     | 2. Ngữ văn, Toán, Lịch sử       | C03  |     |     |"
+      ]
+    }
+  ],
+  "markdown_lines": [
+    "|     |     | 4. Ngữ văn, Lịch sử, Tiếng Anh  | D14  |     |     |",
+    "| --- | --- | ------------------------------- | ---- | --- | --- |",
+    "|     |     | 5. Ngữ văn, Toán, Tiếng Anh     | D01  |     |     |",
+    "|     |     | 1. Toán, Vật lí, Hóa học        | A00  |     |     |",
+    "|     |     | 5. Ngữ văn, Toán, Tiếng Anh     | D01  |     |     |",
+    "|     |     | 1. Ngữ văn, Lịch sử, Địa lý     | C00  |     |     |",
+    "|     |     | 2. Ngữ văn, Toán, Lịch sử       | C03  |     |     |"
+  ],
+  "column_headers": [
+    "",
+    "",
+    "Tổ hợp môn xét tuyển",
+    "Mã tổ hợp môn xét tuyển",
+    "",
+    ""
+  ],
+  "rows": [
+    {
+      "page": 24,
+      "anchor": "5. Ngữ văn, Toán, Tiếng Anh"
+    },
+    {
+      "page": 24,
+      "anchor": "1. Toán, Vật lí, Hóa học"
+    },
+    {
+      "page": 24,
+      "anchor": "5. Ngữ văn, Toán, Tiếng Anh"
+    },
+    {
+      "page": 24,
+      "anchor": "1. Ngữ văn, Lịch sử, Địa lý"
+    },
+    {
+      "page": 24,
+      "anchor": "2. Ngữ văn, Toán, Lịch sử"
+    }
+  ],
+  "expected_cells": [
+    "4. Ngữ văn, Lịch sử, Tiếng Anh",
+    "D14",
+    "5. Ngữ văn, Toán, Tiếng Anh",
+    "D01",
+    "1. Toán, Vật lí, Hóa học",
+    "A00",
+    "5. Ngữ văn, Toán, Tiếng Anh",
+    "D01",
+    "1. Ngữ văn, Lịch sử, Địa lý",
+    "C00",
+    "2. Ngữ văn, Toán, Lịch sử",
+    "C03"
+  ],
+  "ambiguous_rows": [],
+  "staging_file": "rag2025/data/staging/pdf/pdf_2.md",
+  "provenance_anchor": "A00",
+  "expected_data_cell_count": 10,
+  "cell_attribution": [
+    {
+      "row": 0,
+      "page": 24,
+      "cells": [
+        {
+          "col": 2,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "5. Ngữ văn, Toán, Tiếng Anh"
+        },
+        {
+          "col": 3,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "D01"
+        }
+      ]
+    },
+    {
+      "row": 1,
+      "page": 24,
+      "cells": [
+        {
+          "col": 2,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "1. Toán, Vật lí, Hóa học"
+        },
+        {
+          "col": 3,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "A00"
+        }
+      ]
+    },
+    {
+      "row": 2,
+      "page": 24,
+      "cells": [
+        {
+          "col": 2,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "5. Ngữ văn, Toán, Tiếng Anh"
+        },
+        {
+          "col": 3,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "D01"
+        }
+      ]
+    },
+    {
+      "row": 3,
+      "page": 24,
+      "cells": [
+        {
+          "col": 2,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "1. Ngữ văn, Lịch sử, Địa lý"
+        },
+        {
+          "col": 3,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "C00"
+        }
+      ]
+    },
+    {
+      "row": 4,
+      "page": 24,
+      "cells": [
+        {
+          "col": 2,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "2. Ngữ văn, Toán, Lịch sử"
+        },
+        {
+          "col": 3,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "C03"
+        }
+      ]
+    }
+  ]
+}

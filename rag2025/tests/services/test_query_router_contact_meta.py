@@ -33,7 +33,7 @@ class TestContactHotlineDataDriven:
     def test_fallback_is_pre_fix_literal(self):
         """No env, no meta → fallback to the previously-hardcoded
         literal (preserves prod behavior when nothing is supplied)."""
-        from services.query_router import _HOTLINE_FALLBACK
+        from services.contact_block import _HOTLINE_FALLBACK
         assert _HOTLINE_FALLBACK == "0234.3823290"
         # And the rendered block must contain the fallback.
         block = _build(meta=None)
@@ -62,7 +62,7 @@ class TestContactHotlineDataDriven:
             f"Meta change not reflected: {block!r}"
         )
         # And the fallback is no longer in the rendered block.
-        from services.query_router import _HOTLINE_FALLBACK
+        from services.contact_block import _HOTLINE_FALLBACK
         assert _HOTLINE_FALLBACK not in block, (
             "Old fallback still present after meta override"
         )

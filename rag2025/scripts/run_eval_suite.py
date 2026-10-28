@@ -11,15 +11,15 @@ Stages (and which are automatable vs orchestration-gated):
   2. S5a ``eval_judge_prepare``          — judge batches                       [automatable]
   3. **Opus-subagent judging**          — verdict files                       [ORCHESTRATION GATE]
   4. S5b ``eval_judge_aggregate``        — aggregate (needs verdicts)           [automatable, gated]
-  5. S5c ``eval_judge_ramclouds``        — κ agreement (real gateway)           [automatable]
+  5. S5c ``eval_judge_ns24``             — κ agreement (real gateway)           [automatable]
   6. S6  ``eval_judge_halltype``         — hallucination classification        [automatable]
   7. S7  ``eval_report_metrics``         — final report (needs 4+5+6)          [automatable]
 
 Environment variables (documented here so reviewers can audit the contract):
 
-  * ``RAMCLOUDS_API_KEY`` (REQUIRED) — the ramclouds gateway API key. The
+  * ``NS24_API_KEY`` (REQUIRED) — the ns24 gateway API key. The
     orchestrator refuses to start without it.
-  * ``RAMCLOUDS_STREAM=false`` (default ``false``) — the ramclouds judge MUST
+  * ``NS24_STREAM=false`` (default ``false``) — the ns24 judge MUST
     run in non-streaming mode for judge determinism (one JSON object per
     request, not a token stream). Set explicitly to ``true`` only for manual
     debugging — never in CI.
@@ -51,7 +51,7 @@ Public API
 ----------
 
   * ``check_config(env: dict) -> None`` — fail-fast on missing/empty
-    ``RAMCLOUDS_API_KEY``. Raises ``RuntimeError`` with a clear message.
+    ``NS24_API_KEY``. Raises ``RuntimeError`` with a clear message.
   * ``run_suite(*, run_id, seed=42, stages=None, smoke=False, deps=None) -> dict``
     — orchestrates the seven stages. ``deps`` is a dict of injected stage
     callables (for testing: spies; for production: real wiring via
@@ -101,7 +101,7 @@ ALL_STAGE_KEYS: tuple = (
     "s2_instrumented",
     "s5a_prepare",
     "s5b_aggregate",
-    "s5c_ramclouds",
+    "s5c_ns24",
     "s6_halltype",
     "s7_report",
 )
@@ -135,20 +135,20 @@ def check_config(env: Mapping[str, str]) -> None:
 
     Raises:
       RuntimeError — with a clear, actionable message — iff
-        ``RAMCLOUDS_API_KEY`` is missing or empty.
+        ``NS24_API_KEY`` is missing or empty.
 
     Notes:
       Other env vars (``EVAL_BOOTSTRAP_N`` etc.) are documented but have
       defensible defaults; we do NOT fail-fast on them here. A bad
-      RAMCLOUDS_API_KEY is the only thing that absolutely cannot be
+      NS24_API_KEY is the only thing that absolutely cannot be
       worked around at runtime.
     """
-    key = env.get("RAMCLOUDS_API_KEY") if env is not None else None
+    key = env.get("NS24_API_KEY") if env is not None else None
     if not key or not str(key).strip():
         raise RuntimeError(
-            "RAMCLOUDS_API_KEY is missing or empty. "
+            "NS24_API_KEY is missing or empty. "
             "Set it in the environment (or in rag2025/.env) before running "
-            "the eval suite. The ramclouds gateway is required for S5c "
+            "the eval suite. The ns24 gateway is required for S5c "
             "(Cohen's κ agreement) and the judge runs."
         )
 
@@ -266,7 +266,7 @@ def default_deps() -> Dict[str, Callable[..., Any]]:
         "s5a_prepare": _wrap("eval_judge_prepare"),
         "judging_gate_check": _default_verdicts_exist_check,
         "s5b_aggregate": _wrap("eval_judge_aggregate"),
-        "s5c_ramclouds": _wrap("eval_judge_ramclouds"),
+        "s5c_ns24": _wrap("eval_judge_ns24"),
         "s6_halltype": _wrap("eval_judge_halltype"),
         "s7_report": _wrap("eval_report_metrics"),
     }
@@ -315,7 +315,7 @@ def _ensure_required_deps(deps: Mapping[str, Callable[..., Any]]) -> None:
         "s5a_prepare",
         "judging_gate_check",
         "s5b_aggregate",
-        "s5c_ramclouds",
+        "s5c_ns24",
         "s6_halltype",
         "s7_report",
     )
@@ -407,8 +407,8 @@ def run_suite(
         run_id=run_id, seed=seed
     )
 
-    # ---- S5c: ramclouds κ agreement ----
-    stages_run["s5c_ramclouds"] = active_deps["s5c_ramclouds"](
+    # ---- S5c: ns24 κ agreement ----
+    stages_run["s5c_ns24"] = active_deps["s5c_ns24"](
         run_id=run_id, seed=seed
     )
 

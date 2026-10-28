@@ -85,11 +85,12 @@ export function ChatInput({
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
+              aria-label="Nhập câu hỏi"
               // Typing stays enabled even when !ready (N-goal: graceful
               // degradation). Only the SUBMIT action is gated.
               disabled={disabled || isLoading}
               rows={1}
-              className="w-full px-5 py-4 pr-16 rounded-2xl bg-muted border-3 border-border focus:border-primary focus:bg-background resize-none text-[15px] leading-relaxed font-medium placeholder:text-muted-foreground/70 transition-all duration-200 outline-none shadow-[0_3px_0_hsl(var(--border))] focus:shadow-[0_4px_0_hsl(var(--primary-dark))] disabled:opacity-50"
+              className="chat-focus w-full px-5 py-4 pr-16 rounded-2xl bg-muted border-3 border-border focus:border-primary focus:bg-background resize-none text-[15px] leading-relaxed font-medium placeholder:text-muted-foreground/70 transition-all duration-200 outline-none shadow-[0_3px_0_hsl(var(--border))] focus:shadow-[0_4px_0_hsl(var(--primary-dark))] disabled:opacity-50"
             />
 
             {/* Send Button - Locket style */}
@@ -100,9 +101,9 @@ export function ChatInput({
               disabled={sendDisabled}
               aria-disabled={sendDisabled || undefined}
               data-testid="send-button"
-              className={`absolute right-3 bottom-3 p-2.5 rounded-xl transition-all border-3 ${
+              className={`chat-focus absolute right-3 bottom-3 p-2.5 rounded-xl transition-all border-3 ${
                 !sendDisabled
-                  ? 'bg-gradient-to-r from-primary to-secondary text-white border-primary-dark shadow-[0_3px_0_hsl(var(--primary-dark))]'
+                  ? 'bg-gradient-to-r from-[hsl(var(--chat-user-from))] to-[hsl(var(--chat-user-to))] text-white border-primary-dark shadow-[0_3px_0_hsl(var(--primary-dark))]'
                   : 'bg-muted text-muted-foreground border-border cursor-not-allowed'
               }`}
               aria-label="Gửi tin nhắn"

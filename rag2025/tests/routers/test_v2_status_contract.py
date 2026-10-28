@@ -47,10 +47,7 @@ def _load_main(monkeypatch):
     """
     monkeypatch.setenv("ADMIN_API_TOKEN", "")
     monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "0")
-    monkeypatch.setenv("RAMCLOUDS_API_KEY", "")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
-    monkeypatch.setenv("GROQ_API_KEY", "")
-    monkeypatch.setenv("ZAI_API_KEY", "")
+    monkeypatch.setenv("NS24_API_KEY", "")
 
     spec = importlib.util.spec_from_file_location("v2_status_contract_test", MAIN_PATH)
     assert spec and spec.loader, "could not build import spec for src/main.py"

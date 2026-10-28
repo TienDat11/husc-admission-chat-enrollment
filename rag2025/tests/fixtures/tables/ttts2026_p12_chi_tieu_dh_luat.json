@@ -1,0 +1,335 @@
+{
+  "fixture_id": "ttts2026_p12_chi_tieu_dh_luat",
+  "source_document": "new_data/THONG_TIN_TUYEN_SINH_202611.pdf",
+  "source_pages": [
+    12
+  ],
+  "corpus_file": "rag2025/data/chunked/chunked_24.jsonl",
+  "corpus_chunk_ids": [
+    60
+  ],
+  "chunk_path": "packed_table",
+  "notes": "Chi tieu tuyen sinh 2026, khoi nganh Dai hoc Luat (DHA). Table fragment as emitted by the current parser from page 12: the PDF header wraps over 3 lines, so the first pipe line is a header fragment, not a complete header. Hand-transcribed cells come from the page text, not from the parser output.",
+  "markdown_lines": [
+    "|                                               |                       | (Mã xét  |                                | hợp môn    |       |            |      |",
+    "| --------------------------------------------- | --------------------- | -------- | ------------------------------ | ---------- | ----- | ---------- | ---- |",
+    "| TT                                            | Chương trình đào tạo  |          |                                |            | thức  | (Dự kiến)  | chú  |",
+    "|                                               |                       | tuyển)   |                                | xét tuyển  |       |            |      |",
+    "| CÁC NGÀNH ĐÀO TẠO TRÌNH ĐỘ ĐẠI HỌC            |                       |          |                                |            |       |            |      |",
+    "| I.  TRƯỜNG ĐẠI HỌC LUẬT – Ký hiệu trường DHA  |                       |          |                                |            |       | 1400       |      |",
+    "|                                               |                       |          | 1. Toán, Vật lý, Hóa học       | A00        |       |            |      |",
+    "|                                               |                       |          | 2. Ngữ văn, Lịch sử, Địa lý    | C00        |       |            |      |",
+    "| 1  Luật                                       |                       | 7380101  |                                |            |       | 700        |      |",
+    "|                                               |                       |          | 3. Ngữ văn, Lịch sử, GDCD      | C19        |       |            |      |",
+    "|                                               |                       |          | 4. Ngữ văn, Lịch sử, GD KT&PL  | X70        |       |            |      |"
+  ],
+  "column_headers": [
+    "Số TT",
+    "Tên ngành/Chương trình đào tạo",
+    "Mã ngành (Mã xét tuyển)",
+    "Tổ hợp môn xét tuyển",
+    "Mã tổ hợp môn xét tuyển",
+    "Phương thức",
+    "Chỉ tiêu (Dự kiến)",
+    "Ghi chú"
+  ],
+  "rows": [
+    {
+      "page": 12,
+      "anchor": "TT"
+    },
+    {
+      "page": 12,
+      "anchor": "tuyển)"
+    },
+    {
+      "page": 12,
+      "anchor": "CÁC NGÀNH ĐÀO TẠO TRÌNH ĐỘ ĐẠI HỌC"
+    },
+    {
+      "page": 12,
+      "anchor": "I. TRƯỜNG ĐẠI HỌC LUẬT – Ký hiệu trường DHA"
+    },
+    {
+      "page": 12,
+      "anchor": "1. Toán, Vật lý, Hóa học"
+    },
+    {
+      "page": 12,
+      "anchor": "2. Ngữ văn, Lịch sử, Địa lý"
+    },
+    {
+      "page": 12,
+      "anchor": "1 Luật"
+    },
+    {
+      "page": 12,
+      "anchor": "3. Ngữ văn, Lịch sử, GDCD"
+    },
+    {
+      "page": 12,
+      "anchor": "4. Ngữ văn, Lịch sử, GD KT&PL"
+    }
+  ],
+  "expected_cells": [
+    "(Mã xét",
+    "hợp môn",
+    "TT",
+    "Chương trình đào tạo",
+    "thức",
+    "(Dự kiến)",
+    "chú",
+    "tuyển)",
+    "xét tuyển",
+    "CÁC NGÀNH ĐÀO TẠO TRÌNH ĐỘ ĐẠI HỌC",
+    "I.  TRƯỜNG ĐẠI HỌC LUẬT – Ký hiệu trường DHA",
+    "1400",
+    "1. Toán, Vật lý, Hóa học",
+    "A00",
+    "2. Ngữ văn, Lịch sử, Địa lý",
+    "C00",
+    "1  Luật",
+    "7380101",
+    "700",
+    "3. Ngữ văn, Lịch sử, GDCD",
+    "C19",
+    "4. Ngữ văn, Lịch sử, GD KT&PL",
+    "X70"
+  ],
+  "ambiguous_rows": [
+    {
+      "index": 0,
+      "columns": [
+        {
+          "col": 2,
+          "header": "Mã ngành (Mã xét tuyển)",
+          "inherited_from": "(Mã xét"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "inherited_from": "hợp môn"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "columns": [
+        {
+          "col": 0,
+          "header": "Số TT",
+          "inherited_from": "TT"
+        },
+        {
+          "col": 1,
+          "header": "Tên ngành/Chương trình đào tạo",
+          "inherited_from": "Chương trình đào tạo"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "columns": [
+        {
+          "col": 0,
+          "header": "Số TT",
+          "inherited_from": "I.  TRƯỜNG ĐẠI HỌC LUẬT – Ký hiệu trường DHA"
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "columns": [
+        {
+          "col": 3,
+          "header": "Tổ hợp môn xét tuyển",
+          "inherited_from": "2. Ngữ văn, Lịch sử, Địa lý"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "inherited_from": "C00"
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "columns": [
+        {
+          "col": 0,
+          "header": "Số TT",
+          "inherited_from": "1  Luật"
+        },
+        {
+          "col": 2,
+          "header": "Mã ngành (Mã xét tuyển)",
+          "inherited_from": "7380101"
+        }
+      ]
+    }
+  ],
+  "staging_file": "rag2025/data/staging/pdf/pdf_2.md",
+  "provenance_anchor": "A00",
+  "expected_data_cell_count": 21,
+  "cell_attribution": [
+    {
+      "row": 0,
+      "page": 12,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT",
+          "text": "TT"
+        },
+        {
+          "col": 1,
+          "header": "Tên ngành/Chương trình đào tạo",
+          "text": "Chương trình đào tạo"
+        },
+        {
+          "col": 5,
+          "header": "Phương thức",
+          "text": "thức"
+        },
+        {
+          "col": 6,
+          "header": "Chỉ tiêu (Dự kiến)",
+          "text": "(Dự kiến)"
+        },
+        {
+          "col": 7,
+          "header": "Ghi chú",
+          "text": "chú"
+        }
+      ]
+    },
+    {
+      "row": 1,
+      "page": 12,
+      "cells": [
+        {
+          "col": 2,
+          "header": "Mã ngành (Mã xét tuyển)",
+          "text": "tuyển)"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "xét tuyển"
+        }
+      ]
+    },
+    {
+      "row": 2,
+      "page": 12,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT",
+          "text": "CÁC NGÀNH ĐÀO TẠO TRÌNH ĐỘ ĐẠI HỌC"
+        }
+      ]
+    },
+    {
+      "row": 3,
+      "page": 12,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT",
+          "text": "I.  TRƯỜNG ĐẠI HỌC LUẬT – Ký hiệu trường DHA"
+        },
+        {
+          "col": 6,
+          "header": "Chỉ tiêu (Dự kiến)",
+          "text": "1400"
+        }
+      ]
+    },
+    {
+      "row": 4,
+      "page": 12,
+      "cells": [
+        {
+          "col": 3,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "1. Toán, Vật lý, Hóa học"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "A00"
+        }
+      ]
+    },
+    {
+      "row": 5,
+      "page": 12,
+      "cells": [
+        {
+          "col": 3,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "2. Ngữ văn, Lịch sử, Địa lý"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "C00"
+        }
+      ]
+    },
+    {
+      "row": 6,
+      "page": 12,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT",
+          "text": "1  Luật"
+        },
+        {
+          "col": 2,
+          "header": "Mã ngành (Mã xét tuyển)",
+          "text": "7380101"
+        },
+        {
+          "col": 6,
+          "header": "Chỉ tiêu (Dự kiến)",
+          "text": "700"
+        }
+      ]
+    },
+    {
+      "row": 7,
+      "page": 12,
+      "cells": [
+        {
+          "col": 3,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "3. Ngữ văn, Lịch sử, GDCD"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "C19"
+        }
+      ]
+    },
+    {
+      "row": 8,
+      "page": 12,
+      "cells": [
+        {
+          "col": 3,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "4. Ngữ văn, Lịch sử, GD KT&PL"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "X70"
+        }
+      ]
+    }
+  ]
+}

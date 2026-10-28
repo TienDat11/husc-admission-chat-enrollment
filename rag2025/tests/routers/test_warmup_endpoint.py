@@ -35,7 +35,7 @@ def _load_main(monkeypatch) -> object:
     context manager, so the startup event does not run.
     """
     monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "0")
-    monkeypatch.setenv("RAMCLOUDS_API_KEY", "")
+    monkeypatch.setenv("NS24_API_KEY", "")
     monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
 
     spec = importlib.util.spec_from_file_location("warmup_endpoint_test", MAIN_PATH)

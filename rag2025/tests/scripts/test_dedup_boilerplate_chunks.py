@@ -328,3 +328,66 @@ def test_constants_locked(dedup_module):
     assert dedup_module.SHORT_THRESHOLD == 80
     # The default is_superseded reason mentions the canonical copy
     assert "exact-duplicate boilerplate" in dedup_module.SUPERSEDED_REASON_PREFIX
+
+
+# ---------------------------------------------------------------------------
+# 7. A pre-superseded short row that sorts LOWEST is never picked as canonical.
+#
+# Forward-path correctness guard (mirrors the long pass): the short pass must
+# skip rows already flagged is_superseded. Without the guard, a superseded row
+# with the lowest chunk_id would be kept as the canonical copy and the ACTIVE
+# duplicates would be superseded *by it* — keeping a dead row and demoting the
+# live ones.
+# ---------------------------------------------------------------------------
+def test_superseded_row_sorting_lowest_is_not_kept(dedup_module):
+    text = "HEADER NGẮN TRÙNG LẶP ĐÃ SUPERSEDED"
+    assert len(text.strip()) < 80
+    rows = [
+        _row(
+            "a_old", text,
+            {
+                "data_year": 2026,
+                "is_superseded": True,
+                "superseded_by": "x_orig",
+                "superseded_reason": "earlier cleanup",
+            },
+        ),
+        _row("b_keep", text, {"data_year": 2026}),
+        _row("c_sup", text, {"data_year": 2026}),
+    ]
+    table = FakeTable(rows=list(rows))
+
+    summary = dedup_module.dedup_boilerplate(
+        table=table,
+        embedder=FakeEmbedder(),
+        short_threshold=80,
+    )
+
+    # "a_old" < "b_keep" < "c_sup" in stable sort, yet "a_old" (pre-superseded)
+    # must NOT be the kept canonical — the lowest-sort ACTIVE row wins instead.
+    assert summary["duplicate_groups"] == 1
+    assert summary["chunks_superseded"] == 1
+    groups = summary["groups"]
+    assert len(groups) == 1
+    g = groups[0]
+    assert g["kept_chunk_id"] == "b_keep"
+    assert g["superseded_chunk_ids"] == ["c_sup"]
+    assert len(table.del_calls) == 1
+    assert len(table.add_calls) == 1
+
+    # The ACTIVE canonical is untouched.
+    kept = table.by_chunk_id("b_keep")
+    assert kept is not None
+    assert json.loads(kept["metadata_json"]).get("is_superseded", False) is False
+    # The only ACTIVE duplicate is superseded, pointing at the real canonical.
+    c = table.by_chunk_id("c_sup")
+    assert c is not None
+    c_meta = json.loads(c["metadata_json"])
+    assert c_meta["is_superseded"] is True
+    assert c_meta["superseded_by"] == "b_keep"
+    # The pre-superseded row is left untouched (still superseded by x_orig).
+    a = table.by_chunk_id("a_old")
+    assert a is not None
+    a_meta = json.loads(a["metadata_json"])
+    assert a_meta.get("is_superseded", False) is True
+    assert a_meta["superseded_by"] == "x_orig"

@@ -3,22 +3,18 @@ HYDE Query Enhancement Service (Input Layer)
 
 Hypothetical Document Embeddings (HYDE):
 - Converts user query → 3-5 query variants → better retrieval
-- Multi-LLM fallback: Gemini → GLM-4 → Groq
-- Auto-classify query type for better routing
+- Single ns24 gateway (hyde role); same-gateway fallback inside the client
 - Auto-estimate top_k based on query complexity
 - Handles Vietnamese slang/abbreviations (đcm, hp, CNTT...)
 """
-import os
 import json
 from pathlib import Path
 from typing import Any, Dict, Optional, List
-from openai import AsyncOpenAI
-import google.generativeai as genai
-from groq import AsyncGroq
 from tenacity import retry, stop_after_attempt, wait_exponential
 from loguru import logger
 
 from config.settings import settings
+from src.services.log_redaction import safe_query
 
 
 class HYDEQueryEnhancer:
@@ -27,7 +23,7 @@ class HYDEQueryEnhancer:
     Converts user query → 3-5 query variants (JSON) → better retrieval
     Uses optimized prompt from prompts/hyde_system_prompt.txt
 
-    Priority: Groq (Llama 3.1) → GLM-4 → Gemini (fallback only)
+    Model pair comes from the ns24 ``hyde`` role (config/ns24_models.py).
     """
 
     def __init__(self):
@@ -40,16 +36,10 @@ class HYDEQueryEnhancer:
             logger.warning(f"HYDE prompt not found at {prompt_path}, using fallback")
             self.hyde_system_prompt = self._get_fallback_prompt()
 
-        # Use UnifiedLLMClient with RAMCLOUDS_HYDE_MODEL (role-specific model).
-        # Always read from settings; env-only reads caused config drift.
-        hyde_model = settings.RAMCLOUDS_HYDE_MODEL
-        from services.llm_client import UnifiedLLMClient
-        self._hyde_client = UnifiedLLMClient(force_model=hyde_model)
-        logger.info(f"HYDE: using model={hyde_model} via UnifiedLLMClient")
-
-        # Legacy fallback clients (kept for hard-failure scenarios)
-        self.groq_key = os.getenv("GROQ_API_KEY")
-        self.gemini_key = os.getenv("GEMINI_API_KEY")
+        # ns24 ``hyde`` role: primary model + same-gateway fallback from config.
+        from services.llm_client import get_llm_client
+        self._hyde_client = get_llm_client(role="hyde")
+        logger.info("HYDE: using ns24 hyde role client")
 
     def _get_fallback_prompt(self) -> str:
         """Fallback HYDE prompt if file not found"""
@@ -88,7 +78,7 @@ Câu hỏi cần xử lý:"""
     async def generate_query_variants(self, query: str) -> Dict[str, Any]:
         """
         Generate 3-5 query variants using LLM with JSON output.
-        Uses UnifiedLLMClient with RAMCLOUDS_HYDE_MODEL, with built-in fallback chain.
+        Uses the ns24 ``hyde`` role client (NS24_HYDE_MODEL, same-gateway fallback).
         """
         try:
             resp = await self._hyde_client.chat_json(
@@ -97,7 +87,6 @@ Câu hỏi cần xử lý:"""
                 temperature=0.3,
                 max_tokens=500,
             )
-            logger.info(f"HYDE: Using UnifiedLLMClient (model={getattr(self._hyde_client, '_force_model', 'default')})")
             return self._parse_json_response(json.dumps(resp, ensure_ascii=False), query)
         except Exception as e:
             logger.warning(f"UnifiedLLMClient HYDE failed: {e}, using fallback")
@@ -237,7 +226,7 @@ Câu hỏi cần xử lý:"""
                 "query_type": "admission_criteria"
             }
         """
-        logger.info(f"Enhancing query: {user_query}")
+        logger.info(f"Enhancing query: {safe_query(user_query)}")
 
         # 1. Classify query type (for routing)
         query_type = self.classify_query_type(user_query)

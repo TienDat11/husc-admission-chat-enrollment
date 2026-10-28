@@ -36,11 +36,11 @@ from src.infrastructure.lancedb_adapter import LanceDBAdapter  # noqa: E402
 class _FakeSearch:
     """Mimics the lancedb search-builder: `search().where(pred).limit(n).to_list()`.
 
-    The `where` predicate is parsed for an `id IN (...)` clause; the
-    matching id set is then intersected with the canned rows. Any
-    rows whose `id` is in that set come back (up to `limit`)."""
-
-    _IN_RE = None  # compiled lazily
+    The `where` predicate is parsed for a `<col> IN (...)` clause (column
+    name is captured so both the `id` path and the ticket-45 `doc_id` path
+    work against the same fake); the matching value set is then
+    intersected with the canned rows. Any rows whose `<col>` is in that set
+    come back (up to `limit`, when a limit was set)."""
 
     def __init__(self, rows: List[Dict[str, Any]]) -> None:
         self._rows = rows
@@ -58,21 +58,40 @@ class _FakeSearch:
 
     def to_list(self) -> List[Dict[str, Any]]:
         self.to_list_calls += 1
-        matching = set(self._parse_in_ids(self.predicate or ""))
-        out = [r for r in self._rows if r.get("id") in matching]
+        predicate = self.predicate or ""
+        # T15: a trailing `AND (is_tombstone = false OR is_tombstone IS NULL)`
+        # gate filters per-row: `is_tombstone` present and truthy drops the
+        # row; absent (NULL) or false keeps it.
+        has_tombstone_gate = "is_tombstone" in predicate
+        if has_tombstone_gate:
+            predicate = predicate[: predicate.index("is_tombstone")].rsplit("AND", 1)[0].strip()
+        col, values = self._parse_in(predicate)
+        out = [r for r in self._rows if r.get(col) in values]
+        if has_tombstone_gate:
+            out = [
+                r for r in out
+                if not (r.get("is_tombstone") is True)
+            ]
         if self.limit_value is not None:
             out = out[: self.limit_value]
         return out
 
     @staticmethod
-    def _parse_in_ids(predicate: str) -> List[str]:
-        """Best-effort parse of `id IN ('a', 'b''c', ...)` for the fake."""
+    def _parse_in(predicate: str) -> "tuple[str, set[str]]":
+        """Best-effort parse of `<col> IN ('a', 'b''c', ...)` for the fake.
+
+        Returns the (column, value-set) pair. The column is captured so the
+        fake serves both `id IN (...)` and `doc_id IN (...)` predicates."""
         import re
 
-        m = re.search(r"id\s+IN\s*\((.*)\)\s*$", predicate.strip(), re.IGNORECASE | re.DOTALL)
+        m = re.search(
+            r"(\w+)\s+IN\s*\((.*)\)\s*$", predicate.strip(),
+            re.IGNORECASE | re.DOTALL,
+        )
         if not m:
-            return []
-        body = m.group(1)
+            return ("id", set())
+        col = m.group(1)
+        body = m.group(2)
         ids: List[str] = []
         i, n = 0, len(body)
         while i < n:
@@ -97,13 +116,22 @@ class _FakeSearch:
                 buf.append(body[i])
                 i += 1
             ids.append("".join(buf))
-        return ids
+        return (col, set(ids))
 
 
 class _FakeTable:
-    def __init__(self, rows: List[Dict[str, Any]]) -> None:
+    def __init__(self, rows: List[Dict[str, Any]],
+                 has_tombstone_column: bool = True) -> None:
         self._search = _FakeSearch(rows)
         self._rows = list(rows)
+        self._has_tombstone_column = has_tombstone_column
+        # Mimic `table.schema.names`: the adapter's schema gate probes this.
+        self.schema = MagicMock()
+        self.schema.names = (
+            ["id", "doc_id", "text", "source", "metadata_json", "is_tombstone"]
+            if has_tombstone_column
+            else ["id", "doc_id", "text", "source", "metadata_json"]
+        )
         # Forbid any full-table scan in this path.
         self.to_pandas = MagicMock(
             side_effect=AssertionError(
@@ -131,26 +159,43 @@ class _FakeTable:
         return 1 if self._search.predicate is not None else 0
 
 
-def _make_adapter(rows: List[Dict[str, Any]]) -> tuple[LanceDBAdapter, _FakeTable]:
-    """Build an adapter that uses the fake table directly (skip __init__)."""
-    fake_table = _FakeTable(rows)
+def _make_adapter(rows: List[Dict[str, Any]],
+                  has_tombstone_column: bool = True
+                  ) -> tuple[LanceDBAdapter, _FakeTable]:
+    """Build an adapter that uses the fake table directly (skip __init__).
+
+    `has_tombstone_column=False` models a LEGACY table (e.g. the `rag2025`
+    fixture / chaos-drill tables) whose schema predates the column: the
+    adapter's schema gate must then emit NO `is_tombstone` predicate.
+    """
+    fake_table = _FakeTable(rows, has_tombstone_column=has_tombstone_column)
     adapter = LanceDBAdapter.__new__(LanceDBAdapter)
     adapter._uri = "memory://"
     adapter._table_name = "t"
     adapter._db = MagicMock()
     adapter._table = fake_table
+    adapter._tombstone_cache_for = None
+    adapter._tombstone_column_cache = None
     return adapter, fake_table
 
 
 def _row(cid: str, text: str = "", source: str = "synthetic",
-         meta: Optional[dict] = None) -> Dict[str, Any]:
-    return {
+         meta: Optional[dict] = None,
+         doc_id: Optional[str] = None,
+         is_tombstone: Optional[bool] = None) -> Dict[str, Any]:
+    row: Dict[str, Any] = {
         "id": cid,
         "chunk_id": cid,
+        # Ticket 45: the logical/symbolic id lives in its own column;
+        # rows without one keep doc_id = None (never matches a string IN).
+        "doc_id": doc_id,
         "text": text or f"text-{cid}",
         "source": source,
         "metadata_json": json.dumps(meta or {"data_year": 2026}),
     }
+    if is_tombstone is not None:
+        row["is_tombstone"] = is_tombstone
+    return row
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -178,7 +223,8 @@ def test_fetch_rows_by_ids_builds_safe_in_predicate_with_quoted_ids():
     pred = fake_table.last_predicate
     assert pred is not None
     # Each id must appear wrapped in single quotes, comma-separated.
-    assert pred == "id IN ('c1', 'c2', 'c3')", f"unexpected predicate: {pred!r}"
+    TAIL = " AND (is_tombstone = false OR is_tombstone IS NULL)"
+    assert pred == "id IN ('c1', 'c2', 'c3')" + TAIL, f"unexpected predicate: {pred!r}"
 
 
 def test_fetch_rows_by_ids_escapes_single_quote_via_sql_doubling():
@@ -189,10 +235,11 @@ def test_fetch_rows_by_ids_escapes_single_quote_via_sql_doubling():
 
     pred = fake_table.last_predicate
     # Doubled single-quote inside the literal: 'evil''id'
-    assert pred == "id IN ('evil''id')", f"unsafe predicate: {pred!r}"
-    # The string MUST end with the closing single quote, not a dangling
-    # unescaped one (i.e. no `id IN ('evil'` injection breakout).
-    assert pred.endswith("')"), f"predicate did not terminate cleanly: {pred!r}"
+    TAIL = " AND (is_tombstone = false OR is_tombstone IS NULL)"
+    assert pred == "id IN ('evil''id')" + TAIL, f"unsafe predicate: {pred!r}"
+    # The IN-list literal MUST close before the tombstone tail: no dangling
+    # unescaped quote (i.e. no `id IN ('evil'` injection breakout).
+    assert pred.startswith("id IN ('evil''id')"), f"bad IN-list literal: {pred!r}"
 
 
 def test_fetch_rows_by_ids_skips_non_string_ids_silently():
@@ -230,6 +277,69 @@ def test_fetch_rows_by_ids_sets_limit_to_len_ids():
     adapter.fetch_rows_by_ids(["c1", "c2", "c3"])
     assert fake_table.last_limit == 3
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Part A2 — `fetch_rows_by_doc_ids` (ticket 45, Loi B: symbolic id space)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_fetch_rows_by_doc_ids_builds_safe_in_predicate_on_doc_id_column():
+    """The predicate MUST target the `doc_id` column (not `id`) with the
+    same SQL-escaping contract as the id path."""
+    adapter, fake_table = _make_adapter([
+        _row("hash1", doc_id="tuyensinh_overview_2026_v2"),
+        _row("hash2", doc_id="liet_ke_28_nganh_2026_v2"),
+    ])
+    adapter.fetch_rows_by_doc_ids(
+        ["tuyensinh_overview_2026_v2", "liet_ke_28_nganh_2026_v2"]
+    )
+    pred = fake_table.last_predicate
+    TAIL = " AND (is_tombstone = false OR is_tombstone IS NULL)"
+    pred_base = "doc_id IN ('tuyensinh_overview_2026_v2', 'liet_ke_28_nganh_2026_v2')"
+    assert pred == pred_base + TAIL, f"unexpected predicate: {pred!r}"
+
+
+def test_fetch_rows_by_doc_ids_escapes_single_quote_via_sql_doubling():
+    adapter, fake_table = _make_adapter([_row("h1", doc_id="evil'id")])
+    adapter.fetch_rows_by_doc_ids(["evil'id"])
+    pred = fake_table.last_predicate
+    TAIL = " AND (is_tombstone = false OR is_tombstone IS NULL)"
+    assert pred == "doc_id IN ('evil''id')" + TAIL, f"unsafe predicate: {pred!r}"
+
+
+def test_fetch_rows_by_doc_ids_empty_or_nonstring_input_queries_nothing():
+    adapter, fake_table = _make_adapter([_row("c1")])
+    assert adapter.fetch_rows_by_doc_ids([]) == []
+    assert adapter.fetch_rows_by_doc_ids(None) == []  # type: ignore[arg-type]
+    assert adapter.fetch_rows_by_doc_ids([None, 123]) == []  # type: ignore[list-item]
+    assert fake_table.search_calls == 0, "no valid ids → no table call"
+
+
+def test_fetch_rows_by_doc_ids_returns_all_rows_for_multi_row_match():
+    """One logical doc_id MAY match several physical rows (measured: up to
+    3 on the live table). The doc_id path deliberately sets NO limit — a
+    `limit(len(ids))` would starve candidates and make the promoted-row
+    pick depend on which rows survive truncation."""
+    rows = [
+        _row("aaa", text="legacy copy", doc_id="liet_ke_28_nganh_2026_v2"),
+        _row("bbb", text="28-nganh v1", doc_id="liet_ke_28_nganh_2026_v2"),
+        _row("ccc", text="29-nganh promoted", doc_id="liet_ke_28_nganh_2026_v2"),
+        _row("ddd", text="unrelated", doc_id="other_doc"),
+    ]
+    adapter, fake_table = _make_adapter(rows)
+    out = adapter.fetch_rows_by_doc_ids(["liet_ke_28_nganh_2026_v2"])
+    assert fake_table.last_limit is None, "doc_id path must not apply a limit"
+    assert [r["id"] for r in out] == ["aaa", "bbb", "ccc"], (
+        "all three matching rows must come back so the caller can pick "
+        "the promoted one deterministically"
+    )
+
+
+def test_fetch_rows_by_doc_ids_never_calls_to_pandas():
+    """Same no-full-table-scan guard as the id path."""
+    adapter, fake_table = _make_adapter([_row("h1", doc_id="d1")])
+    adapter.fetch_rows_by_doc_ids(["d1"])
+    assert fake_table.to_pandas.call_count == 0
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Part B — Equivalence with reference dict (RetrievedDocument field shape)
@@ -344,3 +454,109 @@ def test_get_table_returns_opened_table():
 
     assert result is fake_table
     adapter.ensure_table.assert_called_once()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T15 — tombstone gate on the emitted predicates
+# ─────────────────────────────────────────────────────────────────────────────
+
+TOMBSTONE_TAIL = " AND (is_tombstone = false OR is_tombstone IS NULL)"
+
+
+def test_t15_fetch_rows_by_ids_predicate_contains_tombstone_condition():
+    """T15(d): the emitted predicate MUST carry the tombstone gate so a
+    tombstoned row can never be returned by the adapter, server-side."""
+    adapter, fake_table = _make_adapter([_row("c1", is_tombstone=False)])
+    adapter.fetch_rows_by_ids(["c1"])
+    pred = fake_table.last_predicate or ""
+    assert TOMBSTONE_TAIL in pred, f"tombstone gate missing from: {pred!r}"
+
+
+def test_t15_fetch_rows_by_doc_ids_predicate_contains_tombstone_condition():
+    adapter, fake_table = _make_adapter([_row("h1", doc_id="d1", is_tombstone=False)])
+    adapter.fetch_rows_by_doc_ids(["d1"])
+    pred = fake_table.last_predicate or ""
+    assert TOMBSTONE_TAIL in pred, f"tombstone gate missing from: {pred!r}"
+
+
+def test_t15_tombstoned_row_excluded_by_id_fetch():
+    rows = [
+        _row("good", is_tombstone=False),
+        _row("dead", is_tombstone=True),
+    ]
+    adapter, _ = _make_adapter(rows)
+    out = adapter.fetch_rows_by_ids(["good", "dead"])
+    assert [r["id"] for r in out] == ["good"], (
+        "tombstoned row must be excluded server-side; "
+        f"got {[r['id'] for r in out]}"
+    )
+
+
+def test_t15_tombstoned_row_excluded_by_doc_id_fetch():
+    rows = [
+        _row("h_ok", doc_id="d1", is_tombstone=False),
+        _row("h_dead", doc_id="d1", is_tombstone=True),
+    ]
+    adapter, _ = _make_adapter(rows)
+    out = adapter.fetch_rows_by_doc_ids(["d1"])
+    assert [r["id"] for r in out] == ["h_ok"], (
+        "tombstoned row must be excluded from the doc_id path; "
+        f"got {[r['id'] for r in out]}"
+    )
+
+
+def test_t15_null_is_tombstone_row_is_still_returned():
+    """The nullable-column trap: a row WITHOUT an is_tombstone stamp (NULL)
+    is NOT tombstoned and MUST be returned. Only an explicit `true`
+    drops the row."""
+    rows = [
+        _row("unmarked"),  # no is_tombstone key at all → NULL
+        _row("stamped_false", is_tombstone=False),
+        _row("stamped_true", is_tombstone=True),
+    ]
+    adapter, _ = _make_adapter(rows)
+    out = adapter.fetch_rows_by_ids(["unmarked", "stamped_false", "stamped_true"])
+    assert [r["id"] for r in out] == ["unmarked", "stamped_false"], (
+        "NULL and false rows must survive; only is_tombstone=true is "
+        f"dropped. Got {[r['id'] for r in out]}"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T15 regression — LEGACY tables (no `is_tombstone` column)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_legacy_table_no_tombstone_column_omits_gate_from_id_predicate():
+    """A table that predates the `is_tombstone` column must NOT have the
+    gate appended — doing so raises LanceError(Schema) in production."""
+    rows = [_row("c1", is_tombstone=False)]
+    adapter, fake_table = _make_adapter(rows, has_tombstone_column=False)
+    assert adapter.has_tombstone_column() is False
+    out = adapter.fetch_rows_by_ids(["c1"])
+    pred = fake_table.last_predicate or ""
+    assert "is_tombstone" not in pred, f"gate must be absent on legacy table; got {pred!r}"
+    assert pred.startswith("id IN (")
+    # Rows still returned (no schema error in the fake)
+    assert [r["id"] for r in out] == ["c1"]
+
+
+def test_legacy_table_no_tombstone_column_omits_gate_from_doc_id_predicate():
+    rows = [_row("h1", doc_id="d1")]
+    adapter, fake_table = _make_adapter(rows, has_tombstone_column=False)
+    out = adapter.fetch_rows_by_doc_ids(["d1"])
+    pred = fake_table.last_predicate or ""
+    assert "is_tombstone" not in pred, f"gate must be absent on legacy table; got {pred!r}"
+    assert [r["id"] for r in out] == ["h1"]
+
+
+def test_has_tombstone_column_cache_refreshes_on_table_swap():
+    """The gate is keyed to the OPEN table object: swapping `adapter._table`
+    (reload-table path) must refresh the probe, not return a stale value."""
+    rows = [_row("c1", is_tombstone=False)]
+    adapter, fake_with = _make_adapter(rows)
+    assert adapter.has_tombstone_column() is True
+    # Swap to a legacy table handle
+    _, fake_legacy = _make_adapter(rows, has_tombstone_column=False)
+    adapter._table = fake_legacy
+    assert adapter.has_tombstone_column() is False

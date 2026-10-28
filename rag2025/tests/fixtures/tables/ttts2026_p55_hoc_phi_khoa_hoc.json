@@ -1,0 +1,387 @@
+{
+  "fixture_id": "ttts2026_p55_hoc_phi_khoa_hoc",
+  "source_document": "new_data/THONG_TIN_TUYEN_SINH_202611.pdf",
+  "source_pages": [
+    55
+  ],
+  "corpus_file": "rag2025/data/chunked/chunked_24.jsonl",
+  "corpus_chunk_ids": [
+    357,
+    358,
+    359,
+    360,
+    361,
+    362,
+    363,
+    364
+  ],
+  "chunk_path": "program_group",
+  "notes": "Hoc phi tin chi / du kien hoc phi nam hoc 2026-2027, khoi nganh VII (page 55, rows 16-23 of the printed table). The live parser emits one program_group chunk per row; this fixture assembles the 8 byte-identical fragments back into the document table so the program column (nganh) and its rows are locked together. The printed page has 6 columns; the extractor merged 'So TT' + 'Khoi nganh' into one cell and produced two spurious empty columns, which is why column_headers has empty slots at index 3 and 4.",
+  "markdown_lines": [
+    "| ngành    | CTĐT     |                   | đào tạo  |     | tín chỉ  | năm học     |",
+    "| -------- | -------- | ----------------- | -------- | --- | -------- | ----------- |",
+    "| 16  VII  | 7229030  | Văn học           |          |     | 490.000  | 15.435.000  |",
+    "| 17  VII  | 7229042  | Quản lý văn hóa   |          |     | 490.000  | 15.435.000  |",
+    "| 18  VII  | 7310205  | Quản lý nhà nước  |          |     | 490.000  | 15.435.000  |",
+    "| 19  VII  | 7310301  | Xã hội học        |          |     | 490.000  | 15.435.000  |",
+    "| 20  VII  | 7310608  | Đông phương học   |          |     | 490.000  | 15.435.000  |",
+    "| 21  VII  | 7320101  | Báo chí           |          |     | 490.000  | 15.435.000  |",
+    "| 22  VII  | 7320111  | Truyền thông số   |          |     | 490.000  | 15.435.000  |",
+    "| 23  VII  | 7760101  | Công tác xã hội   |          |     | 490.000  | 15.435.000  |"
+  ],
+  "column_headers": [
+    "Số TT + Khối ngành",
+    "Mã ngành/CTĐT",
+    "Tên ngành/Chương trình đào tạo",
+    "",
+    "",
+    "Học phí/tín chỉ",
+    "Dự kiến học phí/năm học"
+  ],
+  "rows": [
+    {
+      "page": 55,
+      "anchor": "16 VII"
+    },
+    {
+      "page": 55,
+      "anchor": "17 VII"
+    },
+    {
+      "page": 55,
+      "anchor": "18 VII"
+    },
+    {
+      "page": 55,
+      "anchor": "19 VII"
+    },
+    {
+      "page": 55,
+      "anchor": "20 VII"
+    },
+    {
+      "page": 55,
+      "anchor": "21 VII"
+    },
+    {
+      "page": 55,
+      "anchor": "22 VII"
+    },
+    {
+      "page": 55,
+      "anchor": "23 VII"
+    }
+  ],
+  "expected_cells": [
+    "ngành",
+    "CTĐT",
+    "đào tạo",
+    "tín chỉ",
+    "năm học",
+    "16  VII",
+    "7229030",
+    "Văn học",
+    "490.000",
+    "15.435.000",
+    "17  VII",
+    "7229042",
+    "Quản lý văn hóa",
+    "490.000",
+    "15.435.000",
+    "18  VII",
+    "7310205",
+    "Quản lý nhà nước",
+    "490.000",
+    "15.435.000",
+    "19  VII",
+    "7310301",
+    "Xã hội học",
+    "490.000",
+    "15.435.000",
+    "20  VII",
+    "7310608",
+    "Đông phương học",
+    "490.000",
+    "15.435.000",
+    "21  VII",
+    "7320101",
+    "Báo chí",
+    "490.000",
+    "15.435.000",
+    "22  VII",
+    "7320111",
+    "Truyền thông số",
+    "490.000",
+    "15.435.000",
+    "23  VII",
+    "7760101",
+    "Công tác xã hội",
+    "490.000",
+    "15.435.000"
+  ],
+  "ambiguous_rows": [
+    {
+      "index": 0,
+      "columns": [
+        {
+          "col": 3,
+          "header": "",
+          "inherited_from": "đào tạo"
+        }
+      ]
+    }
+  ],
+  "staging_file": "rag2025/data/staging/pdf/pdf_2.md",
+  "provenance_anchor": "7229030",
+  "expected_data_cell_count": 40,
+  "cell_attribution": [
+    {
+      "row": 0,
+      "page": 55,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT + Khối ngành",
+          "text": "16  VII"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành/CTĐT",
+          "text": "7229030"
+        },
+        {
+          "col": 2,
+          "header": "Tên ngành/Chương trình đào tạo",
+          "text": "Văn học"
+        },
+        {
+          "col": 5,
+          "header": "Học phí/tín chỉ",
+          "text": "490.000"
+        },
+        {
+          "col": 6,
+          "header": "Dự kiến học phí/năm học",
+          "text": "15.435.000"
+        }
+      ]
+    },
+    {
+      "row": 1,
+      "page": 55,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT + Khối ngành",
+          "text": "17  VII"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành/CTĐT",
+          "text": "7229042"
+        },
+        {
+          "col": 2,
+          "header": "Tên ngành/Chương trình đào tạo",
+          "text": "Quản lý văn hóa"
+        },
+        {
+          "col": 5,
+          "header": "Học phí/tín chỉ",
+          "text": "490.000"
+        },
+        {
+          "col": 6,
+          "header": "Dự kiến học phí/năm học",
+          "text": "15.435.000"
+        }
+      ]
+    },
+    {
+      "row": 2,
+      "page": 55,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT + Khối ngành",
+          "text": "18  VII"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành/CTĐT",
+          "text": "7310205"
+        },
+        {
+          "col": 2,
+          "header": "Tên ngành/Chương trình đào tạo",
+          "text": "Quản lý nhà nước"
+        },
+        {
+          "col": 5,
+          "header": "Học phí/tín chỉ",
+          "text": "490.000"
+        },
+        {
+          "col": 6,
+          "header": "Dự kiến học phí/năm học",
+          "text": "15.435.000"
+        }
+      ]
+    },
+    {
+      "row": 3,
+      "page": 55,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT + Khối ngành",
+          "text": "19  VII"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành/CTĐT",
+          "text": "7310301"
+        },
+        {
+          "col": 2,
+          "header": "Tên ngành/Chương trình đào tạo",
+          "text": "Xã hội học"
+        },
+        {
+          "col": 5,
+          "header": "Học phí/tín chỉ",
+          "text": "490.000"
+        },
+        {
+          "col": 6,
+          "header": "Dự kiến học phí/năm học",
+          "text": "15.435.000"
+        }
+      ]
+    },
+    {
+      "row": 4,
+      "page": 55,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT + Khối ngành",
+          "text": "20  VII"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành/CTĐT",
+          "text": "7310608"
+        },
+        {
+          "col": 2,
+          "header": "Tên ngành/Chương trình đào tạo",
+          "text": "Đông phương học"
+        },
+        {
+          "col": 5,
+          "header": "Học phí/tín chỉ",
+          "text": "490.000"
+        },
+        {
+          "col": 6,
+          "header": "Dự kiến học phí/năm học",
+          "text": "15.435.000"
+        }
+      ]
+    },
+    {
+      "row": 5,
+      "page": 55,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT + Khối ngành",
+          "text": "21  VII"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành/CTĐT",
+          "text": "7320101"
+        },
+        {
+          "col": 2,
+          "header": "Tên ngành/Chương trình đào tạo",
+          "text": "Báo chí"
+        },
+        {
+          "col": 5,
+          "header": "Học phí/tín chỉ",
+          "text": "490.000"
+        },
+        {
+          "col": 6,
+          "header": "Dự kiến học phí/năm học",
+          "text": "15.435.000"
+        }
+      ]
+    },
+    {
+      "row": 6,
+      "page": 55,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT + Khối ngành",
+          "text": "22  VII"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành/CTĐT",
+          "text": "7320111"
+        },
+        {
+          "col": 2,
+          "header": "Tên ngành/Chương trình đào tạo",
+          "text": "Truyền thông số"
+        },
+        {
+          "col": 5,
+          "header": "Học phí/tín chỉ",
+          "text": "490.000"
+        },
+        {
+          "col": 6,
+          "header": "Dự kiến học phí/năm học",
+          "text": "15.435.000"
+        }
+      ]
+    },
+    {
+      "row": 7,
+      "page": 55,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT + Khối ngành",
+          "text": "23  VII"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành/CTĐT",
+          "text": "7760101"
+        },
+        {
+          "col": 2,
+          "header": "Tên ngành/Chương trình đào tạo",
+          "text": "Công tác xã hội"
+        },
+        {
+          "col": 5,
+          "header": "Học phí/tín chỉ",
+          "text": "490.000"
+        },
+        {
+          "col": 6,
+          "header": "Dự kiến học phí/năm học",
+          "text": "15.435.000"
+        }
+      ]
+    }
+  ]
+}

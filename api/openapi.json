@@ -1,0 +1,6568 @@
+{
+  "components": {
+    "schemas": {
+      "AdminIdentityResponse": {
+        "description": "The caller's own identity plus the actions its role grants.",
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_id",
+          "role",
+          "actions"
+        ],
+        "title": "AdminIdentityResponse",
+        "type": "object"
+      },
+      "AuditAction": {
+        "description": "What happened. An action outside this enum is not recordable.",
+        "enum": [
+          "publish",
+          "rollback",
+          "permission_change",
+          "source_document_change",
+          "conflict_override",
+          "create",
+          "edit",
+          "submit",
+          "approve",
+          "reject",
+          "supersede",
+          "withdraw",
+          "revoke_supersession",
+          "claim"
+        ],
+        "title": "AuditAction",
+        "type": "string"
+      },
+      "AuditEventList": {
+        "description": "Newest-first page of the ledger.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventRecord"
+            },
+            "title": "Events",
+            "type": "array"
+          }
+        },
+        "required": [
+          "events",
+          "count"
+        ],
+        "title": "AuditEventList",
+        "type": "object"
+      },
+      "AuditEventRecord": {
+        "description": "One stored event plus its position in the hash chain.\n\nThe hashes are part of the payload on purpose: ``verify`` is only meaningful\nto a caller who can also see what it verified, and an auditor comparing this\nlisting against an archived copy needs the links, not just the events.",
+        "properties": {
+          "entry_hash": {
+            "title": "Entry Hash",
+            "type": "string"
+          },
+          "event": {
+            "additionalProperties": true,
+            "title": "Event",
+            "type": "object"
+          },
+          "prev_hash": {
+            "title": "Prev Hash",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "prev_hash",
+          "entry_hash",
+          "event"
+        ],
+        "title": "AuditEventRecord",
+        "type": "object"
+      },
+      "AuthorityLevel": {
+        "description": "Source authority tier of the fact.\n\nOrdered by the spec's proposed source priority (\"Thứ tự ưu tiên nguồn\"),\nhighest first. That order still needs HUSC sign-off, so it lives in exactly\none place (``_AUTHORITY_RANK``) instead of being re-derived per caller.",
+        "enum": [
+          "husc_canonical",
+          "husc_official",
+          "hue_university",
+          "ministry",
+          "prior_year_official",
+          "derived_faq"
+        ],
+        "title": "AuthorityLevel",
+        "type": "string"
+      },
+      "BackfillView": {
+        "description": "What a backfill over the record store did, with the counts measured.",
+        "properties": {
+          "already_registered": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Already Registered",
+            "type": "array"
+          },
+          "citations": {
+            "title": "Citations",
+            "type": "integer"
+          },
+          "file_absent": {
+            "items": {
+              "type": "string"
+            },
+            "title": "File Absent",
+            "type": "array"
+          },
+          "registered": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Registered",
+            "type": "array"
+          },
+          "scanned_versions": {
+            "title": "Scanned Versions",
+            "type": "integer"
+          },
+          "skipped_kinds": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Skipped Kinds",
+            "type": "object"
+          }
+        },
+        "required": [
+          "scanned_versions",
+          "citations",
+          "registered",
+          "already_registered",
+          "skipped_kinds",
+          "file_absent"
+        ],
+        "title": "BackfillView",
+        "type": "object"
+      },
+      "BlindCitationItemView": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_version_key": {
+            "title": "Record Version Key",
+            "type": "string"
+          },
+          "source_document_id": {
+            "title": "Source Document Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "record_id",
+          "version",
+          "status",
+          "source_document_id",
+          "kind",
+          "record_version_key"
+        ],
+        "title": "BlindCitationItemView",
+        "type": "object"
+      },
+      "BlindCitationListView": {
+        "description": "The named state: record versions citing something unregistered.\n\n``items`` being non-empty is the expected reading today (the store's\n``*.jsonl#slug`` pointers are here by design); the observable the ticket\nasks for is that the list exists and enumerates, not that it is clean.",
+        "properties": {
+          "cited_versions": {
+            "title": "Cited Versions",
+            "type": "integer"
+          },
+          "counts_by_document_id": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts By Document Id",
+            "type": "object"
+          },
+          "counts_by_kind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts By Kind",
+            "type": "object"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BlindCitationItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "scanned_versions": {
+            "title": "Scanned Versions",
+            "type": "integer"
+          },
+          "statuses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Statuses",
+            "type": "array"
+          },
+          "unregistered_count": {
+            "title": "Unregistered Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "statuses",
+          "scanned_versions",
+          "cited_versions",
+          "unregistered_count",
+          "counts_by_kind",
+          "counts_by_document_id",
+          "items"
+        ],
+        "title": "BlindCitationListView",
+        "type": "object"
+      },
+      "Body_upload_source_document_admin_source_documents_upload_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_source_document_admin_source_documents_upload_post",
+        "type": "object"
+      },
+      "CanonicalRecord": {
+        "additionalProperties": true,
+        "description": "One versioned admissions fact: effective window + provenance + text.\n\nA record cannot exist with a reversed effective window, and a ``published``\nrecord cannot exist without a source document. Both are domain invariants\nenforced at the boundary, not in a retrieval prompt.\n\n``source_document_id`` / ``source_url`` / ``source_page`` are nullable so a\ndraft can be authored before its source document is uploaded; only the\npublished state requires provenance to be present.",
+        "properties": {
+          "admission_methods": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Admission Methods",
+            "type": "array"
+          },
+          "admission_round": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admission Round"
+          },
+          "admission_year": {
+            "maximum": 2100.0,
+            "minimum": 2000.0,
+            "title": "Admission Year",
+            "type": "integer"
+          },
+          "authored_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authored By"
+          },
+          "authority_level": {
+            "$ref": "#/components/schemas/AuthorityLevel"
+          },
+          "effective_from": {
+            "format": "date",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "locale": {
+            "const": "vi",
+            "default": "vi",
+            "title": "Locale",
+            "type": "string"
+          },
+          "major_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Major Codes",
+            "type": "array"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "record_id": {
+            "minLength": 1,
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_type": {
+            "$ref": "#/components/schemas/RecordType"
+          },
+          "schema_version": {
+            "default": "1.1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Document Id"
+          },
+          "source_page": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Page"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RecordStatus"
+          },
+          "supersedes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "record_id",
+          "record_type",
+          "version",
+          "admission_year",
+          "effective_from",
+          "status",
+          "authority_level",
+          "text"
+        ],
+        "title": "CanonicalRecord",
+        "type": "object"
+      },
+      "CellProvenance": {
+        "additionalProperties": false,
+        "description": "Where one cell's value came from.",
+        "properties": {
+          "chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Retrieval chunk that materialized the value, when known",
+            "title": "Chunk Id"
+          },
+          "record_version_key": {
+            "description": "`record_id@version` of the canonical record version",
+            "title": "Record Version Key",
+            "type": "string"
+          },
+          "source_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Repo-relative document id the record was extracted from",
+            "title": "Source Document Id"
+          },
+          "source_page": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1-based page in the source document; None when unknown",
+            "title": "Source Page"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Canonical source URL when available",
+            "title": "Source Url"
+          }
+        },
+        "required": [
+          "record_version_key"
+        ],
+        "title": "CellProvenance",
+        "type": "object"
+      },
+      "ChainVerificationResponse": {
+        "description": "The result of walking the chain.",
+        "properties": {
+          "broken_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broken Index"
+          },
+          "checked": {
+            "title": "Checked",
+            "type": "integer"
+          },
+          "last_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Hash"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "ok",
+          "checked"
+        ],
+        "title": "ChainVerificationResponse",
+        "type": "object"
+      },
+      "ChunkPreview": {
+        "description": "Individual chunk preview",
+        "properties": {
+          "char_count": {
+            "description": "Character count",
+            "title": "Char Count",
+            "type": "integer"
+          },
+          "chunk_id": {
+            "description": "Chunk index",
+            "title": "Chunk Id",
+            "type": "integer"
+          },
+          "sparse_terms_count": {
+            "description": "Number of BM25 sparse terms extracted",
+            "title": "Sparse Terms Count",
+            "type": "integer"
+          },
+          "text": {
+            "description": "Chunk text",
+            "title": "Text",
+            "type": "string"
+          },
+          "token_count": {
+            "description": "Token count for this chunk",
+            "title": "Token Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "text",
+          "token_count",
+          "char_count",
+          "sparse_terms_count"
+        ],
+        "title": "ChunkPreview",
+        "type": "object"
+      },
+      "ChunkPreviewRequest": {
+        "description": "Chunk preview request model",
+        "properties": {
+          "profile": {
+            "default": "auto",
+            "description": "Chunking profile to use",
+            "example": "auto",
+            "pattern": "^(auto|faq|policy)$",
+            "title": "Profile",
+            "type": "string"
+          },
+          "text": {
+            "description": "Text to chunk (minimum 10 characters)",
+            "example": "Trong công tác tuyển sinh năm 2025, Bộ GDĐT quy định tất cả thí sinh phải đăng ký xét tuyển trực tuyến.",
+            "minLength": 10,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "ChunkPreviewRequest",
+        "type": "object"
+      },
+      "ChunkPreviewResponse": {
+        "description": "Chunk preview response model",
+        "properties": {
+          "avg_tokens_per_chunk": {
+            "description": "Average tokens per chunk",
+            "title": "Avg Tokens Per Chunk",
+            "type": "number"
+          },
+          "chunks": {
+            "description": "List of chunk previews",
+            "items": {
+              "$ref": "#/components/schemas/ChunkPreview"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
+          "profile_config": {
+            "additionalProperties": true,
+            "description": "Profile configuration details",
+            "title": "Profile Config",
+            "type": "object"
+          },
+          "profile_used": {
+            "description": "Chunking profile used",
+            "title": "Profile Used",
+            "type": "string"
+          },
+          "text_length": {
+            "description": "Original text length in characters",
+            "title": "Text Length",
+            "type": "integer"
+          },
+          "total_chunks": {
+            "description": "Total number of chunks generated",
+            "title": "Total Chunks",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "description": "Sum of tokens across all chunks",
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "text_length",
+          "profile_used",
+          "profile_config",
+          "chunks",
+          "total_chunks",
+          "total_tokens",
+          "avg_tokens_per_chunk"
+        ],
+        "title": "ChunkPreviewResponse",
+        "type": "object"
+      },
+      "ClaimCitation": {
+        "description": "One high-impact claim traced to its source.\n\n``grounded`` is False when no retrieved chunk contains the claim's value;\nabstention policy (ticket 11) consumes that flag -- it is the only field\nallowed to be False without invalidating the response.",
+        "properties": {
+          "chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chunk that grounds the claim",
+            "title": "Chunk Id"
+          },
+          "claim": {
+            "description": "Exact claim text as it appears in the answer",
+            "title": "Claim",
+            "type": "string"
+          },
+          "claim_type": {
+            "description": "High-impact category of the claim",
+            "enum": [
+              "cutoff_score",
+              "timeline",
+              "quota",
+              "tuition",
+              "other"
+            ],
+            "title": "Claim Type",
+            "type": "string"
+          },
+          "grounded": {
+            "default": false,
+            "description": "False means the claim value was not found in any retrieved chunk",
+            "title": "Grounded",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provenance caveat, e.g. the rowspan_unresolved reason",
+            "title": "Note"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Canonical record the chunk materialized from",
+            "title": "Record Id"
+          },
+          "record_version_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Exact record version (release-scoped identity)",
+            "title": "Record Version Key"
+          },
+          "row_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identity label of the table row the claim sits in (resolved across split pieces)",
+            "title": "Row Label"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Section/breadcrumb label inside the source document, when present",
+            "title": "Section"
+          },
+          "source_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Source document the record was extracted from",
+            "title": "Source Document Id"
+          },
+          "source_page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Page in the source document; None when unknown -- never fabricated",
+            "title": "Source Page"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Canonical source URL when available",
+            "title": "Source Url"
+          },
+          "value": {
+            "description": "Normalized value token (digits, decimalized)",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim",
+          "claim_type",
+          "value"
+        ],
+        "title": "ClaimCitation",
+        "type": "object"
+      },
+      "ClaimRequest": {
+        "description": "Body for POST /admin/records/{record_id}/claim.",
+        "properties": {
+          "expected_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "ClaimRequest",
+        "type": "object"
+      },
+      "CompareRequest": {
+        "description": "A multi-major same-year comparison question.",
+        "properties": {
+          "effective_year": {
+            "maximum": 2100.0,
+            "minimum": 2000.0,
+            "title": "Effective Year",
+            "type": "integer"
+          },
+          "intent": {
+            "default": "so_sanh",
+            "title": "Intent",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "record_ids": {
+            "description": "Candidate major record_ids to compare",
+            "items": {
+              "type": "string"
+            },
+            "title": "Record Ids",
+            "type": "array"
+          },
+          "route": {
+            "default": "graph_rag",
+            "title": "Route",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "effective_year"
+        ],
+        "title": "CompareRequest",
+        "type": "object"
+      },
+      "ComparisonCell": {
+        "additionalProperties": false,
+        "description": "One major x metric cell of the comparison table.",
+        "properties": {
+          "major": {
+            "description": "Major label this cell belongs to",
+            "title": "Major",
+            "type": "string"
+          },
+          "metric": {
+            "description": "Metric this cell reports",
+            "title": "Metric",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Observed caveat, e.g. 'số liệu ước đạo'",
+            "title": "Note"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CellProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provenance of the value; None when missing"
+          },
+          "state": {
+            "description": "`present` or `missing`",
+            "title": "State",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rendered value; None when missing",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "major",
+          "metric",
+          "state"
+        ],
+        "title": "ComparisonCell",
+        "type": "object"
+      },
+      "ComparisonColumn": {
+        "additionalProperties": false,
+        "description": "One metric column header of the table.",
+        "properties": {
+          "display": {
+            "description": "Human-readable column header",
+            "title": "Display",
+            "type": "string"
+          },
+          "metric": {
+            "description": "Field label, e.g. 'điểm chuẩn' or 'học phí'",
+            "title": "Metric",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "display"
+        ],
+        "title": "ComparisonColumn",
+        "type": "object"
+      },
+      "ComparisonResponse": {
+        "additionalProperties": false,
+        "description": "Top-level comparison answer returned by /v2/compare.\n\nExactly one primary ``table`` (the same-year group); majors that could not\nbe grouped (different effective year) are listed in ``refused`` so the FE\ncan surface them instead of silently dropping or guessing. The\n``route``/``intent`` echo the router's decision so the client can confirm\nthe question was served by the multihop path (rule 4).",
+        "properties": {
+          "effective_year": {
+            "description": "Year all table rows share",
+            "title": "Effective Year",
+            "type": "integer"
+          },
+          "intent": {
+            "description": "Router intent label",
+            "title": "Intent",
+            "type": "string"
+          },
+          "query": {
+            "description": "The comparison question answered",
+            "title": "Query",
+            "type": "string"
+          },
+          "refused": {
+            "items": {
+              "$ref": "#/components/schemas/RefusedMajor"
+            },
+            "title": "Refused",
+            "type": "array"
+          },
+          "route": {
+            "description": "Pipeline route — must be 'graph_rag' for a comparison",
+            "title": "Route",
+            "type": "string"
+          },
+          "table": {
+            "$ref": "#/components/schemas/ComparisonTable"
+          }
+        },
+        "required": [
+          "query",
+          "route",
+          "intent",
+          "effective_year",
+          "table"
+        ],
+        "title": "ComparisonResponse",
+        "type": "object"
+      },
+      "ComparisonRow": {
+        "additionalProperties": false,
+        "description": "One major's row of cells.",
+        "properties": {
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonCell"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "effective_year": {
+            "description": "Admission year this row's facts carry",
+            "title": "Effective Year",
+            "type": "integer"
+          },
+          "major": {
+            "description": "Major label, matches its cells",
+            "title": "Major",
+            "type": "string"
+          },
+          "record_version_key": {
+            "description": "Latest record version backing this major",
+            "title": "Record Version Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "major",
+          "effective_year",
+          "record_version_key"
+        ],
+        "title": "ComparisonRow",
+        "type": "object"
+      },
+      "ComparisonTable": {
+        "additionalProperties": false,
+        "description": "The comparison answer: one table per effective year.\n\nRule 1 lives in :meth:`assert_year_uniformity`: every row MUST share the\ntable's ``effective_year``, otherwise the table is invalid. The service\nsplits differing-year majors into ``refused`` instead of producing such a\ntable, so a constructed table is always year-uniform — but the validator\nkeeps that invariant true even for hand-built inputs (the contract is the\nsource of truth, not the service).",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonColumn"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "effective_year": {
+            "description": "Admission year all rows share",
+            "title": "Effective Year",
+            "type": "integer"
+          },
+          "query": {
+            "description": "The comparison question this table answers",
+            "title": "Query",
+            "type": "string"
+          },
+          "refused": {
+            "description": "Majors excluded because their year did not match",
+            "items": {
+              "$ref": "#/components/schemas/RefusedMajor"
+            },
+            "title": "Refused",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "effective_year",
+          "query",
+          "columns"
+        ],
+        "title": "ComparisonTable",
+        "type": "object"
+      },
+      "ConflictItemView": {
+        "description": "One queued conflict, as an officer reads it before deciding.",
+        "properties": {
+          "admission_year": {
+            "title": "Admission Year",
+            "type": "integer"
+          },
+          "conflict_id": {
+            "title": "Conflict Id",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "ma_nganh": {
+            "title": "Ma Nganh",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "record_type": {
+            "title": "Record Type",
+            "type": "string"
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution"
+          },
+          "statements": {
+            "additionalProperties": true,
+            "title": "Statements",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conflict_id",
+          "record_type",
+          "ma_nganh",
+          "admission_year",
+          "field",
+          "origin",
+          "status"
+        ],
+        "title": "ConflictItemView",
+        "type": "object"
+      },
+      "ConflictQueueResponse": {
+        "description": "The queue plus the accounting the ticket's criteria measure.\n\n``seed_reported_items`` counts items whose origin is the seed report, so\n\"all 74 entered the queue\" is checkable without parsing the item list;\n``deduped`` / ``dedup_reason`` state, per criterion 9, what the detector\ncollapsed and why instead of hiding it.",
+        "properties": {
+          "dedup_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dedup Reason"
+          },
+          "deduped": {
+            "title": "Deduped",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "resolved": {
+            "title": "Resolved",
+            "type": "integer"
+          },
+          "seed_reported_items": {
+            "title": "Seed Reported Items",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "open",
+          "resolved",
+          "seed_reported_items",
+          "deduped"
+        ],
+        "title": "ConflictQueueResponse",
+        "type": "object"
+      },
+      "CreateRecordRequest": {
+        "description": "Body for POST /admin/records — a full canonical record, version 1.\n\nNo ``actor_id``: the actor is whoever the credential resolves to, so a\ncaller cannot write a version under someone else's name.",
+        "properties": {
+          "record": {
+            "$ref": "#/components/schemas/CanonicalRecord"
+          }
+        },
+        "required": [
+          "record"
+        ],
+        "title": "CreateRecordRequest",
+        "type": "object"
+      },
+      "EditRecordRequest": {
+        "description": "Body for POST /admin/records/{record_id}/edits.\n\nOnly the listed fields are editable: identity (``record_id``), the\n``version`` counter and lifecycle ``status`` are owned by the store and the\nstate machine, never by a caller. ``expected_version`` is the optimistic\nconcurrency token — the version the caller believes is current.\n\n``record_type`` is absent on purpose: the record's kind is part of what the\nfact *is*, and the id embeds it (``CHI_TIEU:nganh:...``), so re-typing a\nfact is a new record rather than an edit of this one.\n\n``values`` is the record's structured payload (the canonical schema is\nadditive, ``extra=\"allow\"``). It **replaces** the payload wholesale, like\nevery other field here; a caller that edits one structured field merges the\nrest itself. The admin UI does exactly that, so the extractor's other keys\nsurvive a hand edit.",
+        "properties": {
+          "admission_methods": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admission Methods"
+          },
+          "admission_round": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admission Round"
+          },
+          "admission_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admission Year"
+          },
+          "authority_level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorityLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "effective_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "major_codes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Major Codes"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Document Id"
+          },
+          "source_page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Page"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "supersedes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "EditRecordRequest",
+        "type": "object"
+      },
+      "FeedbackRequest": {
+        "description": "Feedback on a served answer (public endpoint for the student).",
+        "properties": {
+          "helpful": {
+            "description": "True for 👍, False for 👎",
+            "title": "Helpful",
+            "type": "boolean"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The question that produced this answer, when the client has it",
+            "title": "Question"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional free-text reason",
+            "title": "Reason"
+          },
+          "trace_id": {
+            "description": "trace_id of the answer being rated",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "helpful"
+        ],
+        "title": "FeedbackRequest",
+        "type": "object"
+      },
+      "FeedbackResponse": {
+        "description": "What the feedback call recorded.",
+        "properties": {
+          "helpful": {
+            "title": "Helpful",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "recorded": {
+            "title": "Recorded",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "helpful",
+          "recorded"
+        ],
+        "title": "FeedbackResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "description": "Health check response.\n\nBackward-compatible: legacy fields remain so older clients (FE\npre-Phase-1) keep working. New fields drive the `ready`/`stage`\ncontract that the FE polls to gate Send-button activation.",
+        "properties": {
+          "collection": {
+            "default": "",
+            "title": "Collection",
+            "type": "string"
+          },
+          "embedding_dim": {
+            "default": -1,
+            "title": "Embedding Dim",
+            "type": "integer"
+          },
+          "embedding_model": {
+            "default": "",
+            "title": "Embedding Model",
+            "type": "string"
+          },
+          "lancedb_connected": {
+            "default": false,
+            "title": "Lancedb Connected",
+            "type": "boolean"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "title": "Metrics",
+            "type": "object"
+          },
+          "ready": {
+            "default": false,
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "reranker_load_ok": {
+            "default": false,
+            "title": "Reranker Load Ok",
+            "type": "boolean"
+          },
+          "reranker_model": {
+            "default": "",
+            "title": "Reranker Model",
+            "type": "string"
+          },
+          "services": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Services",
+            "type": "object"
+          },
+          "stage": {
+            "default": "warming",
+            "enum": [
+              "warming",
+              "ready",
+              "failed"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "vector_dim_match": {
+            "default": false,
+            "title": "Vector Dim Match",
+            "type": "boolean"
+          },
+          "vectors_count": {
+            "default": 0,
+            "title": "Vectors Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "IdentityCreateRequest": {
+        "description": "Body for ``POST /admin/identities``.\n\nThe credential is supplied by the caller rather than generated here: this\nsurface hands an existing secret to a named person, and inventing one in a\nresponse body would put a live credential in a place logs read.",
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "credential": {
+            "title": "Credential",
+            "type": "string"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          }
+        },
+        "required": [
+          "actor_id",
+          "role",
+          "credential",
+          "reason"
+        ],
+        "title": "IdentityCreateRequest",
+        "type": "object"
+      },
+      "IdentityPatchRequest": {
+        "description": "Body for ``PATCH /admin/identities/{subject_id}``.\n\n``role`` and ``disabled`` are both optional but at least one is required -\na mutation that changes nothing would still append an event, and an audit\ntrail with no-ops in it stops being evidence.",
+        "properties": {
+          "disabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Role"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "IdentityPatchRequest",
+        "type": "object"
+      },
+      "IdentityView": {
+        "description": "One stored identity, with its credential masked.\n\n``subject_id`` is exposed so the admin surface has a stable key to PATCH;\n``actor_id`` can be renamed by an office and is not a URL segment.",
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "credential": {
+            "title": "Credential",
+            "type": "string"
+          },
+          "disabled": {
+            "title": "Disabled",
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "subject_id": {
+            "title": "Subject Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject_id",
+          "actor_id",
+          "role",
+          "disabled",
+          "credential"
+        ],
+        "title": "IdentityView",
+        "type": "object"
+      },
+      "IndexJobResponse": {
+        "description": "One index-job row.\n\n``state`` is a JobState value (pending/running/failed/active) or null when\nthe row is a build on disk rather than a run. ``saved`` and ``serving`` are\nseparate on purpose: ``saved`` means a build is persisted, ``serving`` means\nit is the corpus the index answers from, and only ``active`` sets ``serving``.",
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "retry": {
+            "items": {
+              "$ref": "#/components/schemas/RetryStepResponse"
+            },
+            "title": "Retry",
+            "type": "array"
+          },
+          "saved": {
+            "title": "Saved",
+            "type": "boolean"
+          },
+          "serving": {
+            "title": "Serving",
+            "type": "boolean"
+          },
+          "staged_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staged Dir"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "required": [
+          "job_id",
+          "state",
+          "saved",
+          "serving",
+          "label",
+          "release_id",
+          "staged_dir",
+          "reason",
+          "retry"
+        ],
+        "title": "IndexJobResponse",
+        "type": "object"
+      },
+      "IndexJobsResponse": {
+        "description": "GET /admin/index-jobs — job state, staged builds, and what is owed.",
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/IndexJobResponse"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "pending_affected_record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pending Affected Record Ids",
+            "type": "array"
+          },
+          "pending_outbox_entries": {
+            "title": "Pending Outbox Entries",
+            "type": "integer"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "reindex_needed": {
+            "title": "Reindex Needed",
+            "type": "boolean"
+          },
+          "reindex_reason": {
+            "title": "Reindex Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobs",
+          "reindex_needed",
+          "reindex_reason",
+          "pending_outbox_entries",
+          "pending_affected_record_ids",
+          "problems"
+        ],
+        "title": "IndexJobsResponse",
+        "type": "object"
+      },
+      "LifecycleAction": {
+        "description": "A requested move along the lifecycle. Not every action is legal in\nevery state — see ``_TRANSITIONS``.",
+        "enum": [
+          "submit",
+          "approve",
+          "reject",
+          "publish",
+          "supersede",
+          "withdraw",
+          "revoke_supersession"
+        ],
+        "title": "LifecycleAction",
+        "type": "string"
+      },
+      "LifecycleRecordResponse": {
+        "description": "The stored record version plus the audit event the write emitted.",
+        "properties": {
+          "event": {
+            "additionalProperties": true,
+            "title": "Event",
+            "type": "object"
+          },
+          "record": {
+            "$ref": "#/components/schemas/CanonicalRecord"
+          }
+        },
+        "required": [
+          "record",
+          "event"
+        ],
+        "title": "LifecycleRecordResponse",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "properties": {
+          "actor_id": {
+            "minLength": 1,
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "password": {
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_id",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "LoginResponse": {
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "session_seconds": {
+            "default": 28800,
+            "title": "Session Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "actor_id",
+          "role"
+        ],
+        "title": "LoginResponse",
+        "type": "object"
+      },
+      "MetaResponse": {
+        "description": "Public payload for /api/meta.",
+        "properties": {
+          "current_admission_year": {
+            "title": "Current Admission Year",
+            "type": "integer"
+          },
+          "freshness_alert": {
+            "title": "Freshness Alert",
+            "type": "boolean"
+          },
+          "freshness_lag_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness Lag Days"
+          },
+          "latest_crawl_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Crawl Date"
+          },
+          "total_notifications": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Notifications"
+          }
+        },
+        "required": [
+          "current_admission_year",
+          "latest_crawl_date",
+          "total_notifications",
+          "freshness_lag_days",
+          "freshness_alert"
+        ],
+        "title": "MetaResponse",
+        "type": "object"
+      },
+      "PreviewRequest": {
+        "properties": {
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 5,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "PreviewRequest",
+        "type": "object"
+      },
+      "QueryResponse": {
+        "description": "Enhanced query response with all fields",
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "chunks": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunks"
+          },
+          "chunks_used": {
+            "title": "Chunks Used",
+            "type": "integer"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "data_gap_hints": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Data Gap Hints",
+            "type": "array"
+          },
+          "enhanced_query": {
+            "title": "Enhanced Query",
+            "type": "string"
+          },
+          "groundedness_score": {
+            "default": 0.0,
+            "title": "Groundedness Score",
+            "type": "number"
+          },
+          "internal_status_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Status Code"
+          },
+          "original_query": {
+            "title": "Original Query",
+            "type": "string"
+          },
+          "pii_detected": {
+            "default": false,
+            "title": "Pii Detected",
+            "type": "boolean"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "query_type": {
+            "title": "Query Type",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceChip"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status_code": {
+            "default": "SUCCESS",
+            "title": "Status Code",
+            "type": "string"
+          },
+          "status_reason": {
+            "default": "",
+            "title": "Status Reason",
+            "type": "string"
+          },
+          "top_k_used": {
+            "title": "Top K Used",
+            "type": "integer"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "original_query",
+          "enhanced_query",
+          "query_type",
+          "answer",
+          "sources",
+          "confidence",
+          "top_k_used",
+          "chunks_used",
+          "provider",
+          "trace_id"
+        ],
+        "title": "QueryResponse",
+        "type": "object"
+      },
+      "RecommendRequest": {
+        "properties": {
+          "score": {
+            "description": "Tổng điểm thang 30",
+            "maximum": 30.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "to_hop": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tổ hợp môn xét tuyển, vd 'A00'. Optional.",
+            "title": "To Hop"
+          },
+          "uu_tien": {
+            "default": 0.0,
+            "description": "Điểm ưu tiên (khu vực / đối tượng / chứng chỉ). Mặc định 0.",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Uu Tien",
+            "type": "number"
+          }
+        },
+        "required": [
+          "score"
+        ],
+        "title": "RecommendRequest",
+        "type": "object"
+      },
+      "RecommendResponse": {
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "disclaimer": {
+            "title": "Disclaimer",
+            "type": "string"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendationOut"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "to_hop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Hop"
+          },
+          "uu_tien": {
+            "title": "Uu Tien",
+            "type": "number"
+          }
+        },
+        "required": [
+          "score",
+          "uu_tien",
+          "count",
+          "recommendations",
+          "basis",
+          "disclaimer"
+        ],
+        "title": "RecommendResponse",
+        "type": "object"
+      },
+      "RecommendationOut": {
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "number"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latest_diem_chuan": {
+            "title": "Latest Diem Chuan",
+            "type": "number"
+          },
+          "latest_year": {
+            "title": "Latest Year",
+            "type": "integer"
+          },
+          "major_code": {
+            "title": "Major Code",
+            "type": "string"
+          },
+          "major_name": {
+            "title": "Major Name",
+            "type": "string"
+          },
+          "to_hop": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Hop"
+          }
+        },
+        "required": [
+          "major_code",
+          "major_name",
+          "latest_diem_chuan",
+          "latest_year",
+          "delta",
+          "label",
+          "explanation"
+        ],
+        "title": "RecommendationOut",
+        "type": "object"
+      },
+      "RecordHistoryResponse": {
+        "description": "Every stored version of one record, newest first.",
+        "properties": {
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalRecord"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "record_id",
+          "versions"
+        ],
+        "title": "RecordHistoryResponse",
+        "type": "object"
+      },
+      "RecordListResponse": {
+        "description": "Latest version of every stored record that matched the filter.",
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "records",
+          "total"
+        ],
+        "title": "RecordListResponse",
+        "type": "object"
+      },
+      "RecordStatus": {
+        "description": "Lifecycle state of a record version (spec state machine, verbatim).\n\n``draft --submit--> review --approve--> approved --publish--> published\n--supersede--> archived``.",
+        "enum": [
+          "draft",
+          "review",
+          "approved",
+          "published",
+          "archived"
+        ],
+        "title": "RecordStatus",
+        "type": "string"
+      },
+      "RecordType": {
+        "description": "Kind of admissions fact a canonical record states.\n\nFirst group: mirrors ``EntityType`` values verbatim (shared vocabulary).\nSecond group: canonical-only fact kinds (no graph entity counterpart).\n\n**Rollback constraint (1.1, ticket 03):** ``THONG_BAO`` and ``HOI_DAP``\nare 1.1 additions. Once a store contains either value, reverting the\nreader to 1.0 code will raise ``ValidationError`` on load. A code\nrollback therefore requires restoring a store snapshot taken *before*\n1.1 was activated (spec 02 §2); a release-only rollback (keep code,\npoint back at an older release) is always safe.",
+        "enum": [
+          "NGANH",
+          "TO_HOP",
+          "DIEM_CHUAN",
+          "HOC_PHI",
+          "THOI_GIAN",
+          "TO_CHUC",
+          "CHINH_SACH",
+          "THONG_BAO",
+          "HOI_DAP",
+          "CHI_TIEU",
+          "DIEU_KIEN"
+        ],
+        "title": "RecordType",
+        "type": "string"
+      },
+      "RefusedMajor": {
+        "additionalProperties": false,
+        "description": "A major split out of the table because its year did not match.",
+        "properties": {
+          "effective_year": {
+            "description": "The year the major actually carries",
+            "title": "Effective Year",
+            "type": "integer"
+          },
+          "major": {
+            "description": "Major label being refused",
+            "title": "Major",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why the major was excluded from the table",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "major",
+          "effective_year",
+          "reason"
+        ],
+        "title": "RefusedMajor",
+        "type": "object"
+      },
+      "RegisteredCheckView": {
+        "description": "The answer to \"is this document id in the registry?\" plus why.\n\n``kind`` is returned even when unregistered, so a caller sees whether the\nid was a corpus pointer (never registerable here) or a document nobody\nregistered yet — the two read very differently to an admissions officer.",
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "entry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceDocumentView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "registered": {
+            "title": "Registered",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "document_id",
+          "registered",
+          "kind"
+        ],
+        "title": "RegisteredCheckView",
+        "type": "object"
+      },
+      "RegistrationRequest": {
+        "description": "The body of a register/update call: the id and an optional note.",
+        "properties": {
+          "document_id": {
+            "minLength": 1,
+            "title": "Document Id",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "required": [
+          "document_id"
+        ],
+        "title": "RegistrationRequest",
+        "type": "object"
+      },
+      "ReleaseStatusResponse": {
+        "description": "GET /admin/releases — the active release and the one behind it.\n\n``active_release_id`` is what the serving path reads (the pointer) and is\npresent even when the release it names cannot be read; ``active``/``previous``\nare the manifest-backed views. ``problems`` carries anything that could not\nbe read, so an unreadable pointer is never rendered as \"nothing published\".",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReleaseViewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "active_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Release Id"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReleaseViewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "previous_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Release Id"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          }
+        },
+        "required": [
+          "active_release_id",
+          "previous_release_id",
+          "active",
+          "previous",
+          "problems"
+        ],
+        "title": "ReleaseStatusResponse",
+        "type": "object"
+      },
+      "ReleaseViewResponse": {
+        "description": "One release, as its own manifest states it.",
+        "properties": {
+          "chunk_count": {
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "document_count": {
+            "title": "Document Count",
+            "type": "integer"
+          },
+          "lancedb_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lancedb Tag"
+          },
+          "lancedb_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lancedb Version"
+          },
+          "parent_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Release Id"
+          },
+          "release_id": {
+            "title": "Release Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release_id",
+          "created_at",
+          "parent_release_id",
+          "lancedb_tag",
+          "lancedb_version",
+          "document_count",
+          "chunk_count"
+        ],
+        "title": "ReleaseViewResponse",
+        "type": "object"
+      },
+      "ReloadTableRequest": {
+        "description": "Body for POST /admin/reload-table.\n\n``force_while_in_flight`` is the emergency override for the drain gate, and\nis named for exactly what it does: swap while requests are still in flight,\naccepting that a request already reading the old retriever fails. It is a\nsecond, explicit decision by the caller — never a meaning read into the\ndrain timeout. A plain reload whose drain times out is refused with 409.",
+        "properties": {
+          "drain_timeout_s": {
+            "default": 25.0,
+            "exclusiveMinimum": 0.0,
+            "maximum": 30.0,
+            "title": "Drain Timeout S",
+            "type": "number"
+          },
+          "force_while_in_flight": {
+            "default": false,
+            "description": "Emergency override: swap even though the drain timed out. A request already reading the old retriever may then fail; the response reports ``forced_while_in_flight``.",
+            "title": "Force While In Flight",
+            "type": "boolean"
+          },
+          "table_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Table Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table_name"
+        ],
+        "title": "ReloadTableRequest",
+        "type": "object"
+      },
+      "ReloadTableResponse": {
+        "description": "Response for POST /admin/reload-table.\n\n``drained`` is always True on a 200: a drain that times out is a 409 unless\nthe caller forced it, in which case ``forced_while_in_flight`` is True.",
+        "properties": {
+          "active_table": {
+            "title": "Active Table",
+            "type": "string"
+          },
+          "drain_ms": {
+            "title": "Drain Ms",
+            "type": "number"
+          },
+          "drained": {
+            "title": "Drained",
+            "type": "boolean"
+          },
+          "forced_while_in_flight": {
+            "title": "Forced While In Flight",
+            "type": "boolean"
+          },
+          "in_flight_at_swap": {
+            "title": "In Flight At Swap",
+            "type": "integer"
+          },
+          "total_ms": {
+            "title": "Total Ms",
+            "type": "number"
+          }
+        },
+        "required": [
+          "active_table",
+          "drained",
+          "drain_ms",
+          "total_ms",
+          "in_flight_at_swap",
+          "forced_while_in_flight"
+        ],
+        "title": "ReloadTableResponse",
+        "type": "object"
+      },
+      "ResolveConflictRequest": {
+        "description": "The decision body: the winning source and the reason.\n\n``actor`` is deliberately absent — the event's actor comes from the\ncredential, never from the body.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "winner_source_document_id": {
+            "minLength": 1,
+            "title": "Winner Source Document Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "winner_source_document_id"
+        ],
+        "title": "ResolveConflictRequest",
+        "type": "object"
+      },
+      "RetireRequest": {
+        "description": "Retirement names a reason: it un-vouches for live citations.",
+        "properties": {
+          "document_id": {
+            "minLength": 1,
+            "title": "Document Id",
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "reason"
+        ],
+        "title": "RetireRequest",
+        "type": "object"
+      },
+      "RetryStepResponse": {
+        "description": "One step of retrying a failed job, and whether this process can run it.",
+        "properties": {
+          "command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Command"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "runnable": {
+            "title": "Runnable",
+            "type": "boolean"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step",
+          "runnable",
+          "command",
+          "reason"
+        ],
+        "title": "RetryStepResponse",
+        "type": "object"
+      },
+      "Role": {
+        "description": "Who a caller is, as decided by the server from its credential.",
+        "enum": [
+          "viewer",
+          "editor",
+          "reviewer",
+          "publisher",
+          "reviewer_publisher",
+          "admin",
+          "ops"
+        ],
+        "title": "Role",
+        "type": "string"
+      },
+      "RollbackRequest": {
+        "description": "Body for POST /admin/rollback.\n\n``reason`` is mandatory and non-blank. The event the rollback emits refuses\nto exist without one (``AuditAction.ROLLBACK`` is in ``REASON_REQUIRED``),\nso a blank reason is refused here — 422, before any store, pointer or table\nis touched.\n\n``target_release_id`` is optional. Without it the target is the previous\nrelease in the lineage (``parent_release_id``, walked back from the active\none); with it, a rollback can go further back than one release.\n\n``force_while_in_flight`` is the emergency override for the drain gate. A\nrollback whose drain times out is refused with 409 like a reload is; this\nflag is how an operator says \"roll back anyway, knowing a request still\nreading the release I am rolling away from may fail\". It is a separate,\nexplicitly-named decision — never a meaning read into the timeout.",
+        "properties": {
+          "force_while_in_flight": {
+            "default": false,
+            "description": "Emergency override: roll back even though the drain timed out. A request already reading the old release may then fail; the response reports ``forced_while_in_flight``.",
+            "title": "Force While In Flight",
+            "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "target_release_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Release Id"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RollbackRequest",
+        "type": "object"
+      },
+      "RollbackResponse": {
+        "description": "What the rollback did, per level, plus the audit event it emitted.",
+        "properties": {
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "forced_while_in_flight": {
+            "title": "Forced While In Flight",
+            "type": "boolean"
+          },
+          "lancedb_tag": {
+            "title": "Lancedb Tag",
+            "type": "string"
+          },
+          "lancedb_tag_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lancedb Tag Version"
+          },
+          "lancedb_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lancedb Version"
+          },
+          "previous_release_id": {
+            "title": "Previous Release Id",
+            "type": "string"
+          },
+          "release_id": {
+            "title": "Release Id",
+            "type": "string"
+          },
+          "steps": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Steps",
+            "type": "object"
+          }
+        },
+        "required": [
+          "release_id",
+          "previous_release_id",
+          "lancedb_tag",
+          "lancedb_tag_version",
+          "lancedb_version",
+          "steps",
+          "event_id",
+          "forced_while_in_flight"
+        ],
+        "title": "RollbackResponse",
+        "type": "object"
+      },
+      "SimpleQueryRequest": {
+        "description": "Simple query request - user only needs to send a string",
+        "properties": {
+          "force_rag_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": false,
+            "description": "Force RAG only mode",
+            "title": "Force Rag Only"
+          },
+          "query": {
+            "description": "User's question",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "SimpleQueryRequest",
+        "type": "object"
+      },
+      "SourceChip": {
+        "description": "Structured source citation for FE chip rendering (rich-markdown T4).",
+        "properties": {
+          "data_year": {
+            "default": "N/A",
+            "description": "Effective year of the data (e.g. 2025, 2026)",
+            "title": "Data Year",
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique chunk or source identifier",
+            "title": "Id",
+            "type": "string"
+          },
+          "snippet": {
+            "default": "",
+            "description": "Short excerpt from the chunk (first 120 chars)",
+            "title": "Snippet",
+            "type": "string"
+          },
+          "title": {
+            "description": "Human-readable source title (first 80 chars)",
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Canonical source URL when available",
+            "title": "Url"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "SourceChip",
+        "type": "object"
+      },
+      "SourceDocumentListView": {
+        "description": "The registry plus the counts that make it checkable at a glance.\n\n``total`` and ``registered`` differ only when something was retired;\n``counts_by_kind`` is ``{\"pdf_document\": n}`` today, because the registry\nholds documents only (Ghi chú 4) — the field exists so a reader confirms\nthat rather than assuming it.",
+        "properties": {
+          "counts_by_kind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts By Kind",
+            "type": "object"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/SourceDocumentView"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "registered": {
+            "title": "Registered",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries",
+          "total",
+          "registered",
+          "counts_by_kind"
+        ],
+        "title": "SourceDocumentListView",
+        "type": "object"
+      },
+      "SourceDocumentView": {
+        "description": "One registry entry, as an operator reads it.",
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "file_present": {
+            "title": "File Present",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "registered_at": {
+            "title": "Registered At",
+            "type": "string"
+          },
+          "registered_by": {
+            "title": "Registered By",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "title": "Updated By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "kind",
+          "path",
+          "sha256",
+          "file_present",
+          "state",
+          "revision",
+          "registered_at",
+          "registered_by",
+          "updated_at",
+          "updated_by",
+          "notes"
+        ],
+        "title": "SourceDocumentView",
+        "type": "object"
+      },
+      "TransitionRequest": {
+        "description": "Body for POST /admin/records/{record_id}/transitions.",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/LifecycleAction"
+          },
+          "expected_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "TransitionRequest",
+        "type": "object"
+      },
+      "UnansweredItem": {
+        "description": "One unanswered question, already redacted, with its resolution state.",
+        "properties": {
+          "asked_at": {
+            "title": "Asked At",
+            "type": "string"
+          },
+          "out_of_scope": {
+            "default": false,
+            "title": "Out Of Scope",
+            "type": "boolean"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "resolved": {
+            "title": "Resolved",
+            "type": "boolean"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "resolved_by_record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By Record Id"
+          },
+          "route": {
+            "title": "Route",
+            "type": "string"
+          },
+          "status_code": {
+            "title": "Status Code",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question",
+          "trace_id",
+          "asked_at",
+          "route",
+          "status_code",
+          "resolved"
+        ],
+        "title": "UnansweredItem",
+        "type": "object"
+      },
+      "UnansweredList": {
+        "description": "A page of unanswered items and the total count.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UnansweredItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "UnansweredList",
+        "type": "object"
+      },
+      "UnifiedQueryRequest": {
+        "description": "Unified query request for PaddedRAG + GraphRAG pipeline.",
+        "properties": {
+          "force_route": {
+            "anyOf": [
+              {
+                "enum": [
+                  "padded_rag",
+                  "graph_rag"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Force routing: 'padded_rag' or 'graph_rag' (overrides auto-router)",
+            "title": "Force Route"
+          },
+          "history": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional bounded chat history, e.g. [{'role':'user','content':'...'}, ...] (max ~4 msgs)",
+            "title": "History"
+          },
+          "query": {
+            "description": "User question (Vietnamese)",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 5,
+            "description": "Number of results",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "UnifiedQueryRequest",
+        "type": "object"
+      },
+      "UnifiedQueryResponse": {
+        "description": "Response from unified pipeline with routing metadata.",
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "answer_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Confidence"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimCitation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "data_gap_hints": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Data Gap Hints",
+            "type": "array"
+          },
+          "graph_stats": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph Stats"
+          },
+          "groundedness_score": {
+            "default": 0.0,
+            "title": "Groundedness Score",
+            "type": "number"
+          },
+          "internal_status_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Status Code"
+          },
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "number"
+          },
+          "pii_detected": {
+            "default": false,
+            "title": "Pii Detected",
+            "type": "boolean"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "rerank_skipped_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Skipped Reason"
+          },
+          "route": {
+            "title": "Route",
+            "type": "string"
+          },
+          "router_info": {
+            "additionalProperties": true,
+            "title": "Router Info",
+            "type": "object"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceChip"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status_code": {
+            "default": "SUCCESS",
+            "title": "Status Code",
+            "type": "string"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "route",
+          "answer",
+          "sources",
+          "confidence",
+          "router_info",
+          "latency_ms",
+          "trace_id"
+        ],
+        "title": "UnifiedQueryResponse",
+        "type": "object"
+      },
+      "UploadParseReport": {
+        "description": "The read report itself: what the parser saw, page by page.",
+        "properties": {
+          "chars_per_page": {
+            "title": "Chars Per Page",
+            "type": "number"
+          },
+          "page_count": {
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "pii_detected": {
+            "title": "Pii Detected",
+            "type": "boolean"
+          },
+          "scan_pages": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Scan Pages",
+            "type": "array"
+          },
+          "table_count": {
+            "title": "Table Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page_count",
+          "chars_per_page",
+          "scan_pages",
+          "pii_detected",
+          "table_count"
+        ],
+        "title": "UploadParseReport",
+        "type": "object"
+      },
+      "UploadReport": {
+        "description": "What the upload read, and what it produced.\n\n``report`` is the read report the ticket asks for (page count,\ncharacters per page, scan pages, PII flag, table count); ``warnings``\nis the Vietnamese operator-facing explanation of anything odd — a\nscan-only document, a PII flag, a read failure. ``draft_record_ids``\nis empty exactly when no draft was created: an image-only or\nunreadable document reports rather than drafts an empty record. A\nPDF/DOCX drafts at most one record; an XLSX drafts one per data row\n(ticket T17).",
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "draft_record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The primary draft id — the first row's for a spreadsheet, else None.",
+            "readOnly": true,
+            "title": "Draft Record Id"
+          },
+          "draft_record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Draft Record Ids",
+            "type": "array"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "report": {
+            "$ref": "#/components/schemas/UploadParseReport"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "document_id",
+          "sha256",
+          "kind",
+          "report",
+          "draft_record_id"
+        ],
+        "title": "UploadReport",
+        "type": "object"
+      },
+      "UrlIngestReport": {
+        "description": "What the ingest did, and what it produced.\n\n``status`` is the idempotency answer: ``unchanged`` means the page's bytes\nmatched the stored digest and *no record was written* — ``version`` is then\nthe version already on disk.",
+        "properties": {
+          "chars": {
+            "title": "Chars",
+            "type": "integer"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "created",
+              "updated",
+              "unchanged"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "record_id",
+          "source_url",
+          "sha256",
+          "version",
+          "chars"
+        ],
+        "title": "UrlIngestReport",
+        "type": "object"
+      },
+      "UrlIngestRequest": {
+        "description": "Body for POST /source-documents/from-url.",
+        "properties": {
+          "url": {
+            "description": "the notification page to fetch; http(s) and publicly routable only",
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "UrlIngestRequest",
+        "type": "object"
+      },
+      "V3QueryRequest": {
+        "properties": {
+          "apply_lost_in_middle": {
+            "default": true,
+            "title": "Apply Lost In Middle",
+            "type": "boolean"
+          },
+          "candidate_pool": {
+            "default": 20,
+            "description": "Số doc lấy từ Hybrid trước khi rerank",
+            "maximum": 50.0,
+            "minimum": 5.0,
+            "title": "Candidate Pool",
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 5,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "V3QueryRequest",
+        "type": "object"
+      },
+      "V3QueryResponse": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "chunks_used": {
+            "title": "Chunks Used",
+            "type": "integer"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "number"
+          },
+          "pipeline_stages": {
+            "additionalProperties": true,
+            "title": "Pipeline Stages",
+            "type": "object"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "answer",
+          "sources",
+          "confidence",
+          "chunks_used",
+          "pipeline_stages",
+          "latency_ms",
+          "provider",
+          "trace_id"
+        ],
+        "title": "V3QueryResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WhatIfRequest": {
+        "properties": {
+          "major_code": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Major Code",
+            "type": "string"
+          },
+          "score": {
+            "description": "Tổng điểm thang 30",
+            "maximum": 30.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "to_hop": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Hop"
+          },
+          "uu_tien": {
+            "default": 0.0,
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Uu Tien",
+            "type": "number"
+          }
+        },
+        "required": [
+          "score",
+          "major_code"
+        ],
+        "title": "WhatIfRequest",
+        "type": "object"
+      },
+      "WhatIfResponse": {
+        "properties": {
+          "band": {
+            "title": "Band",
+            "type": "string"
+          },
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "disclaimer": {
+            "title": "Disclaimer",
+            "type": "string"
+          },
+          "latest_diem_chuan": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Diem Chuan"
+          },
+          "latest_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Year"
+          },
+          "major_code": {
+            "title": "Major Code",
+            "type": "string"
+          },
+          "n_years": {
+            "default": 0,
+            "title": "N Years",
+            "type": "integer"
+          },
+          "p_pass": {
+            "title": "P Pass",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "score",
+          "major_code",
+          "p_pass",
+          "band",
+          "basis",
+          "disclaimer"
+        ],
+        "title": "WhatIfResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Advanced RAG with provider-aware query enhancement and embedded vector retrieval",
+    "title": "RAG API 2025 - HYDE + Multi-Embedding + LanceDB",
+    "version": "2.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "description": "API info",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Root  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Root"
+      }
+    },
+    "/admin/audit/events": {
+      "get": {
+        "description": "The most recent events, newest first, matching every supplied filter.\n\nNewest first because the question being asked is almost always \"what just\nchanged\"; the chain order is still visible in ``seq``, which descends down\nthe page and never skips a number within a page.",
+        "operationId": "list_events_admin_audit_events_get",
+        "parameters": [
+          {
+            "description": "record id / release id / subject id",
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "record id / release id / subject id",
+              "title": "Target"
+            }
+          },
+          {
+            "description": "who performed the action",
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "who performed the action",
+              "title": "Actor Id"
+            }
+          },
+          {
+            "description": "event kind",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AuditAction"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "event kind",
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Events",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/audit/events/{event_id}": {
+      "get": {
+        "description": "One event by its id, with the chain position it was stored at.",
+        "operationId": "get_event_admin_audit_events__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Event",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/audit/verify": {
+      "get": {
+        "description": "Whether the ledger is intact, and where it first is not.\n\nA 200 with ``ok: false`` rather than a 5xx: a broken chain is an answer, not\na server failure, and the caller needs ``broken_index`` to investigate.",
+        "operationId": "verify_chain_admin_audit_verify_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChainVerificationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Chain",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/conflicts": {
+      "get": {
+        "description": "Refresh the queue from current data and return every item.\n\nDetection runs on read so the queue reflects the corpus without a manual\ncommand (criterion 1); it never selects a winner, so refreshing is safe\nin front of a live officer mid-decision.",
+        "operationId": "list_conflicts_admin_conflicts_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictQueueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Conflicts",
+        "tags": [
+          "admin",
+          "admin-conflicts"
+        ]
+      }
+    },
+    "/admin/conflicts/{conflict_id}/resolve": {
+      "post": {
+        "description": "Record the override decision for one conflict.\n\nThe reason must be non-blank *here* (422) — the first of the two\nenforcement points. The actor and role handed to the service are the\nidentity the credential resolved to, so a body claiming to be somebody\nelse has nothing to claim with.",
+        "operationId": "resolve_conflict_admin_conflicts__conflict_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conflict_id",
+            "required": true,
+            "schema": {
+              "title": "Conflict Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveConflictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictItemView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Conflict",
+        "tags": [
+          "admin",
+          "admin-conflicts"
+        ]
+      }
+    },
+    "/admin/identities": {
+      "get": {
+        "description": "Every stored identity, credentials masked.",
+        "operationId": "list_identities_admin_identities_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IdentityView"
+                  },
+                  "title": "Response List Identities Admin Identities Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Identities",
+        "tags": [
+          "admin",
+          "admin-identities"
+        ]
+      },
+      "post": {
+        "description": "Register a credential for an actor and record why.\n\n``before_role`` is ``None`` - the event says \"this subject had no grants\nbefore\", which is what makes a creation distinguishable in the ledger\nfrom a change down to ``viewer``.",
+        "operationId": "create_identity_admin_identities_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Identity",
+        "tags": [
+          "admin",
+          "admin-identities"
+        ]
+      }
+    },
+    "/admin/identities/{subject_id}": {
+      "patch": {
+        "description": "Change one identity's role, or disable it, and record the change.\n\nDisabling is a role change like any other: the ledger sees\n``after_role=None`` and can answer \"when did this person lose access?\".\nThe entry is never deleted, because a removed row would take the target\nof the event with it.",
+        "operationId": "patch_identity_admin_identities__subject_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject_id",
+            "required": true,
+            "schema": {
+              "title": "Subject Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Identity",
+        "tags": [
+          "admin",
+          "admin-identities"
+        ]
+      }
+    },
+    "/admin/identity": {
+      "get": {
+        "description": "Who the presented credential is, and what it may do.\n\nNo action is required to read this, deliberately: the response exposes only\nthe caller's *own* grants — never another role's — and a role granted\nnothing must still be able to discover that it was granted nothing. A\nrequired action here would make that case unanswerable (403 on the very\ncall that reports the 403s).",
+        "operationId": "get_identity_admin_identity_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminIdentityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Identity",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/index-jobs": {
+      "get": {
+        "description": "Index jobs: pending/running/failed/active, plus builds saved but not serving.\n\n``serving`` is true only for an ``active`` job. A build that exists in the\nstaging area is reported ``saved=true, serving=false`` — never as published.",
+        "operationId": "list_index_jobs_admin_index_jobs_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexJobsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Index Jobs",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/login": {
+      "post": {
+        "description": "Authenticate by actor_id + password and set the session cookie.\n\nReturns 401 for a wrong password or no configured password; 423 (Locked)\nwhen the actor is in a lockout window.",
+        "operationId": "login_admin_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "admin-auth"
+        ]
+      }
+    },
+    "/admin/logout": {
+      "post": {
+        "description": "Clear the session cookie. Idempotent — a request with no cookie is a no-op.",
+        "operationId": "logout_admin_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Logout Admin Logout Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "admin-auth"
+        ]
+      }
+    },
+    "/admin/records": {
+      "get": {
+        "description": "Every stored record's latest version, filtered by ngành / năm / trạng thái.\n\nFilters combine with AND; an absent filter matches everything. Newest\nadmission year first, then ``record_id`` — a total order, so the same store\nlists in the same order on every call.",
+        "operationId": "list_records_admin_records_get",
+        "parameters": [
+          {
+            "description": "Ngành: mã ngành, tên ngành, hoặc phần record_id nêu nó.",
+            "in": "query",
+            "name": "nganh",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Ngành: mã ngành, tên ngành, hoặc phần record_id nêu nó.",
+              "title": "Nganh"
+            }
+          },
+          {
+            "description": "Năm tuyển sinh.",
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 2100,
+                  "minimum": 2000,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Năm tuyển sinh.",
+              "title": "Year"
+            }
+          },
+          {
+            "description": "Trạng thái lifecycle của version mới nhất.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RecordStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Trạng thái lifecycle của version mới nhất.",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Records",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Store a new canonical record as version 1 (draft).",
+        "operationId": "create_record_admin_records_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Record",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/records/{record_id}": {
+      "get": {
+        "description": "Current version of one record.",
+        "operationId": "get_record_admin_records__record_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanonicalRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Record",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/records/{record_id}/claim": {
+      "post": {
+        "description": "Attach the caller as author of an unclaimed draft (ticket T15).\n\nThe seed drafts carry ``authored_by = null`` (spec 02 §108), and a version\nwith no recorded author cannot be approved — four-eyes refuses the\napproval rather than approve for an unknown author. This route is the fix\nthat keeps the seed version: it appends a new version whose ``authored_by``\nis the caller, the seed version and its audit history stay as written.\n\nOnly legal on a draft that has no author yet: a non-draft is a 409\n(claiming would demote a version a decision has been made on) and an\nalready-claimed draft is a 409 too — claim is not the way to re-author\nsomeone else's work, that is an edit.",
+        "operationId": "claim_record_admin_records__record_id__claim_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Claim Record",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/records/{record_id}/edits": {
+      "post": {
+        "description": "Append a new version of a record.\n\nThe appended version returns to ``draft``: the previous version's review no\nlonger describes this content. A published version is never rewritten.",
+        "operationId": "edit_record_admin_records__record_id__edits_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Record",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/records/{record_id}/review-diff": {
+      "get": {
+        "description": "Diff of the draft (or a given version) vs the published version.",
+        "operationId": "review_diff_admin_records__record_id__review_diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Review Diff Admin Records  Record Id  Review Diff Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Diff",
+        "tags": [
+          "admin-preview"
+        ]
+      }
+    },
+    "/admin/records/{record_id}/review-preview": {
+      "post": {
+        "description": "The answer a student would receive if this draft were published.",
+        "operationId": "review_preview_admin_records__record_id__review_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Review Preview Admin Records  Record Id  Review Preview Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Preview",
+        "tags": [
+          "admin-preview"
+        ]
+      }
+    },
+    "/admin/records/{record_id}/transitions": {
+      "post": {
+        "description": "Move a record along the lifecycle state machine.\n\nOne route carries five grants, so the required action is resolved from the\npayload and checked before the store is touched: ``submit`` is an editor's,\n``approve``/``reject`` a reviewer's, ``publish``/``supersede`` a\npublisher's. A lifecycle action the matrix does not map is refused — an\naction nobody has been granted is not one this route may perform.\n\nAn illegal move is refused with 409 and writes nothing; a reject without a\nreason is refused with 422; an approve by the version's author is refused\nwith 403 (four-eyes). ``supersede`` archives a published record only when\nanother published record already names it in ``supersedes``.\n\nIdempotency (ticket 27): the state machine already makes a *second* publish\nimpossible — ``_TRANSITIONS`` has no self-loop, so a replay is refused 409\nrather than applied twice. That is state-based protection, and it is not the\nsame as a replay returning the first call's answer: an operator whose network\ndropped mid-publish would get a 409 on retry and no way to tell \"my publish\nlanded\" from \"someone else published\". With an ``Idempotency-Key`` the retry\nreturns the original response instead.",
+        "operationId": "transition_record_admin_records__record_id__transitions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transition Record",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/records/{record_id}/versions": {
+      "get": {
+        "description": "Every stored version of one record, newest first.",
+        "operationId": "get_record_versions_admin_records__record_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Record Versions",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/releases": {
+      "get": {
+        "description": "Which release is active, and which one is behind it.\n\nRead-only: the pointer and the manifests, straight off disk. The previous\nrelease is the one a targetless ``POST /admin/rollback`` would move to.",
+        "operationId": "get_release_status_admin_releases_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Release Status",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/reload-table": {
+      "post": {
+        "description": "Drain → build new retriever → healthcheck → atomic swap → close old.\n\n@spec(S13.4) atomic blue-green swap (M1+F1+F4 from plan v2.1).\n\nThe swap itself is the ``app._swap_runtime_services`` seam (``src/main.py``),\nwhich rebinds every place a query can read a retriever. Assigning\n``state.retriever`` alone left every query path — /query, /v2, /v3 — on the\nold table while this route reported a successful reload.\n\nA drain that does not finish inside ``drain_timeout_s`` is a refusal, not a\nwarning: nothing is swapped, the old retriever is not closed, and the answer\nis 409. Swapping anyway would close a retriever a request is still reading,\nwhich is the AttributeError ``src/app/request_tracker.py`` documents. Only an\nexplicit ``force_while_in_flight`` swaps past a timeout.",
+        "operationId": "reload_table_admin_reload_table_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReloadTableRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReloadTableResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reload Table",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/rollback": {
+      "post": {
+        "description": "Roll canonical + retrieval back to the last good release, together.\n\nBoth levels move as one unit: the canonical pointer (step C), then the\nLanceDB tag and the running runtime (step D). If step D fails, the pre-call\nstate is restored (step E) and the 5xx names both failures. The ROLLBACK\naudit event is emitted only after both levels have moved, so the ledger\nnever records a rollback that did not happen.\n\nThe same ``_reload_lock`` a blue-green reload holds is taken here: a reload\nand a rollback both change what every query reads, so they must not overlap.\n\nThe same ``request_tracker.gate`` a blue-green reload holds is taken here\ntoo, for the same reason: step D rebinds the runtime every query path reads,\nso an in-flight query still holding the old retriever would be answered from\na release the ledger just recorded as rolled back. Admission reopens once\nstep D has completed.\n\nA drain that times out is refused with 409 (FIX-01), exactly as the reload\nroute refuses one: the old \"log and proceed\" policy answered a request from\nthe release being rolled away from, and closed the table under it. The\nrollback that must happen anyway is ``force_while_in_flight=true`` — an\nexplicit emergency decision by the caller, recorded in the response.\n\nIdempotency (ticket 27): ``target_release_id`` is optional, and without it\nthe target is resolved from the *current* pointer. A replayed implicit\nrollback therefore resolves a *different* target — R3→R2, then R2→R1 — and\nwalks back two releases for what the caller believed was one action. No\nstate comparison catches that (the two calls legitimately differ), so an\n``Idempotency-Key`` is the only thing that can. With one, a replay returns\nthe first call's stored response and does not run again.",
+        "operationId": "rollback_release_admin_rollback_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Release",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/source-documents": {
+      "get": {
+        "description": "Every registered source document, sorted by id.",
+        "operationId": "list_source_documents_admin_source_documents_get",
+        "parameters": [
+          {
+            "description": "also list entries that were retired",
+            "in": "query",
+            "name": "include_retired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "also list entries that were retired",
+              "title": "Include Retired",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDocumentListView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Source Documents",
+        "tags": [
+          "admin",
+          "admin-source-documents"
+        ]
+      }
+    },
+    "/admin/source-documents/backfill": {
+      "post": {
+        "description": "Register every file-backed document the record store already cites.\n\nDerived from the store, so a citation nobody thought to list is still\nregistered; corpus pointers are counted and skipped by design. Safe to\nrepeat — a second call reports ``already_registered`` and writes nothing.",
+        "operationId": "backfill_source_documents_admin_source_documents_backfill_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackfillView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Backfill Source Documents",
+        "tags": [
+          "admin",
+          "admin-source-documents"
+        ]
+      }
+    },
+    "/admin/source-documents/blind-citations": {
+      "get": {
+        "description": "Record versions citing a document the registry does not hold.\n\nRead-only and non-blocking: nothing here stops a publish (Ghi chú 2 — the\nenforce step is a later ticket, once this list is clean for real).",
+        "operationId": "list_blind_citations_admin_source_documents_blind_citations_get",
+        "parameters": [
+          {
+            "description": "which record versions to scan; 'published' is the criterion's population, 'all' measures every stored version",
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "published",
+              "description": "which record versions to scan; 'published' is the criterion's population, 'all' measures every stored version",
+              "enum": [
+                "published",
+                "all"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlindCitationListView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Blind Citations",
+        "tags": [
+          "admin",
+          "admin-source-documents"
+        ]
+      }
+    },
+    "/admin/source-documents/content": {
+      "get": {
+        "description": "Serve the registered source file as raw bytes.\n\n``document_id`` is looked up verbatim, resolved through the registry\n(so a ``..`` escape is refused), and read back raw: a returned body is\nbyte-identical to the file on disk. Missing entry / path-escape / absent\nfile all answer 404; an unauthenticated caller answers 422 per the\nadmin surface's established convention.",
+        "operationId": "get_source_document_content_admin_source_documents_content_get",
+        "parameters": [
+          {
+            "description": "the registered document id; the file is served byte-for-byte",
+            "in": "query",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "the registered document id; the file is served byte-for-byte",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source Document Content",
+        "tags": [
+          "admin",
+          "admin-source-documents"
+        ]
+      }
+    },
+    "/admin/source-documents/from-url": {
+      "post": {
+        "description": "Fetch a pasted notification URL and draft / refresh its record.\n\n- the same URL with the same bytes again → ``unchanged``, nothing written;\n- changed bytes → a new version of the same record, back at ``draft``;\n- localhost / private / link-local hosts and non-http(s) schemes are 400\n  before any socket is opened;\n- the page is streamed under a byte cap, and the fetch is retried with\n  backoff on 5xx and transport errors, then 502.",
+        "operationId": "ingest_from_url_admin_source_documents_from_url_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UrlIngestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UrlIngestReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest From Url",
+        "tags": [
+          "admin",
+          "admin-url-ingest"
+        ]
+      }
+    },
+    "/admin/source-documents/register": {
+      "post": {
+        "description": "Register a source document that already sits in the repo.\n\nRegistration by reference, not upload: the file must be at\n``repo_root / document_id``. Its sha256 is taken now; a missing file\nregisters as ``file_present=false`` (an observation, not an error — the\nPDFs are gitignored).",
+        "operationId": "register_source_document_admin_source_documents_register_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDocumentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Source Document",
+        "tags": [
+          "admin",
+          "admin-source-documents"
+        ]
+      }
+    },
+    "/admin/source-documents/registered": {
+      "get": {
+        "description": "Answer \"is this document id in the registry?\" for one id.\n\nThe id is a query parameter, never a path segment: it carries slashes and\nVietnamese, and the response echoes it back unchanged so a caller can see\nthe verbatim round trip.",
+        "operationId": "check_registered_admin_source_documents_registered_get",
+        "parameters": [
+          {
+            "description": "the citation, verbatim",
+            "in": "query",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "the citation, verbatim",
+              "minLength": 1,
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisteredCheckView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check Registered",
+        "tags": [
+          "admin",
+          "admin-source-documents"
+        ]
+      }
+    },
+    "/admin/source-documents/retire": {
+      "post": {
+        "description": "Stop vouching for a document; the entry stays as history.",
+        "operationId": "retire_source_document_admin_source_documents_retire_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetireRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDocumentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Source Document",
+        "tags": [
+          "admin",
+          "admin-source-documents"
+        ]
+      }
+    },
+    "/admin/source-documents/update": {
+      "post": {
+        "description": "Re-observe a registered document (new hash and/or new note).\n\nThis is how a file whose content changed after records cited it becomes\nvisible: the response's ``sha256`` differs from the previous revision's,\nand the audit event names both revisions.",
+        "operationId": "update_source_document_admin_source_documents_update_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDocumentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Source Document",
+        "tags": [
+          "admin",
+          "admin-source-documents"
+        ]
+      }
+    },
+    "/admin/source-documents/upload": {
+      "post": {
+        "description": "Upload a PDF/DOCX/XLSX, read it in a subprocess, and draft records.\n\n- magic bytes decide the kind; the extension is not read at all, so\n  a ``.exe`` renamed ``.pdf`` is 415;\n- the same bytes again are 409 (the registry's content-hash key);\n- 20 MB cap and 300-page cap are 400;\n- a decompression bomb is refused *in the parser subprocess* and the\n  route answers 400 while ``/v2/query`` keeps serving — the\n  isolation is the whole point of the ticket;\n- an XLSX drafts one record per data row (ticket T17).",
+        "operationId": "upload_source_document_admin_source_documents_upload_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_source_document_admin_source_documents_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Source Document",
+        "tags": [
+          "admin",
+          "admin-document-upload"
+        ]
+      }
+    },
+    "/admin/unanswered/": {
+      "get": {
+        "description": "Open unanswered questions, newest first, with the resolution markers.\n\nBy default only open items are returned (the ones the team still needs to\nreview); pass ``resolved=true`` to see everything, including items T15\nalready resolved.",
+        "operationId": "list_unanswered_admin_unanswered__get",
+        "parameters": [
+          {
+            "description": "Include resolved items too",
+            "in": "query",
+            "name": "resolved",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Include resolved items too",
+              "title": "Resolved"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnansweredList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Unanswered",
+        "tags": [
+          "admin",
+          "admin"
+        ]
+      }
+    },
+    "/admin/warmup": {
+      "post": {
+        "description": "Pre-warm heavy services (embedding model, LLM connection).\nCall after deploy before serving production traffic.\n@spec(S10.B7)",
+        "operationId": "warmup_admin_warmup_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Warmup Admin Warmup Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Warmup",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/meta": {
+      "get": {
+        "description": "Return banner-ready meta data: current year + freshness status.\n\nResolution order for freshness fields:\n  1. app.state.retriever.metadata_snapshot() if present.\n  2. rag2025/data/audit_pre_reingest.json fallback.\n  3. None (FE renders with env year only).\n\nContract: `retriever.metadata_snapshot()` MUST be a pure in-memory read.\nIf the retriever needs I/O to compute snapshot data, it should pre-cache\nthose values during startup. Otherwise wrap the call in asyncio.to_thread\nto avoid blocking the event loop.",
+        "operationId": "get_meta_api_meta_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Meta",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/debug/preview-chunks": {
+      "post": {
+        "description": "Preview chunking results without saving to disk\n\nThis endpoint is useful for UAT and testing chunking quality",
+        "operationId": "preview_chunks_debug_preview_chunks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChunkPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChunkPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Chunks",
+        "tags": [
+          "Debug/Tools"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Health check with LanceDB connection + warmup readiness contract.\n\nNew fields (Phase 1 of warmup-ux):\n  - `ready: bool`  — True when all core subsystems are wired up.\n  - `stage: 'warming'|'ready'|'failed'`  — set by the lifespan state machine.\n  - `services: dict`  — per-subsystem boolean map for diagnostics.\n  - `reranker_load_ok: bool`  — ticket 40: the reranker is exactly as\n    configured (loaded or intentionally off); False only when the model\n    is dead or was never initialized.\n\nLegacy fields (`status`, `lancedb_connected`, `embedding_model`,\n`reranker_model`, `metrics`) are preserved for backward compat.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Check",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "description": "Lightweight internal metrics endpoint.",
+        "operationId": "metrics_endpoint_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Metrics Endpoint Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics Endpoint"
+      }
+    },
+    "/query": {
+      "post": {
+        "description": "Main RAG endpoint with HYDE multi-variant enhancement\n\nFlow:\n1. HYDE: user query → 3-5 query variants\n2. Embedding: encode ALL variants to vectors\n3. LanceDB retrieval: retrieve chunks for ALL variants\n4. Merge & Deduplicate: combine results from all variants\n5. LLM: generate answer from merged chunks",
+        "operationId": "query_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimpleQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query"
+      }
+    },
+    "/v2/compare": {
+      "post": {
+        "description": "Build a same-year comparison table for several majors.\n\nThe comparison contract lives in :class:`ComparisonResponse`; read its\ndocstring for the three guarantees (same effective year, per-cell\nprovenance, missing cells marked not inferred).",
+        "operationId": "compare_v2_compare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare",
+        "tags": [
+          "v2",
+          "v2"
+        ]
+      }
+    },
+    "/v2/feedback": {
+      "post": {
+        "description": "Student 👍/👎 feedback on a served answer.\n\nPublic endpoint: no authentication — it is the student talking to the\nsystem, not the office. Idempotent by ``trace_id``: a second rating for\nthe same answer returns the existing record instead of appending a\nduplicate. The feedback is anchored to the unanswered queue when a queued\nitem exists for the same ``trace_id``.\n\nMalformed input (empty/oversized ``trace_id``, oversized ``reason``) is\nrefused with 400 — the queue service's ``ValueError`` contract — rather\nthan surfacing as an unhandled 500. A malformed request must never\nregister as a server fault.",
+        "operationId": "feedback_v2_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Feedback",
+        "tags": [
+          "feedback"
+        ]
+      }
+    },
+    "/v2/graph/stats": {
+      "get": {
+        "description": "Return current knowledge graph statistics.",
+        "operationId": "graph_stats_v2_graph_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Graph Stats"
+      }
+    },
+    "/v2/graph/update": {
+      "post": {
+        "description": "Incrementally add new chunks to the knowledge graph.\n\nRequest body: {\"chunks\": [{\"id\": \"...\", \"text\": \"...\", \"faq_type\": \"...\"}]}\n\nEnables 10-20 year scalability: add new admission data without full rebuild.",
+        "operationId": "incremental_graph_update_v2_graph_update_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Request",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Incremental Graph Update"
+      }
+    },
+    "/v2/query": {
+      "post": {
+        "description": "Unified RAG query: auto-routes to PaddedRAG or GraphRAG.\n\n- Simple 1-hop queries → PaddedRAG (faster, ~150ms)\n- Multi-hop / comparative → GraphRAG (+PPR, ~400ms)\n\nRouting is performed by HyDE + Step-Back classification using gemini-3.5-flash-lite.",
+        "operationId": "unified_query_v2_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnifiedQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnifiedQueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unified Query"
+      }
+    },
+    "/v2/query/stream": {
+      "post": {
+        "description": "SSE true-token-stream variant of /v2/query.\n\nStage events → meta → token deltas → done (guarded). FE reconciles\non done if deltas differ from guarded answer.",
+        "operationId": "unified_query_stream_v2_query_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnifiedQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unified Query Stream"
+      }
+    },
+    "/v2/recommend": {
+      "post": {
+        "description": "Rank HUSC majors by a candidate's (score + ưu_tiên) vs điểm chuẩn.\n\nReturns a deterministic, pure-arithmetic ranking — no LLM call, no\nnetwork, no DB. Response time is single-digit ms.",
+        "operationId": "post_recommend_v2_recommend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Recommend",
+        "tags": [
+          "recommender"
+        ]
+      }
+    },
+    "/v2/whatif": {
+      "post": {
+        "description": "Return a band-based probability estimate for one specific major.\n\nUnknown major_code → graceful BLOCKED-style payload (band=unknown_major,\nbasis/disclaimer surfaced, NEVER 500).",
+        "operationId": "post_whatif_v2_whatif_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhatIfRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhatIfResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Whatif",
+        "tags": [
+          "recommender"
+        ]
+      }
+    },
+    "/v3/query": {
+      "post": {
+        "description": "V3 query: Hybrid (Dense+BM25 RRF) + Booster + Reranker + Generator.\n\nFlow:\n  1. Embedding service: encode query\n  2. HybridSearchService.retrieve(top_k=candidate_pool) → fused docs\n     (fallback dense-only nếu hybrid_search_service is None)\n  3. boost_with_aggregation(query, docs, max_inject=2)\n  4. reranker.rerank(query, chunks, top_k, apply_lost_in_middle)\n  5. llm_generator.generate_answer(query, chunks, confidence, is_enum)",
+        "operationId": "v3_query_v3_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/V3QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/V3QueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "V3 Query"
+      }
+    },
+    "/warmup": {
+      "get": {
+        "description": "Preload the embedding model to remove the cold-start penalty from\nthe user's first real query. Returns 503 if the service is not yet\ninitialized; otherwise 200 with the warmup latency in ms.",
+        "operationId": "warmup_endpoint_warmup_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Warmup Endpoint Warmup Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Warmup Endpoint"
+      }
+    }
+  }
+}

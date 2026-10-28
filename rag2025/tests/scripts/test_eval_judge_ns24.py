@@ -1,8 +1,8 @@
-"""TDD tests for Slice S5c — Ramclouds secondary judge + Cohen's κ agreement.
+"""TDD tests for Slice S5c — ns24 secondary judge + Cohen's κ agreement.
 
 The PRIMARY judge is the Opus subagent (cross-vendor, breaks self-grading).
 This slice adds a SECONDARY judge using the project's own `UnifiedLLMClient`
-(ramclouds) — NOT to score the system, but to quantify judge-vendor
+(ns24) — NOT to score the system, but to quantify judge-vendor
 AGREEMENT (Cohen's κ) with the Opus verdicts.
 
 Contract under test:
@@ -16,11 +16,11 @@ Contract under test:
       - Score every item in a prepared batch (dict with items[]).
   * cohens_kappa(labels_a, labels_b) -> float
       - Standard Cohen's κ (po, pe). Edge cases handled.
-  * binned_kappa(opus_scores, ramclouds_scores, *, bins=(0.5, 0.8))
+  * binned_kappa(opus_scores, ns24_scores, *, bins=(0.5, 0.8))
       - Bin into low/mid/high, drop null pairs, return κ.
-  * agreement_report(opus_verdicts, ramclouds_verdicts) -> dict
+  * agreement_report(opus_verdicts, ns24_verdicts) -> dict
       - per_metric_kappa, n_compared, mean_abs_diff for 4 metrics.
-      - MUST NOT include a "headline_score" key (ramclouds = agreement only).
+      - MUST NOT include a "headline_score" key (ns24 = agreement only).
 """
 from __future__ import annotations
 
@@ -36,16 +36,16 @@ import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]  # rag2025/
 SCRIPTS_DIR = REPO_ROOT / "scripts"
-SCRIPT_PATH = SCRIPTS_DIR / "eval_judge_ramclouds.py"
+SCRIPT_PATH = SCRIPTS_DIR / "eval_judge_ns24.py"
 
 
 # ---------- Module loader ----------
 
 @pytest.fixture(scope="module")
 def jr_module():
-    """Import eval_judge_ramclouds.py as a module (no side effects)."""
+    """Import eval_judge_ns24.py as a module (no side effects)."""
     assert SCRIPT_PATH.is_file(), f"missing script: {SCRIPT_PATH}"
-    spec = importlib.util.spec_from_file_location("eval_judge_ramclouds", SCRIPT_PATH)
+    spec = importlib.util.spec_from_file_location("eval_judge_ns24", SCRIPT_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -224,7 +224,7 @@ def test_cohens_kappa_partial_agreement(jr_module) -> None:
 # ============================================================================
 
 def test_binned_kappa_drops_null_pairs(jr_module) -> None:
-    """opus=[0.9,0.4,null,0.85], ramclouds=[0.95,0.45,0.7,null]
+    """opus=[0.9,0.4,null,0.85], ns24=[0.95,0.45,0.7,null]
         index 0: opus=0.9 (high) , ram=0.95 (high)  → (high, high) agree
         index 1: opus=0.4 (low)  , ram=0.45 (low)   → (low, low)   agree
         index 2: opus=null       → DROPPED
@@ -267,7 +267,7 @@ def test_binned_kappa_mixed_binning(jr_module) -> None:
 
 def test_agreement_report_shape_and_no_headline(jr_module) -> None:
     """agreement_report returns per-metric κ + n_compared + mean_abs_diff,
-    and MUST NOT include a headline_score key (ramclouds is agreement only).
+    and MUST NOT include a headline_score key (ns24 is agreement only).
     """
     opus_verdicts = [
         {
@@ -334,7 +334,7 @@ def test_agreement_report_shape_and_no_headline(jr_module) -> None:
     ):
         assert report["n_compared"][metric] == 2
 
-    # CRITICAL: ramclouds scores must NOT be presented as the headline scorer.
+    # CRITICAL: ns24 scores must NOT be presented as the headline scorer.
     assert "headline_score" not in report
     # Also explicitly: no field name that suggests a single combined verdict.
     forbidden = {"system_score", "final_score", "primary_score", "headline"}
@@ -346,7 +346,7 @@ def test_agreement_report_shape_and_no_headline(jr_module) -> None:
 # ============================================================================
 
 def test_mean_abs_diff_simple(jr_module) -> None:
-    """opus faithfulness [0.8, 0.6], ramclouds [0.7, 0.6]
+    """opus faithfulness [0.8, 0.6], ns24 [0.7, 0.6]
         |0.8-0.7| = 0.1, |0.6-0.6| = 0.0  →  mean = 0.05
     """
     opus_verdicts = [

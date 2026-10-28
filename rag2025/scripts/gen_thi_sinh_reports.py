@@ -40,7 +40,7 @@ for r in results:
 # ──────────────────────────────────────────────────────────────────────
 chuyen_mon = []
 chuyen_mon.append("# Báo cáo chuyên môn — 86 câu thí sinh thực (Phase E)\n")
-chuyen_mon.append(f"**Ngày**: 2026-05-30 | **Pipeline**: SmartRouter (HyDE + Step-Back) → PaddedRAG/GraphRAG → {meta.get('gen_model', 'mimo-v2.5-pro')}\n")
+chuyen_mon.append(f"**Ngày**: 2026-05-30 | **Pipeline**: SmartRouter (HyDE + Step-Back) → PaddedRAG/GraphRAG → {meta.get('gen_model', 'gpt-6-luna')}\n")
 chuyen_mon.append(f"**Phase E enhancements**: Anti-fallback retry • Aggregation booster (12 rules) • Router cache (LRU)\n")
 chuyen_mon.append("\n---\n")
 chuyen_mon.append("## 1. Tổng quan\n")
@@ -53,8 +53,8 @@ chuyen_mon.append(f"| Latency median | {statistics.median(lats):.1f}s |\n")
 chuyen_mon.append(f"| Routing PaddedRAG | {routes['padded_rag']} câu ({routes['padded_rag']/n*100:.1f}%) |\n")
 chuyen_mon.append(f"| Routing GraphRAG | {routes['graph_rag']} câu ({routes['graph_rag']/n*100:.1f}%) |\n")
 chuyen_mon.append(f"| Embedding | Qwen3-Embedding-0.6B (1024-dim) |\n")
-chuyen_mon.append(f"| Generation model | {meta.get('gen_model', 'mimo-v2.5-pro')} (primary) + gpt-5.4 (fallback) via ramclouds.me |\n")
-chuyen_mon.append(f"| NER + HyDE model | gpt-5.3 |\n")
+chuyen_mon.append(f"| Generation model | {meta.get('gen_model', 'gpt-6-luna')} (primary) + {meta.get('gen_fallback_model', 'claude-haiku-5-5')} (fallback) via ns24 gateway |\n")
+chuyen_mon.append(f"| NER + HyDE model | gemini-3.5-flash-lite |\n")
 
 chuyen_mon.append("\n## 2. Phân bố theo intent\n")
 chuyen_mon.append("| Intent | Số câu | Có câu trả lời | Tỷ lệ |\n|---|---:|---:|---:|\n")

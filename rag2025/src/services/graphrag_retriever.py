@@ -27,7 +27,7 @@ from loguru import logger
 
 from src.domain.entities import Chunk
 from src.domain.graph import KnowledgeGraph, KnowledgeGraphBuilder
-from src.services.llm_client import UnifiedLLMClient, get_llm_client
+from src.services.llm_client import UnifiedLLMClient, get_llm_client, get_router_llm_client
 from src.services.ner_service import NERService
 from src.services.query_router import QueryRoute, RouterResult, SmartQueryRouter
 from src.services.lancedb_retrieval import RetrievedDocument
@@ -567,13 +567,10 @@ class UnifiedRAGPipeline:
         path = graph_path or GRAPH_PATH
         settings = RAGSettings()
 
-        # Separate LLM clients for router vs NER (extraction).
-        # Router model = effective_router_model (RAMCLOUDS_ROUTER_MODEL or
-        # falls back to RAMCLOUDS_HYDE_MODEL — true no-op default per ADR-D).
-        # Lets us pin a stronger model for routing/HyDE/classify without
-        # slowing generation (S15.4).
-        router_llm = get_llm_client(force_model=settings.effective_router_model)
-        ner_llm = get_llm_client(force_model=settings.RAMCLOUDS_NER_MODEL)
+        # Separate ns24 role clients for router vs NER (extraction). Each role
+        # carries its own primary model and same-gateway fallback from config.
+        router_llm = get_router_llm_client()
+        ner_llm = get_llm_client(role="ner")
 
         ner = NERService(llm=ner_llm)
         router = SmartQueryRouter(

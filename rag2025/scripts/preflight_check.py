@@ -231,23 +231,14 @@ def check_llm_readiness() -> bool:
     try:
         config = RAGSettings()
 
-        providers = []
-        if config.RAMCLOUDS_API_KEY or config.OPENAI_API_KEY:
-            model = getattr(config, "RAMCLOUDS_MODEL", "") or "(default model)"
-            providers.append(f"ramclouds/openai-compat [{model}]")
-        if config.GROQ_API_KEY:
-            providers.append("groq")
-        if config.ZAI_API_KEY:
-            providers.append("zai/glm")
-
-        if providers:
-            print_success(f"Generation providers configured: {', '.join(providers)}")
+        if config.NS24_API_KEY:
+            print_success("LLM gateway key configured: NS24_API_KEY")
             print("")
             return True
 
-        print_warning("No generation provider key found (RAMCLOUDS_API_KEY/OPENAI_API_KEY/GROQ_API_KEY/ZAI_API_KEY)")
+        print_warning("No LLM gateway key found (NS24_API_KEY)")
         print_warning("API can still boot for /docs and health checks, but answer generation may run in degraded fallback mode.")
-        print_warning("Set at least one provider key for full generation quality.")
+        print_warning("Set NS24_API_KEY for full generation quality.")
         print("")
         return True
 

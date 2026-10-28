@@ -85,29 +85,19 @@ IN_SCOPE_OK_QUERIES = [
 
 
 def _build_service(monkeypatch):
-    """Build a GuardrailService with the Groq client mocked out so no
-    network call happens during precheck()."""
-    monkeypatch.setenv("GROQ_API_KEY", "test-fake-groq-key")
-
+    """Build a GuardrailService whose ns24 guardrail client raises if called,
+    so no network call happens during precheck()."""
     from config.settings import RAGSettings
     from services import guardrail as guardrail_mod
 
-    class _FakeChat:
-        class completions:
-            @staticmethod
-            async def create(*args, **kwargs):
-                raise RuntimeError(
-                    "LLM must NOT be called for fast-path / denylist hits"
-                )
+    async def _must_not_call(**_kw):
+        raise RuntimeError("LLM must NOT be called for fast-path / denylist hits")
 
-    class _FakeAsyncGroq:
-        def __init__(self, *a, **kw):
-            self.chat = _FakeChat()
-
-    monkeypatch.setattr(guardrail_mod, "AsyncGroq", _FakeAsyncGroq)
     guardrail_mod.GuardrailService.clear_major_scope_cache_for_testing()
-    settings = RAGSettings()
-    return guardrail_mod.GuardrailService(settings)
+    svc = guardrail_mod.GuardrailService(RAGSettings(_env_file=None))
+    svc._llm.chat_json = _must_not_call
+    svc._model = "fake-guardrail-model"
+    return svc
 
 
 @pytest.mark.parametrize("query", OOS_QUERIES)

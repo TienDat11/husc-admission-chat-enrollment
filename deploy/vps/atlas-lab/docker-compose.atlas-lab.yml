@@ -1,0 +1,124 @@
+# atlas-lab — staging release compose (parallel to ragre on the shared VPS).
+#
+# Layout assumption: this file lives at deploy/vps/atlas-lab/ in a repo checkout
+# with the same tree as the local repo, so the relative build contexts below
+# resolve:
+#   deploy/vps/atlas-lab/ -> ../../../ = repo root
+#
+# Run from a release checkout, e.g. /srv/atlas-lab/releases/<RELEASE_ID>/:
+#   RELEASE_ID=<id> CADDY_ADMIN_EMAIL=<email> \
+#     docker compose -f deploy/vps/atlas-lab/docker-compose.atlas-lab.yml \
+#       up -d --build
+#
+# Secrets: app reads /srv/atlas-lab/shared/atlas.env (required: true). It does
+# NOT exist until it is written on the VPS. The name is deliberately not ".env":
+# the local secret guard refuses ".env" paths.
+#
+# Data: /srv/atlas-lab/shared/data is mounted at /data and MUST contain:
+#   lancedb/husc_chunks.lance/         (LANCEDB_URI=/data/lancedb)
+#   graph/knowledge_graph.graphml      (GRAPH_PATH resolves to /app/data/graph,
+#   graph/entity_index.json             which is symlinked to /data by the
+#   graph/ner_cache.jsonl               backend Dockerfile: RUN ln -sfn /data /app/data)
+#   canonical_store/                   (CANONICAL_STORE_ROOT=/data/canonical_store)
+#   major_codes/, canonical_corpus/    (guardrail / recommender / admin re-index)
+#
+# Caddy's `tls` directive (deploy/vps/atlas-lab/Caddyfile) reads the cert and key
+# statically from /etc/atlas-tls. Caddy will NOT renew them; they are a copy of
+# ragre's CertMagic output, which ragre renews. Re-check expiry (notAfter
+# 2027-01-18) and recreate this container after ragre renews.
+# OPS: ragre renews the sslip cert (next expiry 2027-01-18); after that renewal, restart atlas-lab-web (Caddy loads the cert only at startup).
+
+name: atlas-lab
+
+services:
+  app:
+    build:
+      context: ../../../rag2025
+      dockerfile: Dockerfile
+    image: atlas-lab-api:${RELEASE_ID:?set RELEASE_ID}
+    env_file:
+      - path: /srv/atlas-lab/shared/atlas.env
+        required: true
+    environment:
+      LANCEDB_URI: /data/lancedb
+      DATA_DIR: /data
+      HF_HOME: /data/hf-cache
+      CANONICAL_STORE_ROOT: /data/canonical_store
+    # Uvicorn only honours X-Forwarded-* from the web container's fixed IP (see command).
+    # Not read from env: uvicorn takes this as a CLI flag.
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "172.20.0.10"]
+    volumes:
+      - /srv/atlas-lab/shared/data:/data
+      - /srv/atlas-lab/shared/hf-cache:/data/hf-cache
+    # No `ports:` — reachable only from the web container on the atlas-lab network.
+    networks:
+      atlas-lab:
+        ipv4_address: 172.20.0.2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      # Cold HF cache: first boot downloads Qwen/Qwen3-Embedding-0.6B (~1.2 GB) and
+      # the cross-encoder before the model loads. 600s + 10 retries covers that;
+      # a shorter window would mark app unhealthy and block `web` (depends_on
+      # service_healthy), which looks like a crash. Not a retry loop hack.
+      retries: 10
+      start_period: 600s
+    restart: unless-stopped
+    deploy:
+      resources:
+        # PROVISIONAL starting limits; tune against measured RSS and CPU after first boot.
+        limits:
+          memory: 3500M
+          cpus: "2.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  web:
+    build:
+      context: ../../../uni-guide-ai
+      dockerfile: Dockerfile
+      additional_contexts:
+        # uni-guide-ai/Dockerfile: COPY --from=repo api/openapi.json and rag2025/Caddyfile
+        repo: ../../..
+    image: atlas-lab-web:${RELEASE_ID:?set RELEASE_ID}
+    ports:
+      # Public demo binding on all interfaces (UFW must allow 8443/tcp).
+      # Public cutover to port 443 changes this to "443:443".
+      - "8443:443"
+    volumes:
+      # Directory mount (CertMagic renames atomically; file mounts would go stale).
+      # Host dir is ragre's per-host cert dir, read-only.
+      - /var/lib/docker/volumes/ragre_ragre_caddy_data/_data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/14-225-81-171.sslip.io:/etc/atlas-tls:ro
+      # Override of the image's Caddyfile: copy of rag2025/Caddyfile with one `tls` line.
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    environment:
+      DOMAIN: 14-225-81-171.sslip.io
+      CADDY_ADMIN_EMAIL: ${CADDY_ADMIN_EMAIL:?set CADDY_ADMIN_EMAIL}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      atlas-lab:
+        ipv4_address: 172.20.0.10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+networks:
+  atlas-lab:
+    driver: bridge
+    ipam:
+      config:
+        # 172.17-19.x are taken by docker0, ragre_default, tmail_tmail_default.
+        - subnet: 172.20.0.0/24

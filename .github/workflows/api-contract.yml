@@ -4,8 +4,15 @@ on:
   pull_request:
     paths:
       - 'rag2025/src/**'
+      - 'rag2025/scripts/export_openapi.py'
       - 'uni-guide-ai/src/lib/api-types.ts'
+      - 'uni-guide-ai/src/lib/adminApi.ts'
+      - 'uni-guide-ai/src/lib/api.ts'
+      - 'uni-guide-ai/tests/contract/**'
+      - 'uni-guide-ai/tests-smoke/**'
+      - 'uni-guide-ai/scripts/**'
       - 'api/openapi.json'
+      - '.github/workflows/api-contract.yml'
 
 jobs:
   api-contract:
@@ -28,6 +35,12 @@ jobs:
 
       - run: cd uni-guide-ai && npm ci
 
+      # Runs against the committed api/openapi.json, before the export step
+      # overwrites it — this is the gate that a backend field/enum change
+      # left un-regenerated trips on.
+      - name: Contract tests (read committed schema)
+        run: cd uni-guide-ai && npx vitest run tests/contract
+
       - name: Export OpenAPI schema
         run: python rag2025/scripts/export_openapi.py
         env:
@@ -40,3 +53,9 @@ jobs:
         run: |
           git diff --exit-code api/openapi.json uni-guide-ai/src/lib/api-types.ts
         # Failure indicates BE/FE schema drift — regen locally and commit.
+
+      # Needs the Python backend, so it is its own step, never folded into
+      # `npm test`. The orchestrator exits non-zero with a printed reason
+      # when the server cannot start — a broken backend can never skip green.
+      - name: Cross-stack CRUD smoke (real client vs real server)
+        run: cd uni-guide-ai && npm run test:smoke

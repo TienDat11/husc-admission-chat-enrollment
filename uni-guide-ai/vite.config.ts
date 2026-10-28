@@ -22,6 +22,10 @@ export default defineConfig(({ mode }) => ({
       "Referrer-Policy": "strict-origin-when-cross-origin",
     },
   },
+  preview: {
+    host: "::",
+    port: 8080,
+  },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {

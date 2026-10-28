@@ -2,16 +2,12 @@
 LLM Answer Generation Service (Generation Layer)
 
 Generate final answer from retrieved chunks using:
-- UnifiedLLMClient provider chain (ramclouds/gemini primary)
-- Groq / OpenAI-compatible fallbacks via llm_client
-- Optional direct GLM-4.5 (Z.AI) path when available
+- ns24 ``gen`` role client (config/ns24_models.py) — same-gateway fallback inside the client
 """
 import asyncio
-import os
 import re
 from pathlib import Path
 from typing import AsyncIterator, List, Dict, Any, Optional, Tuple
-from groq import AsyncGroq
 from tenacity import retry, stop_after_attempt, wait_exponential
 from loguru import logger
 
@@ -20,13 +16,13 @@ from services.llm_client import get_llm_client
 from services.risky_intent import infer_intent_from_query, RISKY_INTENTS
 from services.temporal_authority import get_current_admission_year
 from services._metadata_helpers import get_source_label, get_source_url
+from services.citation import build_citations
+from services.injection_guard import (
+    escape_untrusted_text,
+    render_untrusted_block,
+    restrict_to_allowed_corpus,
+)
 
-try:
-    from zai import ZaiClient
-    ZAI_AVAILABLE = True
-except ImportError:
-    ZAI_AVAILABLE = False
-    logger.warning("zai-sdk not installed. GLM-4.5 direct path will be disabled.")
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +210,34 @@ _TABLE_ROW_RX = re.compile(r"^\|.*\|$")
 _TABLE_SEP_RX = re.compile(r"^\|[\s\-:\|]+\|$")
 
 
+# ---------------------------------------------------------------------------
+# LaTeX display normalisation — see _normalize_answer_display below.
+# Commands are matched longest-first so `\times` is not eaten by a `\t` rule,
+# and each replacement is Unicode the Vietnamese web font already covers.
+# ---------------------------------------------------------------------------
+_LATEX_SYMBOLS: tuple[tuple[str, str], ...] = (
+    (r"\times", "×"),
+    (r"\div", "/"),
+    (r"\cdot", "·"),
+    (r"\leq", "≤"),
+    (r"\geq", "≥"),
+    (r"\neq", "≠"),
+    (r"\approx", "≈"),
+    (r"\pm", "±"),
+    (r"\rightarrow", "→"),
+    (r"\to", "→"),
+    (r"\Rightarrow", "⇒"),
+    (r"\left", ""),
+    (r"\right", ""),
+    (r"\displaystyle", ""),
+    (r"\%", "%"),
+    (r"\,", " "),
+    (r"\;", " "),
+    (r"\:", " "),
+    (r"\!", ""),
+)
+
+
 def _validate_markdown_table(answer: str) -> str:
     """Post-guard for LLM-emitted GFM tables before they reach the FE.
 
@@ -285,6 +309,70 @@ def _validate_markdown_table(answer: str) -> str:
     return "\n".join(out)
 
 
+def _normalize_answer_display(answer: str) -> str:
+    r"""Convert LaTeX math the model still emits into plain readable text.
+    The generation prompt bans raw LaTeX, but a prompt is a request, not a
+    guarantee — students were shown the literal string
+    ``$$\text{Học phí} = \text{Số tín chỉ} \times 600.000\text{ VNĐ}$$``
+    because the FE renders markdown without a math plugin. Rather than add a
+    KaTeX dependency (and a JS payload) to a chatbot that only ever needs
+    admissions arithmetic, flatten the markup deterministically.
+
+    Delimiters are unwrapped and known commands mapped to their Unicode
+    equivalent. An unknown command is left verbatim: a partially-understood
+    formula is worse than an obviously-broken one, and leaving it visible keeps
+    the defect reportable.
+    """
+    if not answer:
+        return answer
+
+    out = answer
+
+    # Unwrap math delimiters, outermost first. `$$` before `$` so a display
+    # block does not leave stray `$` behind.
+    for opener, closer in (("$$", "$$"), (r"\[", r"\]"), (r"\(", r"\)")):
+        out = out.replace(opener, "").replace(closer, "")
+
+    # Inline `$...$`. A lone `$` is a currency amount, not a delimiter, so this
+    # requires the paired content to actually look like math: it must contain a
+    # backslash command or a math operator. Without that test, ordinary prose
+    # like "giá $5 và $10" pairs the two dollar signs and silently deletes the
+    # currency marks — worse than leaving the LaTeX visible.
+    out = re.sub(r"\$([^$\n]*\\[a-zA-Z]+[^$\n]*)\$", r"\1", out)
+    out = re.sub(r"\$([^$\n]*[=+\-*/^_][^$\n]*)\$", r"\1", out)
+
+    # \text{...} / \mathrm{...} / \mathbf{...}: keep the content, drop the wrapper.
+    # Bounded repetition handles nesting one level deep, which is all the model emits.
+    for _ in range(4):
+        new = re.sub(r"\\(?:text|mathrm|mathbf|mathit)\{([^{}]*)\}", r"\1", out)
+        if new == out:
+            break
+        out = new
+
+    # \frac{a}{b} -> a/b
+    for _ in range(4):
+        new = re.sub(r"\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}", r"\1/\2", out)
+        if new == out:
+            break
+        out = new
+
+    for cmd, repl in _LATEX_SYMBOLS:
+        out = out.replace(cmd, repl)
+
+    # Residual spacing commands. Collapse the whitespace they leave ONLY on
+    # lines that are not markdown table rows: inside a table, `|` cells are
+    # column-aligned with significant runs of spaces, and collapsing them
+    # rewrites the table's byte layout.
+    out = re.sub(r"\\[,;:!]", " ", out)
+    out = re.sub(r"\\quad|\\qquad", " ", out)
+    out = "\n".join(
+        line if line.lstrip().startswith("|") else re.sub(r"[ \t]{2,}", " ", line)
+        for line in out.split("\n")
+    )
+
+    return out
+
+
 def _chunk_text_for_stream(text: str, chunk_size: int = 40) -> List[str]:
     """Split text into word-boundary-safe chunks for SSE delta frames.
 
@@ -318,14 +406,54 @@ def _chunk_text_for_stream(text: str, chunk_size: int = 40) -> List[str]:
     return chunks
 
 
+# ---------------------------------------------------------------------------
+# FIX-05 (ticket 44) — degraded-generation contract.
+#
+# `generate_answer` has two terminal fallbacks that do NOT produce a model
+# completion: no provider configured (`Fallback(NoProvider)`) and every
+# provider raising (`Fallback(Error)`). The answer in both cases is a fixed
+# Vietnamese string written by this module, not by a model.
+#
+# `generate_answer` reports that explicitly through the `generation_failed`
+# key; the `provider` tag stays as the human-readable diagnostic AND as a
+# derived safety net (`is_generation_failure`) so a fallback answer can never
+# be published as SUCCESS even if a caller forgets the flag. /v2 turns either
+# signal into the public `GENERATION_FAILED` status (src/main.py).
+#
+# NOTE: the post-guards in `generate_answer` may append suffixes to
+# `provider` ("Fallback(Error) + season-fallback") — the prefix check is
+# immune to that because every suffix is appended, never prepended.
+# ---------------------------------------------------------------------------
+FALLBACK_PROVIDER_PREFIX = "Fallback("
+
+# T11 refusal tag. A policy refusal is a THIRD kind of answer: no model wrote
+# it (so it must not carry `answer_confidence`), but nothing failed either (so
+# it must not be published as GENERATION_FAILED). `is_generation_failure`
+# cannot see it — the prefix differs — which is exactly how a refusal ended up
+# shipping a numeric `answer_confidence` computed from text no model wrote.
+EVIDENCE_POLICY_PROVIDER_PREFIX = "evidence-policy:"
+
+def is_generation_failure(provider: Optional[str]) -> bool:
+    """True when `provider` tags a terminal fallback (no model output)."""
+    return str(provider or "").lstrip().startswith(FALLBACK_PROVIDER_PREFIX)
+
+def is_policy_refusal(provider: Optional[str]) -> bool:
+    """True when `provider` tags an abstention/conflict decided by policy.
+
+    Distinct from `is_generation_failure`: the answer is intentional and the
+    refusal text is authoritative, so it must NOT be reported as a failure.
+    But no model wrote it, so it must NOT carry a model-confidence number
+    either. Callers use this to keep `answer_confidence` null on refusals.
+    """
+    return str(provider or "").lstrip().startswith(EVIDENCE_POLICY_PROVIDER_PREFIX)
+
 class LLMGenerator:
     """
     Generate final answer from retrieved chunks.
 
     Priority for generation:
-    1) UnifiedLLMClient (ramclouds/gemini primary, with built-in fallbacks)
-    2) Optional direct Z.AI GLM client (if configured)
-    3) Fallback static answer
+    1) UnifiedLLMClient (ns24 gateway: gpt-6-luna primary, claude-haiku-5-5 fallback on the same gateway)
+    2) Fallback static answer
     """
 
     # S15.6 / ADR-F / CF-5 — narrow contact-keyword guard. Fires ONLY when
@@ -387,46 +515,17 @@ class LLMGenerator:
             logger.warning(f"Generation prompt not found at {prompt_path}, using fallback")
             self.generation_system_prompt = self._get_fallback_prompt()
 
-        # Configure optional direct GLM-4.5 client (Z.AI)
-        self.zai_key = os.getenv("ZAI_API_KEY")
-        if ZAI_AVAILABLE and self.zai_key:
-            self.zai_client = ZaiClient(api_key=self.zai_key)
-            logger.info("GLM-4.5 (Z.AI) direct client initialized")
-        else:
-            self.zai_client = None
-            if not ZAI_AVAILABLE:
-                logger.warning("zai-sdk not installed, GLM-4.5 direct path disabled")
-            else:
-                logger.warning("ZAI_API_KEY not set, GLM-4.5 direct path disabled")
-
-        # Configure optional direct Groq client
-        self.groq_key = os.getenv("GROQ_API_KEY")
-        if self.groq_key:
-            self.groq_client = AsyncGroq(api_key=self.groq_key)
-            logger.info("Groq direct client initialized")
-        else:
-            self.groq_client = None
-            logger.warning("GROQ_API_KEY not set, Groq direct path disabled")
-
-        # Unified client with RAMCLOUDS_GEN_MODEL for generation.
-        # Primary = mimo-v2.5-pro (0 errors, richer answers, fast TTFT via SSE).
-        # Fallback = gpt-5.4 (faster total but ~33% intermittent internal errors,
-        # so demoted to fallback). Model-level fallback below covers the case
-        # where the primary model itself errors out after retries.
-        gen_model = settings.RAMCLOUDS_GEN_MODEL
-        self.unified_client = get_llm_client(force_model=gen_model)
-        self.gen_model = gen_model
-        gen_fallback = settings.RAMCLOUDS_GEN_FALLBACK_MODEL
-        self.gen_fallback_model = gen_fallback
-        self.unified_fallback_client = (
-            get_llm_client(force_model=gen_fallback) if gen_fallback and gen_fallback != gen_model else None
+        # ns24 gen role: primary + same-gateway fallback model from config.
+        # No provider (NS24_API_KEY unset) => generate_answer reports
+        # Fallback(NoProvider) with generation_failed=True.
+        self.unified_client = get_llm_client(role="gen")
+        self.gen_model = (
+            self.unified_client._providers[0].model if self.unified_client._providers else None
         )
-        logger.info(
-            f"Generation: primary={gen_model} | fallback={gen_fallback} via UnifiedLLMClient"
-        )
+        logger.info(f"Generation: role=gen primary={self.gen_model}")
 
         # Track runtime readiness for diagnostics/preflight parity
-        self.has_any_provider = bool(self.zai_client or self.groq_client or getattr(self.unified_client, "_providers", []))
+        self.has_any_provider = bool(getattr(self.unified_client, "_providers", []))
 
     def _detect_english(self, text: str) -> bool:
         """Detect if answer contains English sentences (not just abbreviations).
@@ -534,7 +633,15 @@ class LLMGenerator:
         """
         Build context from retrieved chunks
         Include both summary AND text for complete information
+
+        @spec(T20): retrieved content is UNTRUSTED DATA. Chunks whose declared
+        provenance is outside the allowed corpus are dropped (criterion 4) and
+        every kept chunk renders inside an escaped UNTRUSTED_DATA envelope
+        stamped with its parser source type (criteria 1, 5), so a poisoned
+        document can neither break out of its block nor impersonate a system
+        instruction.
         """
+        chunks = restrict_to_allowed_corpus(chunks)
         context_parts = []
 
         for i, chunk in enumerate(chunks, 1):
@@ -544,7 +651,14 @@ class LLMGenerator:
             # Architect MED-LOW fix (2026-05-25): route through dual-read helper
             # so v3 source_url falls back cleanly when legacy field is absent.
             source = get_source_label(chunk)
-            info_type = chunk.get("metadata", {}).get("info_type", "")
+            md = chunk.get("metadata", {}) or {}
+            info_type = md.get("info_type", "")
+            # @spec(T20) criterion 5: the ingest parser's provenance tag
+            # (metadata.source_type, written by chunk_table_aware_v2 /
+            # normalize_data / canonical_chunk_builder) is stamped into the
+            # block header so generation distinguishes SOURCE CONTENT from
+            # INSTRUCTIONS. Legacy rows without the tag render as "unknown".
+            source_type = str(md.get("source_type") or chunk.get("source_type") or "unknown")
 
             # Include BOTH summary and full text for complete context
             # This ensures LLM has access to specific numbers from context
@@ -557,11 +671,21 @@ class LLMGenerator:
             content = "\n".join(content_parts) if content_parts else text
 
             # Add metadata tags for context (P5-5: include data_year + notification_id)
-            data_year = chunk.get("metadata", {}).get("data_year", "N/A")
-            notification_id = chunk.get("metadata", {}).get("notification_id")
+            data_year = md.get("data_year", "N/A")
+            notification_id = md.get("notification_id")
             tb_label = f"TB{notification_id}" if notification_id is not None else "pháp lý"
+            # @spec(T20) criterion 1/5: the body renders inside an
+            # UNTRUSTED_DATA envelope whose opener carries the source type.
+            # Header fields are document-derived too, so they are escaped
+            # before interpolation — the header sits OUTSIDE the envelope and
+            # must not be able to carry a fake closer either.
             context_parts.append(
-                f"[Đoạn {i}] (Năm: {data_year} | TB: {tb_label} | Nguồn: {source} | Loại: {info_type})\n{content}"
+                f"[Đoạn {i}] (Năm: {escape_untrusted_text(str(data_year))} | "
+                f"TB: {escape_untrusted_text(str(tb_label))} | "
+                f"Nguồn: {escape_untrusted_text(str(source))} | "
+                f"Loại: {escape_untrusted_text(str(info_type))} | "
+                f"Source type: {escape_untrusted_text(source_type)})\n"
+                + render_untrusted_block(source_type, content)
             )
 
         return "\n\n---\n\n".join(context_parts)
@@ -591,7 +715,11 @@ class LLMGenerator:
         has_index_data: Optional[bool] = None
         try:
             from services.lancedb_retrieval import get_retriever
-            has_index_data = bool(get_retriever().has_current_year_data(year))
+            # A preview (ticket 25) may point the probe at its temporary
+            # index; unset, production behavior is unchanged.
+            probe = getattr(self, "retriever_probe", None)
+            retriever = probe() if probe is not None else get_retriever()
+            has_index_data = bool(retriever.has_current_year_data(year))
         except Exception as exc:
             logger.debug(
                 f"_resolve_admission_context: retriever probe unavailable ({exc}); "
@@ -600,6 +728,55 @@ class LLMGenerator:
             has_index_data = has_current_year_chunk
         season_phase = get_season_phase(year, has_index_data)
         return year, season_phase, has_current_year_chunk
+
+    def _enrich_sources(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """T3 — Enrich sources with structured metadata for FE chip rendering.
+
+        Each source dict has: id, title, url, snippet, data_year.
+        Fallback chain per field is documented in:
+          .omc/plans/rich-markdown-generation-plan.md §Source Enrichment
+
+        Extracted verbatim from generate_answer so the T11 pre-generation
+        abstain path returns the SAME sources shape as a normal answer
+        (criterion 6: a refusal must still name the related sources).
+        """
+        enriched_sources: list = []
+        seen_ids: set = set()
+        for idx, chunk in enumerate(chunks or []):
+            md = chunk.get("metadata") or {}
+            # id: chunk_id or synthetic index
+            cid = str(chunk.get("chunk_id") or chunk.get("id") or f"chunk-{idx}")
+            if cid in seen_ids:
+                continue
+            seen_ids.add(cid)
+            # title: summary[:80] > text[:80] > chunk_id > "Không rõ"
+            summary = str(chunk.get("summary") or "")
+            text = str(chunk.get("text") or "")
+            title = (
+                summary[:80] or text[:80] or str(chunk.get("chunk_id", ""))[:80] or "Không rõ"
+            )
+            # url: source_url > notification_id → formatted URL > None
+            source_url = get_source_url(chunk)
+            if source_url:
+                url = source_url
+            else:
+                nid = md.get("notification_id") or chunk.get("notification_id")
+                if nid is not None:
+                    url = f"https://tuyensinh.husc.edu.vn/thongbao.php?id={nid}"
+                else:
+                    url = None
+            # snippet: summary[:120] > text[:120] > ""
+            snippet = (summary[:120] or text[:120] or "")
+            # data_year: metadata.data_year > "N/A"
+            data_year = str(md.get("data_year") or chunk.get("data_year") or "N/A")
+            enriched_sources.append({
+                "id": cid,
+                "title": title.strip(),
+                "url": url,
+                "snippet": snippet.strip(),
+                "data_year": data_year,
+            })
+        return enriched_sources
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     async def generate_answer(
@@ -620,6 +797,43 @@ class LLMGenerator:
             confidence: Confidence score
             is_program_list_query: Whether this is a program list/count query (for optimization)
         """
+        # ------------------------------------------------------------------
+        # T11 — evidence-based abstention (PRE-generation gate).
+        # Spec 4: "Generation chỉ chạy khi evidence đủ". The LLM is never
+        # called when the retrieved evidence is thin: zero evidence, a
+        # year-mismatch on a factual current-year question, an unresolved
+        # same-year conflict, untraceable citation lineage, or an
+        # out-of-scope major each return a policy-authored refusal that
+        # states what WAS verified plus related sources (never empty).
+        # Runs BEFORE any provider call, so no fabrication is possible on
+        # this path and no tokens are spent. Season context comes from the
+        # same resolver as the post-generation season block below; tests
+        # monkey-patching `_resolve_admission_context` drive both.
+        # ------------------------------------------------------------------
+        from services import abstention_policy  # local import: pure module
+        _t11_year, _t11_season, _t11_has_current = self._resolve_admission_context(chunks)
+        _t11_decision = abstention_policy.evaluate_evidence(
+            query,
+            chunks,
+            current_year=_t11_year,
+            season_phase=_t11_season,
+        )
+        if _t11_decision.action != abstention_policy.ACTION_ANSWER:
+            return {
+                "answer": _t11_decision.message,
+                "sources": self._enrich_sources(chunks),
+                # Ticket 10: claims inside the refusal ("đã xác minh ... năm
+                # 2025") are traced like any other answer; ungrounded ones are
+                # surfaced with grounded=False rather than silently dropped.
+                "citations": build_citations(_t11_decision.message, chunks),
+                "confidence": confidence,
+                # Not a degraded generation: an intentional, policy-authored
+                # refusal. The "Fallback(" prefix would make ticket 44's
+                # contract report GENERATION_FAILED, which is wrong here.
+                "provider": f"evidence-policy:{_t11_decision.reason_code}",
+                "chunks_used": min(len(chunks), 3),
+                "generation_failed": False,
+            }
 
         # Build context
         context = self._build_context(chunks)
@@ -665,123 +879,46 @@ class LLMGenerator:
         max_tokens_std = settings.MAX_GEN_TOKENS
         max_tokens = max_tokens_enum if is_program_list_query else max_tokens_std
 
-        # Priority: UnifiedLLMClient → direct Groq → direct GLM-4.5
+        # Single path: the ns24 gen client (same-gateway fallback lives inside it).
         answer = ""
         provider = ""
+        # FIX-05: flipped to True only on the two terminal fallback paths
+        # below (no provider / provider raised). Every model-completion path
+        # leaves it False. Returned to callers so /v2 can publish
+        # GENERATION_FAILED instead of SUCCESS.
+        generation_failed = False
 
         try:
-            # Primary path: Unified provider chain (mimo-v2.5-pro → groq → compat)
-            if getattr(self.unified_client, "_providers", []):
-                logger.info(f"Generation: Using {self.gen_model} (primary) via UnifiedLLMClient")
+            if not getattr(self.unified_client, "_providers", []):
+                logger.warning("Generation: No LLM provider configured, using static fallback")
+                answer = "Mình chưa đủ dữ liệu để trả lời chính xác câu này trong cấu hình hiện tại."
+                provider = "Fallback(NoProvider)"
+                generation_failed = True
+            else:
+                logger.info(f"Generation: Using {self.gen_model} via ns24 gen role")
                 history_prefix = _format_history_prefix(history)
                 gen_user_msg = (
                     f"{history_prefix}"
                     f"CONTEXT:\n{context}\n\n---\n\nCÂU HỎI: {query}\n\n"
                     "Hãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."
                 )
-                try:
-                    unified_resp = await asyncio.wait_for(
-                        self.unified_client.chat(
-                            user_message=gen_user_msg,
-                            system_message=self.generation_system_prompt,
-                            temperature=0.1,
-                            max_tokens=max_tokens,
-                        ),
-                        timeout=30.0,
-                    )
-                    answer = unified_resp.content.strip()
-                    provider = f"{unified_resp.model} ({unified_resp.provider})"
-
-                    # Empty-output guard: gpt-5.4 đôi khi trả "" mà không raise.
-                    # Coi là failure → fallback xuống gpt-5.3-codex (hoặc model
-                    # fallback đã cấu hình) để tránh trả rỗng.
-                    if (not answer or len(answer) < 20) and self.unified_fallback_client is not None:
-                        logger.warning(
-                            f"Primary gen model {self.gen_model} returned empty/short "
-                            f"output (len={len(answer)}); falling back to {self.gen_fallback_model}"
-                        )
-                        fb_resp = await asyncio.wait_for(
-                            self.unified_fallback_client.chat(
-                                user_message=gen_user_msg,
-                                system_message=self.generation_system_prompt,
-                                temperature=0.1,
-                                max_tokens=max_tokens,
-                            ),
-                            timeout=30.0,
-                        )
-                        fb_answer = fb_resp.content.strip()
-                        if fb_answer and len(fb_answer) >= 20:
-                            answer = fb_answer
-                            provider = f"{fb_resp.model} ({fb_resp.provider}, empty-fallback)"
-                except Exception as primary_err:
-                    # Model-level fallback: primary model errored after retries
-                    # → try fallback model (gpt-5.3-codex) before giving up.
-                    if self.unified_fallback_client is not None:
-                        logger.warning(
-                            f"Primary gen model {self.gen_model} failed ({primary_err}); "
-                            f"falling back to {self.gen_fallback_model}"
-                        )
-                        fb_resp = await asyncio.wait_for(
-                            self.unified_fallback_client.chat(
-                                user_message=gen_user_msg,
-                                system_message=self.generation_system_prompt,
-                                temperature=0.1,
-                                max_tokens=max_tokens,
-                            ),
-                            timeout=30.0,
-                        )
-                        answer = fb_resp.content.strip()
-                        provider = f"{fb_resp.model} ({fb_resp.provider}, fallback)"
-                    else:
-                        raise
-
-            # Secondary: direct Groq path
-            elif self.groq_client:
-                logger.info("Generation: Using direct Groq (Llama 3.3)")
-                history_prefix = _format_history_prefix(history)
-                groq_user_content = (
-                    f"{history_prefix}"
-                    f"CONTEXT:\n{context}\n\n---\n\nCÂU HỎI: {query}\n\n"
-                    "Hãy trả lời dựa trên context trên. Sử dụng số liệu cụ thể từ context."
-                )
-                response = await asyncio.wait_for(
-                self.groq_client.chat.completions.create(
-                    model=os.getenv("GROQ_GEN_MODEL", "llama-3.3-70b-versatile"),
-                    messages=[
-                        {"role": "system", "content": self.generation_system_prompt},
-                        {"role": "user", "content": groq_user_content}
-                    ],
-                    temperature=0.1,
-                    max_tokens=max_tokens,
-                ),
-                timeout=30.0,
-            )
-                answer = response.choices[0].message.content.strip()
-                provider = "Llama-3.3-70B (Groq-direct)"
-
-            # Tertiary: direct GLM-4.5 path
-            elif self.zai_client:
-                logger.info("Generation: Falling back to direct GLM-4.5 (Z.AI)")
-                response = await asyncio.wait_for(
-                    asyncio.shield(asyncio.to_thread(
-                        self.zai_client.chat.completions.create,
-                        model=os.getenv("ZAI_GEN_MODEL", "glm-4-32b-0414-128k"),
-                        messages=[
-                            {"role": "user", "content": full_prompt}
-                        ],
-                        thinking={"type": "enabled"},
-                        max_tokens=max_tokens,
+                unified_resp = await asyncio.wait_for(
+                    self.unified_client.chat(
+                        user_message=gen_user_msg,
+                        system_message=self.generation_system_prompt,
                         temperature=0.1,
-                    )),
-                    timeout=60.0,
+                        max_tokens=max_tokens,
+                    ),
+                    timeout=30.0,
                 )
-                answer = response.choices[0].message.content.strip()
-                provider = "GLM-4.5 (Z.AI-direct)"
-
-            else:
-                logger.warning("Generation: No LLM provider configured, using static fallback")
-                answer = "Mình chưa đủ dữ liệu để trả lời chính xác câu này trong cấu hình hiện tại."
-                provider = "Fallback(NoProvider)"
+                answer = unified_resp.content.strip()
+                provider = f"{unified_resp.model} ({unified_resp.provider})"
+                # Empty-output guard: a reply shorter than 20 chars is a failed
+                # generation, surfaced via Fallback(Error) below.
+                if len(answer) < 20:
+                    raise RuntimeError(
+                        f"gen model {unified_resp.model} returned empty/short output (len={len(answer)})"
+                    )
 
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
@@ -790,6 +927,7 @@ class LLMGenerator:
                 "đang tạm thời không khả dụng. Vui lòng thử lại sau."
             )
             provider = "Fallback(Error)"
+            generation_failed = True
 
         # Enforce Vietnamese output
         answer = await self._enforce_vietnamese(answer, query, context, max_tokens)
@@ -807,8 +945,11 @@ class LLMGenerator:
         #   * otherwise (has prior, not gap, not risky) → leave answer as is.
         # ------------------------------------------------------------------
         from services.season import SeasonPhase  # local import: pure module
+        # Reuse the triple resolved by the T11 pre-generation gate above: a
+        # second _resolve_admission_context call would hit the retriever
+        # probe again and would NOT see test stubs' intent of "one seam".
         current_year, season_phase, has_current_year_chunk = (
-            self._resolve_admission_context(chunks)
+            _t11_year, _t11_season, _t11_has_current
         )
         year_n_minus_1 = current_year - 1
         intent = infer_intent_from_query(query)
@@ -927,46 +1068,15 @@ class LLMGenerator:
         # remark-gfm never renders invalid HTML.
         answer = _validate_markdown_table(answer)
 
-        # T3 — Enrich sources with structured metadata for FE chip rendering.
-        # Each source dict has: id, title, url, snippet, data_year.
-        # Fallback chain per field is documented in:
-        #   .omc/plans/rich-markdown-generation-plan.md §Source Enrichment
-        enriched_sources: list = []
-        seen_ids: set = set()
-        for idx, chunk in enumerate(chunks):
-            md = chunk.get("metadata") or {}
-            # id: chunk_id or synthetic index
-            cid = str(chunk.get("chunk_id") or chunk.get("id") or f"chunk-{idx}")
-            if cid in seen_ids:
-                continue
-            seen_ids.add(cid)
-            # title: summary[:80] > text[:80] > chunk_id > "Không rõ"
-            summary = str(chunk.get("summary") or "")
-            text = str(chunk.get("text") or "")
-            title = (
-                summary[:80] or text[:80] or str(chunk.get("chunk_id", ""))[:80] or "Không rõ"
-            )
-            # url: source_url > notification_id → formatted URL > None
-            source_url = get_source_url(chunk)
-            if source_url:
-                url = source_url
-            else:
-                nid = md.get("notification_id") or chunk.get("notification_id")
-                if nid is not None:
-                    url = f"https://tuyensinh.husc.edu.vn/thongbao.php?id={nid}"
-                else:
-                    url = None
-            # snippet: summary[:120] > text[:120] > ""
-            snippet = (summary[:120] or text[:120] or "")
-            # data_year: metadata.data_year > "N/A"
-            data_year = str(md.get("data_year") or chunk.get("data_year") or "N/A")
-            enriched_sources.append({
-                "id": cid,
-                "title": title.strip(),
-                "url": url,
-                "snippet": snippet.strip(),
-                "data_year": data_year,
-            })
+        # LaTeX display guard — the FE has no math plugin, so raw LaTeX reaches
+        # the student as literal `$$\text{...}$$`. Flatten it to plain text.
+        # Runs before build_citations so the citation offsets trace the FINAL
+        # text, same reason the URL guard runs last.
+        answer = _normalize_answer_display(answer)
+
+        # T3 — Enrich sources with structured metadata for FE chip rendering
+        # (shared with the T11 abstain path via _enrich_sources).
+        enriched_sources = self._enrich_sources(chunks)
 
         # Use first 3 chunks for chunks_used calculation
         chunks_used = min(len(chunks), 3)
@@ -974,9 +1084,15 @@ class LLMGenerator:
         return {
             "answer": answer,
             "sources": enriched_sources,
+            # Ticket 10: claim-level citation contract (services/citation.py).
+            # Computed after every post-guard so it traces the FINAL text.
+            "citations": build_citations(answer, chunks),
             "confidence": confidence,
             "provider": provider,
-            "chunks_used": chunks_used
+            "chunks_used": chunks_used,
+            # FIX-05: explicit degraded-generation signal. Callers MUST NOT
+            # publish a fallback answer as SUCCESS (see is_generation_failure).
+            "generation_failed": generation_failed,
         }
 
     async def generate_answer_stream(
@@ -995,9 +1111,24 @@ class LLMGenerator:
         the full answer, which is then passed through post-guards (URL
         strip, contact-abstain).
 
-        Preserves the empty-output fallback: if the stream yields <20
-        chars total, falls back to the fallback model (non-streaming).
+        An empty or short stream raises RuntimeError instead of returning silently.
         """
+        # T11 — same pre-generation evidence gate as generate_answer: when the
+        # evidence is insufficient the model is never called; the policy
+        # refusal is yielded as the single piece so the streamed surface
+        # matches the non-streamed one.
+        from services import abstention_policy  # local import: pure module
+        _t11_year, _t11_season, _ = self._resolve_admission_context(chunks)
+        _t11_decision = abstention_policy.evaluate_evidence(
+            query,
+            chunks,
+            current_year=_t11_year,
+            season_phase=_t11_season,
+        )
+        if _t11_decision.action != abstention_policy.ACTION_ANSWER:
+            yield _t11_decision.message
+            return
+
         # Build context (same as generate_answer)
         context = self._build_context(chunks)
         max_context_chars = settings.MAX_CONTEXT_CHARS
@@ -1032,23 +1163,13 @@ class LLMGenerator:
             accumulated.append(piece)
             yield piece
 
-        # Empty-output fallback (same logic as generate_answer)
+        # Empty-output guard. The client's same-gateway fallback only runs on
+        # errors, so an empty stream is raised here instead of returned silently.
         full = "".join(accumulated).strip()
-        if (not full or len(full) < 20) and self.unified_fallback_client is not None:
-            logger.warning(
-                f"Primary gen stream returned empty/short (len={len(full)}); "
-                f"falling back to {self.gen_fallback_model}"
+        if len(full) < 20:
+            raise RuntimeError(
+                f"gen stream returned empty/short output (len={len(full)}, model={self.gen_model})"
             )
-            fb_resp = await self.unified_fallback_client.chat(
-                user_message=gen_user_msg,
-                system_message=self.generation_system_prompt,
-                temperature=0.1,
-                max_tokens=max_tokens,
-            )
-            fb_answer = fb_resp.content.strip()
-            if fb_answer and len(fb_answer) >= 20:
-                for piece in _chunk_text_for_stream(fb_answer):
-                    yield piece
 
 # Lazy singleton instance (avoid import-time hard failures)
 _llm_generator: Optional[LLMGenerator] = None

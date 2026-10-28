@@ -151,12 +151,12 @@ def test_prompt_file_has_zero_bare_admission_year_literals(prompt_text: str) -> 
 # Import after sys.path manipulation so both ``src.services.*`` style works
 # under pytest invoked from the repo root or from ``rag2025/``.
 from src.services.query_router import (  # noqa: E402
-    CONTACT_BLOCK,
     HYDE_REJECT_VAGUE,
     _CLASSIFY_SYSTEM,
     _HYDE_SYSTEM,
     _STEP_BACK_SYSTEM,
 )
+from src.services.contact_block import CONTACT_BLOCK  # noqa: E402
 
 
 # Map of (constant-name, constant-value) tuples for parametrized assertions.
@@ -344,8 +344,6 @@ def _make_gen_stub(answer_text: str = "Dummy model answer.") -> "object":
 
     gen = LLMGenerator.__new__(LLMGenerator)
     gen.generation_system_prompt = "TEST SYSTEM PROMPT"
-    gen.zai_client = None
-    gen.groq_client = None
     gen.has_any_provider = True
     gen.gen_model = "test-model"
     gen.gen_fallback_model = "test-fallback"

@@ -65,6 +65,29 @@ class ModelVersion(BaseModel):
     embedding: str
 
 
+class LLMTokens(BaseModel):
+    """T12 — per-question LLM token accounting (R2: cost was never measured).
+
+    One entry per provider call that reported usage; totals per
+    (provider, model) so the report can price cost without re-running.
+    """
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    provider: str = ""
+    model: str = ""
+
+
+class LLMTokensTotal(BaseModel):
+    """Aggregate of all LLMTokens entries for one evaluated question."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    call_count: int = 0
+
+
+
 class EvalRecord(BaseModel):
     """One evaluated question, with full evidence persisted."""
 
@@ -99,6 +122,12 @@ class EvalRecord(BaseModel):
     # Judge
     judge_scores: Optional[dict[str, float]] = None
     judge_rationale: Optional[dict[str, str]] = None
+
+    # T12 — LLM token accounting (R2: cost was never measured).
+    # Default None/[] keeps pre-T12 JSONL lines parseable; new runs
+    # populate these from the client token ledger.
+    llm_tokens: Optional[LLMTokensTotal] = None
+    llm_token_calls: list[LLMTokens] = Field(default_factory=list)
 
     # ---- helpers ----
 

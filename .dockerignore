@@ -1,0 +1,62 @@
+# Docker build contexts for this repo.
+#
+# Two contexts are in play (see docker-compose.yml):
+#   - `repo` (repo root) — used ONLY for two COPY --from=repo sources:
+#       api/openapi.json          → FE types:gen input
+#       rag2025/Caddyfile         → web image config
+#     Everything else in the repo is dead weight for the build and must not be
+#     shipped to the daemon: the corpus alone is ~773MB, plus venvs, git history
+#     and node_modules.
+#   - `./rag2025` and `./uni-guide-ai` use their own .dockerignore.
+#
+# Keep the two load-bearing paths above OUT of every pattern below.
+
+# ── VCS / editor ──────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+.cursor/
+*.swp
+
+# ── Python: venvs, caches, corpora, outputs ───────────────────────────────────
+.venv/
+**/.venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+rag2025/data/
+rag2025/index/
+rag2025/results/
+rag2025/logs/
+rag2025/backup_mail_package_2026/
+
+# ── Node ──────────────────────────────────────────────────────────────────────
+**/node_modules/
+**/dist/
+**/coverage/
+**/.vite/
+
+# ── Local-only docs, agent scratch, planning snapshots ────────────────────────
+docs-devs/
+.scratch/
+.workflow/
+.omc/
+.superpowers/
+.claude/
+.codex/
+.amp/
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env
+.env.*
+**/.env
+**/.env.*
+
+# ── OS / misc ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+nul

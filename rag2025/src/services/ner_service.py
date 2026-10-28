@@ -7,15 +7,11 @@ NER Service – Named Entity Recognition & Triple Extraction
     crash / quota cutoff mid-run still preserves the work and lets the
     next run resume free. Failed/empty extractions are NOT cached.
 
-@spec(S22.B) Groq fallback ladder — when the primary ramclouds NER fails
-    (quota 403, 404, etc.) AND the configured fallback model is a
-    ramclouds-only name (gemini* / minimax* / deepseek* / mimo* / gpt-*),
-    the service drops to a Groq client configured with Groq's NATIVE
-    llama-3.1-8b-instant model (free). The old code passed force_model=
-    ramclouds_name to Groq, which 404s "model does not exist".
+@spec(S22.B) Same-gateway fallback: the ``ner`` role client holds the primary
+    model (NS24_NER_MODEL) and its fallback model, both on the ns24 gateway.
+    When both fail or return zero entities, the regex extractor runs.
 
-Uses UnifiedLLMClient (gemini-2.5-flash via ramclouds.me/v1) as primary.
-Auto-fallback to Groq (native llama) if primary fails.
+Uses get_llm_client(role="ner") as the LLM client.
 
 DDD: Application service that depends on domain entities, not infrastructure.
 Scalable: Adding entity types = extend EntityType enum + update prompt only.
@@ -50,18 +46,6 @@ from src.services.llm_client import UnifiedLLMClient, get_llm_client
 # @spec(S22.A) — NER cache default location
 DEFAULT_NER_CACHE_PATH = Path(
     os.getenv("NER_CACHE_PATH", "data/graph/ner_cache.jsonl")
-)
-
-# @spec(S22.B) — model names that ramclouds serves but Groq does NOT.
-# If the configured fallback model matches one of these prefixes, we must
-# not pass it to Groq (404). Drop to Groq's native llama-3.1-8b-instant.
-_GROQ_UNSUPPORTED_MODEL_PREFIXES = (
-    "gemini-",
-    "minimax-",
-    "deepseek-",
-    "mimo-",
-    "gpt-",
-    "gpt_",
 )
 
 
@@ -441,7 +425,7 @@ Ví dụ đầu ra:
 class NERService:
     """Named Entity Recognition service for Vietnamese admission text.
 
-    Uses UnifiedLLMClient with RAMCLOUDS_NER_MODEL (deepseek-v4-flash by default).
+    Uses the ns24 ``ner`` role client (NS24_NER_MODEL, same-gateway fallback).
     Fully swappable: inject any UnifiedLLMClient instance.
 
     Args:
@@ -451,40 +435,11 @@ class NERService:
     def __init__(
         self,
         llm: Optional[UnifiedLLMClient] = None,
-        fallback_llm: Optional[UnifiedLLMClient] = None,
         cache_path: Optional[Path] = None,
     ) -> None:
-        # NER ladder: primary LLM → fallback LLM → groq llama → regex.
-        # The fallback model is sourced (in priority order) from
-        # RAMCLOUDS_NER_FALLBACK_MODEL, then RAMCLOUDS_GEN_FALLBACK_MODEL.
-        # Reason (2026-06-10): the primary NER model can degrade on the
-        # gateway (e.g. gpt-5.5-chat returning a near-empty entity set for
-        # major lists); a second LLM recovers rich entities before we drop
-        # to the lower-recall regex extractor.
-        if llm is None:
-            ner_model = os.getenv("RAMCLOUDS_NER_MODEL", "deepseek-v4-flash")
-            llm = UnifiedLLMClient(force_model=ner_model)
-            logger.info(f"NER: using model={ner_model}")
-            if fallback_llm is None:
-                fb_model = (
-                    os.getenv("RAMCLOUDS_NER_FALLBACK_MODEL")
-                    or os.getenv("RAMCLOUDS_GEN_FALLBACK_MODEL")
-                )
-                if fb_model and fb_model != ner_model:
-                    fallback_llm = UnifiedLLMClient(force_model=fb_model)
-                    logger.info(f"NER: fallback model={fb_model}")
-        self._llm = llm
-        self._fallback_llm = fallback_llm
-
-        # @spec(S22.B) — Groq native ladder. Built UNCONDITIONALLY so we
-        # can recover when ramclouds is out of quota. We do NOT pass
-        # force_model=ramclouds_name (which makes Groq 404); we let the
-        # UnifiedLLMClient fall through to its own groq provider with the
-        # default llama-3.1-8b-instant.
-        self._groq_fallback_llm: Optional[UnifiedLLMClient] = None
-        if os.getenv("GROQ_API_KEY"):
-            self._groq_fallback_llm = UnifiedLLMClient(force_model=None)
-            logger.info("NER: groq native fallback ladder (llama-3.1-8b-instant) enabled")
+        # NER ladder: ns24 ner client (primary model, then same-gateway fallback
+        # inside the client) → regex extractor.
+        self._llm = llm if llm is not None else get_llm_client(role="ner")
 
         # @spec(S22.A) — disk cache for NER results (idempotent, incremental).
         self._cache = NERCache(path=cache_path or DEFAULT_NER_CACHE_PATH)
@@ -493,16 +448,12 @@ class NERService:
     async def extract(self, chunk: Chunk) -> ExtractionResult:
         """Extract entities and triples from a single chunk.
 
-        Ladder: cache → primary LLM → fallback LLM → groq llama → regex.
-        The primary is retried per the decorator; a primary that raises or
-        returns ZERO entities hands off to the fallback LLM, then groq
-        llama, and only if that also fails/empties do we drop to the
+        Ladder: cache → ns24 ner client (primary model, then same-gateway fallback
+        inside the client) → regex. An LLM failure or zero entities drops to the
         regex extractor.
 
         @spec(S22.A) Cache hit short-circuits ALL LLM calls.
         @spec(S22.A) Successful (non-empty) results are persisted BEFORE return.
-        @spec(S22.B) Groq llama is invoked when primary + configured fallback
-            both fail (typically when ramclouds is out of quota).
 
         Args:
             chunk: Domain Chunk object.
@@ -524,32 +475,6 @@ class NERService:
             self._cache_put(chunk, primary, model_label="primary")
             return primary
 
-        # Primary failed or returned empty → try the fallback LLM if present.
-        if self._fallback_llm is not None:
-            fb = await self._extract_with_llm(self._fallback_llm, chunk, label="fallback")
-            if fb is not None and fb.entities:
-                logger.info(
-                    f"NER fallback LLM recovered {len(fb.entities)} entities "
-                    f"for {chunk.chunk_id} (primary empty/failed)"
-                )
-                self._cache_put(chunk, fb, model_label="fallback")
-                return fb
-
-        # @spec(S22.B) — Groq native ladder. force_model is NOT passed here,
-        # so the UnifiedLLMClient routes to Groq with its native
-        # llama-3.1-8b-instant (free). This recovers NER when ramclouds
-        # is out of quota.
-        if self._groq_fallback_llm is not None:
-            groq_fb = await self._extract_with_llm(
-                self._groq_fallback_llm, chunk, label="groq_llama"
-            )
-            if groq_fb is not None and groq_fb.entities:
-                logger.info(
-                    f"NER groq-llama recovered {len(groq_fb.entities)} entities "
-                    f"for {chunk.chunk_id} (ramclouds quota/404 exhausted)"
-                )
-                self._cache_put(chunk, groq_fb, model_label="groq_llama")
-                return groq_fb
 
         # All LLMs failed/empty → regex extractor (lower recall, never raises).
         regex_result = self._regex_fallback(chunk)

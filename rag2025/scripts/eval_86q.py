@@ -250,9 +250,9 @@ async def run_eval(
 
     # Initialize services
     settings = RAGSettings()
-    logger.info(f"NER model: {settings.RAMCLOUDS_NER_MODEL}")
-    logger.info(f"HYDE model: {settings.RAMCLOUDS_HYDE_MODEL}")
-    logger.info(f"GEN model: {settings.RAMCLOUDS_GEN_MODEL}")
+    logger.info(f"NER model: {settings.NS24_NER_MODEL}")
+    logger.info(f"HYDE model: {settings.NS24_HYDE_MODEL}")
+    logger.info(f"GEN model: {settings.NS24_GEN_MODEL}")
     logger.info(f"GraphRAG threshold: {settings.GRAPHRAG_SIMPLE_THRESHOLD}")
 
     pipeline = UnifiedRAGPipeline.from_disk()
@@ -323,7 +323,7 @@ async def run_eval(
     print("\n" + "=" * 90)
     print("  86Q EVALUATION REPORT – HUSC Unified RAG Pipeline (PaddedRAG + GraphRAG)")
     print("=" * 90)
-    print(f"  Models: NER={settings.RAMCLOUDS_NER_MODEL} | HYDE={settings.RAMCLOUDS_HYDE_MODEL} | GEN={settings.RAMCLOUDS_GEN_MODEL}")
+    print(f"  Models: NER={settings.NS24_NER_MODEL} | HYDE={settings.NS24_HYDE_MODEL} | GEN={settings.NS24_GEN_MODEL}")
     print(f"  Embedding: {settings.EMBEDDING_MODEL} (dim={settings.EMBEDDING_DIM})")
     print(f"  Route distribution: padded_rag={route_counts.get('padded_rag',0)} | graph_rag={route_counts.get('graph_rag',0)}")
     if force_route:
@@ -373,9 +373,9 @@ async def run_eval(
     with out_path.open("w", encoding="utf-8") as f:
         json.dump({
             "metadata": {
-                "ner_model": settings.RAMCLOUDS_NER_MODEL,
-                "hyde_model": settings.RAMCLOUDS_HYDE_MODEL,
-                "gen_model": settings.RAMCLOUDS_GEN_MODEL,
+                "ner_model": settings.NS24_NER_MODEL,
+                "hyde_model": settings.NS24_HYDE_MODEL,
+                "gen_model": settings.NS24_GEN_MODEL,
                 "embedding_model": settings.EMBEDDING_MODEL,
                 "embedding_dim": settings.EMBEDDING_DIM,
                 "graphrag_threshold": settings.GRAPHRAG_SIMPLE_THRESHOLD,

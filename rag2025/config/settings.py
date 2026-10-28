@@ -5,8 +5,13 @@ All environment variables are loaded here with strict typing.
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
+
+try:
+    from rag2025.config.ns24_models import ALLOWED_MODELS, ROLE_MODELS
+except ModuleNotFoundError:
+    from config.ns24_models import ALLOWED_MODELS, ROLE_MODELS
 
 
 class RAGSettings(BaseSettings):
@@ -32,6 +37,24 @@ class RAGSettings(BaseSettings):
     INDEX_DIR: Path = Field(default=Path("./index"), description="Vector index storage directory")
     DATA_DIR: Path = Field(default=Path("./data"), description="Raw data directory")
     CACHE_DIR: Path = Field(default=Path("./cache"), description="Cache directory")
+    CANONICAL_STORE_ROOT: Path = Field(
+        default=Path("./data/canonical_store"),
+        description=(
+            "Root of the versioned canonical admissions store (ticket 12 admin "
+            "lifecycle writes here). Anchored to rag2025/ like LANCEDB_URI — "
+            "this is source-of-truth admin data, so it must not depend on the "
+            "process CWD."
+        ),
+    )
+
+    @field_validator("CANONICAL_STORE_ROOT", mode="after")
+    @classmethod
+    def resolve_canonical_store_root(cls, v: Path) -> Path:
+        """Relative path → absolute (rag2025/ as anchor). Absolute giữ nguyên."""
+        text = str(v)
+        if text.startswith("/") or (len(text) > 1 and text[1] == ":"):
+            return v
+        return (Path(__file__).resolve().parent.parent / v).resolve()
 
     # ========== Embedding Runtime Selection ==========
     EMBEDDING_PROVIDER: Literal["qwen", "harrier", "bge"] = Field(
@@ -40,10 +63,10 @@ class RAGSettings(BaseSettings):
     )
 
     EMBEDDING_MODEL: str = Field(
-        default="Qwen/Qwen3-Embedding-4B",
+        default="Qwen/Qwen3-Embedding-0.6B",
         description="Active HuggingFace model name used at runtime",
     )
-    EMBEDDING_DIM: int = Field(default=2560, description="Active embedding dimension used at runtime")
+    EMBEDDING_DIM: int = Field(default=1024, description="Active embedding dimension used at runtime")
     EMBEDDING_BATCH_SIZE: int = Field(default=8, description="Batch size for encoding")
     EMBEDDING_NORMALIZE: bool = Field(default=True, description="L2-normalize embeddings")
 
@@ -70,7 +93,7 @@ class RAGSettings(BaseSettings):
     RERANKER_MODEL: str = Field(
         default="Qwen/Qwen3-Reranker-8B", description="Cross-encoder reranker model"
     )
-    RERANKER_ENABLED: bool = Field(default=True, description="Enable reranker layer")
+    RERANKER_ENABLED: bool = Field(default=False, description="Enable reranker layer")
     RERANKER_WEIGHT: float = Field(default=0.35, description="Weight of reranker score in fusion")
     RERANKER_MAX_LENGTH: int = Field(
         default=128, description="Max tokens fed to cross-encoder for scoring (truncation is scoring-only, not answer text)"
@@ -87,6 +110,16 @@ class RAGSettings(BaseSettings):
     CHUNK_OVERLAP: int = Field(default=70, description="Default chunk overlap in tokens")
     CHUNK_PROFILE: Literal["auto", "faq", "policy"] = Field(
         default="auto", description="Chunking profile"
+    )
+    # T1.8 chunk size gates — hard cap (split above) + soft floor (merge below).
+    # These are DIFFERENT knobs from CHUNK_SIZE_TOKENS (target budget): a single
+    # chunk is never allowed above HARD_MAX_TOKENS, and chunks below
+    # SOFT_MIN_TOKENS are merged into a neighbor (best-effort).
+    HARD_MAX_TOKENS: int = Field(
+        default=512, ge=1, description="Absolute hard cap for any single chunk (tokens)"
+    )
+    SOFT_MIN_TOKENS: int = Field(
+        default=50, ge=0, description="Soft floor below which chunks are merged (tokens)"
     )
 
     # ========== Retrieval Parameters ==========
@@ -148,69 +181,93 @@ class RAGSettings(BaseSettings):
         default=True, description="Enable LanceDB embedded vector store"
     )
 
-    # ========== LLM Configuration ==========
-    GEMINI_API_KEY: Optional[str] = Field(default=None, description="Gemini API key")
-    OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI-compat API key")
-    ZAI_API_KEY: Optional[str] = Field(default=None, description="Z.AI API key (GLM-4.5)")
-    @property
-    def LLM_MODEL(self) -> str:
-        """Backward-compatible alias that always tracks RAMCLOUDS_MODEL."""
-        return self.RAMCLOUDS_MODEL
+    # ========== LLM Configuration (ns24 gateway) ==========
+    # One gateway, one key. Every call site names a role; the role resolves to a
+    # primary model plus an optional fallback model ON THE SAME GATEWAY, so a
+    # vendor problem surfaces as an error instead of a silent vendor swap.
+    # Allowed model names live in config/ns24_models.py (ALLOWED_MODELS) and are
+    # enforced here at startup — a typo fails the boot, not the first question.
+    NS24_API_KEY: Optional[str] = Field(
+        default=None, description="ns24 gateway API key (the only LLM credential)"
+    )
+    NS24_BASE_URL: str = Field(
+        default="https://api.ns24.io/v1", description="ns24 OpenAI-compatible base URL"
+    )
+    NS24_STREAM: bool = Field(
+        default=True,
+        description="Stream gateway responses internally (accumulated before parse)",
+    )
+
+    NS24_MODEL: str = Field(
+        default=ROLE_MODELS["default"][0], description="Default role primary model"
+    )
+    NS24_FALLBACK_MODEL: str = Field(
+        default=ROLE_MODELS["default"][1], description="Default role fallback model"
+    )
+    NS24_ROUTER_MODEL: str = Field(
+        default=ROLE_MODELS["router"][0], description="Router/classify primary model"
+    )
+    NS24_ROUTER_FALLBACK_MODEL: str = Field(
+        default=ROLE_MODELS["router"][1], description="Router/classify fallback model"
+    )
+    NS24_NER_MODEL: str = Field(
+        default=ROLE_MODELS["ner"][0], description="NER/graph-extraction primary model"
+    )
+    NS24_NER_FALLBACK_MODEL: str = Field(
+        default=ROLE_MODELS["ner"][1], description="NER/graph-extraction fallback model"
+    )
+    NS24_HYDE_MODEL: str = Field(
+        default=ROLE_MODELS["hyde"][0], description="HYDE query-enhancement primary model"
+    )
+    NS24_HYDE_FALLBACK_MODEL: str = Field(
+        default=ROLE_MODELS["hyde"][1], description="HYDE query-enhancement fallback model"
+    )
+    NS24_GUARDRAIL_MODEL: str = Field(
+        default=ROLE_MODELS["guardrail"][0], description="Guardrail classification primary model"
+    )
+    NS24_GUARDRAIL_FALLBACK_MODEL: str = Field(
+        default=ROLE_MODELS["guardrail"][1], description="Guardrail classification fallback model"
+    )
+    NS24_GEN_MODEL: str = Field(
+        default=ROLE_MODELS["gen"][0], description="Final answer generation primary model"
+    )
+    NS24_GEN_FALLBACK_MODEL: str = Field(
+        default=ROLE_MODELS["gen"][1], description="Final answer generation fallback model"
+    )
 
     LLM_TEMPERATURE: float = Field(default=0.1, description="LLM temperature")
     FORCE_RAG_ONLY: bool = Field(
         default=False, description="Disable LLM fallback (RAG-only mode)"
     )
 
-    # ========== AI Box / OpenAI-compatible Primary Provider ==========
-    RAMCLOUDS_API_KEY: Optional[str] = Field(
-        default=None,
-        description="API key for AI Box (primary OpenAI-compatible LLM provider)"
+    @field_validator(
+        "NS24_MODEL",
+        "NS24_FALLBACK_MODEL",
+        "NS24_ROUTER_MODEL",
+        "NS24_ROUTER_FALLBACK_MODEL",
+        "NS24_NER_MODEL",
+        "NS24_NER_FALLBACK_MODEL",
+        "NS24_HYDE_MODEL",
+        "NS24_HYDE_FALLBACK_MODEL",
+        "NS24_GUARDRAIL_MODEL",
+        "NS24_GUARDRAIL_FALLBACK_MODEL",
+        "NS24_GEN_MODEL",
+        "NS24_GEN_FALLBACK_MODEL",
+        mode="after",
     )
-    RAMCLOUDS_BASE_URL: str = Field(
-        default="https://api.ai-box.vn/v1",
-        description="Base URL for OpenAI-compatible primary provider"
-    )
-    RAMCLOUDS_MODEL: str = Field(
-        default="deepseek-v4-flash",
-        description="Model name at the primary provider (NER + fallback)"
-    )
-    RAMCLOUDS_NER_MODEL: str = Field(
-        default="deepseek-v4-flash",
-        description="Model for NER/graph extraction at ramclouds.me (needs speed + JSON)"
-    )
-    RAMCLOUDS_HYDE_MODEL: str = Field(
-        default="deepseek-v4-flash",
-        description="Model for HYDE query enhancement at AI Box (needs creativity)"
-    )
-    RAMCLOUDS_GEN_MODEL: str = Field(
-        default="deepseek-v4-pro",
-        description="Model for final answer generation at AI Box (needs quality)"
-    )
-    RAMCLOUDS_GEN_FALLBACK_MODEL: str = Field(
-        default="deepseek-v4-flash",
-        description="Fallback generation model at AI Box"
-    )
-    RAMCLOUDS_ROUTER_MODEL: str = Field(
-        default="",
-        description=(
-            "Model for the routing/HyDE classifier client (S15.4 / ADR-D, "
-            "MUST-FIX #3). Empty (default) resolves to RAMCLOUDS_HYDE_MODEL "
-            "via the `effective_router_model` property — a true no-op vs the "
-            "pre-S15 wiring at graphrag_retriever.py:259. Set this to swap the "
-            "router LLM without touching the HYDE pipeline used elsewhere."
-        ),
-    )
-    GROQ_API_KEY: Optional[str] = Field(default=None, description="Groq API key (LLM fallback)")
-    GROQ_ROUTER_MODEL: str = Field(
-        default="llama-3.3-70b-versatile",
-        description="Groq model for the router classify/step-back calls (fast path)",
-    )
-    GROQ_NER_MODEL: str = Field(
-        default="llama-3.1-8b-instant",
-        description="Groq model for NER extraction (needs speed, free-tier)",
-    )
-    QWEN_API_KEY: Optional[str] = Field(default=None, description="Qwen API key (NER fallback)")
+    @classmethod
+    def validate_ns24_model(cls, v: str, info) -> str:
+        """Every configured model must be in the gateway whitelist.
+
+        An empty fallback is allowed and means "no fallback for this role".
+        """
+        text = (v or "").strip()
+        if text and text not in ALLOWED_MODELS:
+            raise ValueError(
+                f"{info.field_name}={text!r} is not an allowed ns24 model. "
+                f"Allowed: {', '.join(ALLOWED_MODELS)}"
+            )
+        return text
 
     # ========== GraphRAG Configuration ==========
     GRAPHRAG_ALPHA: float = Field(
@@ -244,10 +301,6 @@ class RAGSettings(BaseSettings):
 
     # ========== Guardrail & Error Exposure ==========
     GUARDRAIL_ENABLED: bool = Field(default=True, description="Enable out-of-scope guardrail")
-    GUARDRAIL_MODEL: str = Field(
-        default="llama-3.3-70b-versatile",
-        description="Groq model used for scope/no-result classification",
-    )
     ERROR_EXPOSURE_MODE: Literal["dev", "prod"] = Field(
         default="dev",
         description="dev: expose detailed internal error codes; prod: expose only one public code",
@@ -280,6 +333,26 @@ class RAGSettings(BaseSettings):
             raise ValueError("CHUNK_SIZE_TOKENS must be between 300-500")
         return v
 
+    @field_validator("HARD_MAX_TOKENS", "SOFT_MIN_TOKENS", mode="before")
+    @classmethod
+    def validate_chunk_gate_ints(cls, v):
+        """Coerce chunk gate values to int so env strings are accepted."""
+        try:
+            v = int(v)
+        except (ValueError, TypeError):
+            pass
+        return v
+
+    @model_validator(mode="after")
+    def validate_chunk_gate_order(self):
+        """Fail fast if the hard cap does not strictly exceed the soft floor."""
+        if self.HARD_MAX_TOKENS <= self.SOFT_MIN_TOKENS:
+            raise ValueError(
+                "HARD_MAX_TOKENS must be strictly greater than SOFT_MIN_TOKENS"
+                f" (got {self.HARD_MAX_TOKENS} <= {self.SOFT_MIN_TOKENS})"
+            )
+        return self
+
     @field_validator("RAG_CONF_THRESHOLD", mode="before")
     @classmethod
     def validate_confidence(cls, v):
@@ -308,25 +381,6 @@ class RAGSettings(BaseSettings):
             return 0.45
         else:
             return 0.55
-
-    @property
-    def effective_router_model(self) -> str:
-        """Resolved model name for the router/classify LLM client (S15.4 / ADR-D).
-
-        Returns ``RAMCLOUDS_ROUTER_MODEL`` when explicitly set; otherwise falls
-        through to ``RAMCLOUDS_HYDE_MODEL``. An empty string is treated as
-        unset so operators can "clear" an override without pinning the router
-        to a blank model name.
-
-        Wire-up: ``graphrag_retriever.from_disk`` (currently ``:259`` —
-        ``get_llm_client(force_model=settings.RAMCLOUDS_HYDE_MODEL)``) must
-        switch to ``get_llm_client(force_model=settings.effective_router_model)``
-        for the override to take effect end-to-end. That edit is owned by
-        Lane A; this property exposes the resolved value safely so the swap
-        is a one-line change.
-        """
-        override = (self.RAMCLOUDS_ROUTER_MODEL or "").strip()
-        return override or self.RAMCLOUDS_HYDE_MODEL
 
 
 # Global settings instance

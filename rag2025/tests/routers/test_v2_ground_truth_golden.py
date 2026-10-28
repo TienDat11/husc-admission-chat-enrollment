@@ -1,11 +1,31 @@
 """Golden ground-truth tests — verify /v2/query returns correct answers for known Q→A.
 
-Marked @pytest.mark.integration — skip if server not reachable.
+These are END-TO-END: they boot the real app and assert on real generated
+answers, so they need a working LLM provider. They are skipped unless
+``HUSC_E2E=1`` is set.
+
+Why a skip gate and not just a marker: this module used to claim
+``@pytest.mark.integration — skip if server not reachable`` in its docstring,
+but no marker and no skip were ever applied, so the file ran on every
+``pytest tests/routers`` invocation. With the ns24 gateway down (403
+quota, 401 key) each of the ~50 cases burns the full retry cascade and fails
+on an unrelated assertion — the module took the suite from seconds to a
+timeout. A marker alone would not fix that: nothing in this repo deselects
+markers, and there is no ``addopts`` to do it with. The gate below is explicit,
+and it fails loudly rather than silently passing when someone sets HUSC_E2E=1
+against a dead provider.
 """
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("HUSC_E2E") != "1",
+    reason="end-to-end generation tests need a live LLM provider; set HUSC_E2E=1 to run",
+)
 
 
 @pytest.fixture(scope="module")

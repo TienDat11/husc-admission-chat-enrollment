@@ -8,7 +8,7 @@ export function ThemeToggle() {
   return (
     <motion.button
       onClick={toggleTheme}
-      className="relative p-2.5 rounded-xl bg-muted hover:bg-muted/80 transition-colors duration-200 focus-ring"
+      className="relative chat-focus p-2.5 rounded-xl bg-muted hover:bg-muted/80 transition-colors duration-200"
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
       aria-label={theme === 'light' ? 'Chuyển sang chế độ tối' : 'Chuyển sang chế độ sáng'}

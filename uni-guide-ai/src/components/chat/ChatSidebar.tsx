@@ -1,26 +1,18 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, GraduationCap, BookOpen, Wallet, Building2, Theater, Phone, MessageSquare, Trash2, Plus, Sparkles } from 'lucide-react';
-import { categories, mockConversations, type Conversation } from '@/lib/chat-types';
-import { ConversationSkeleton } from './Skeleton';
+import { X, MessageSquare, Trash2, Plus, Sparkles } from 'lucide-react';
+import { categories } from '@/lib/chat-types';
+import type { SessionHistoryEntry } from '@/lib/session-history';
 
 interface ChatSidebarProps {
   isOpen: boolean;
   onClose: () => void;
   onNewChat: () => void;
-  activeConversationId: string | null;
-  onSelectConversation: (id: string) => void;
-  onDeleteConversation?: (id: string) => void;
-  isLoadingConversations?: boolean;
+  /** Questions asked in the current session, newest last. */
+  history: SessionHistoryEntry[];
+  activeMessageId: string | null;
+  onSelectEntry: (messageId: string) => void;
+  onDeleteEntry: (messageId: string) => void;
 }
-
-const iconMap: Record<string, React.ReactNode> = {
-  admission: <GraduationCap className="w-5 h-5" />,
-  majors: <BookOpen className="w-5 h-5" />,
-  tuition: <Wallet className="w-5 h-5" />,
-  facilities: <Building2 className="w-5 h-5" />,
-  campus: <Theater className="w-5 h-5" />,
-  contact: <Phone className="w-5 h-5" />,
-};
 
 const emojiMap: Record<string, string> = {
   admission: '🎓',
@@ -35,10 +27,10 @@ export function ChatSidebar({
   isOpen,
   onClose,
   onNewChat,
-  activeConversationId,
-  onSelectConversation,
-  onDeleteConversation,
-  isLoadingConversations = false
+  history,
+  activeMessageId,
+  onSelectEntry,
+  onDeleteEntry,
 }: ChatSidebarProps) {
   return (
     <>
@@ -73,7 +65,7 @@ export function ChatSidebar({
             whileHover={{ scale: 1.1, rotate: 90 }}
             whileTap={{ scale: 0.9 }}
             onClick={onClose}
-            className="lg:hidden p-2 rounded-xl hover:bg-muted transition-colors border-2 border-border"
+            className="lg:hidden chat-focus p-2 rounded-xl hover:bg-muted transition-colors border-2 border-border"
             aria-label="Đóng menu"
           >
             <X className="w-5 h-5" />
@@ -86,7 +78,7 @@ export function ChatSidebar({
             whileHover={{ scale: 1.02, y: -2 }}
             whileTap={{ scale: 0.98, y: 2 }}
             onClick={onNewChat}
-            className="w-full locket-btn-primary flex items-center justify-center gap-2 py-4"
+            className="w-full chat-focus flex items-center justify-center gap-2 py-4 rounded-2xl font-bold text-base text-white bg-gradient-to-r from-[hsl(var(--chat-user-from))] to-[hsl(var(--chat-user-to))] border-3 border-primary-dark shadow-[0_4px_0_hsl(var(--primary-dark))] transition-all duration-200 hover:-translate-y-0.5"
           >
             <Plus className="w-5 h-5" />
             <span>Chat mới 💬</span>
@@ -109,7 +101,7 @@ export function ChatSidebar({
                   transition={{ delay: index * 0.05 }}
                   whileHover={{ scale: 1.02, x: 4 }}
                   whileTap={{ scale: 0.98 }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left bg-card hover:bg-muted transition-all border-3 border-border shadow-[0_3px_0_hsl(var(--border))] hover:shadow-[0_4px_0_hsl(var(--border))] hover:-translate-y-0.5"
+                  className="w-full chat-focus flex items-center gap-3 px-4 py-3 rounded-2xl text-left bg-card hover:bg-muted transition-all border-3 border-border shadow-[0_3px_0_hsl(var(--border))] hover:shadow-[0_4px_0_hsl(var(--border))] hover:-translate-y-0.5"
                 >
                   <span className="text-xl">{emojiMap[category.id] || category.icon}</span>
                   <div className="flex-1 min-w-0">
@@ -121,26 +113,28 @@ export function ChatSidebar({
             </div>
           </div>
 
-          {/* Conversation History */}
+          {/* Conversation History — the current session only. A new chat
+              empties this list; nothing is invented to fill it. */}
           <div className="mb-6">
             <h3 className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3 px-2">
               💬 Lịch sử chat
             </h3>
             <div className="space-y-2">
-              {isLoadingConversations ? (
-                <>
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <ConversationSkeleton key={i} />
-                  ))}
-                </>
+              {history.length === 0 ? (
+                <p
+                  data-testid="session-history-empty"
+                  className="px-4 py-3 text-xs text-muted-foreground rounded-2xl border-3 border-dashed border-border"
+                >
+                  Chưa có câu hỏi nào trong phiên này.
+                </p>
               ) : (
-                mockConversations.map((conversation, index) => (
-                  <ConversationItem
-                    key={conversation.id}
-                    conversation={conversation}
-                    isActive={activeConversationId === conversation.id}
-                    onSelect={() => onSelectConversation(conversation.id)}
-                    onDelete={onDeleteConversation}
+                history.map((entry, index) => (
+                  <HistoryItem
+                    key={entry.messageId}
+                    entry={entry}
+                    isActive={activeMessageId === entry.messageId}
+                    onSelect={() => onSelectEntry(entry.messageId)}
+                    onDelete={() => onDeleteEntry(entry.messageId)}
                     index={index}
                   />
                 ))
@@ -153,59 +147,67 @@ export function ChatSidebar({
   );
 }
 
-function ConversationItem({
-  conversation,
+function HistoryItem({
+  entry,
   isActive,
   onSelect,
   onDelete,
   index,
 }: {
-  conversation: Conversation;
+  entry: SessionHistoryEntry;
   isActive: boolean;
   onSelect: () => void;
-  onDelete?: (id: string) => void;
+  onDelete: () => void;
   index: number;
 }) {
-  const timeAgo = getTimeAgo(conversation.timestamp);
+  const timeAgo = getTimeAgo(entry.timestamp);
 
   return (
-    <motion.button
+    <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.03 }}
-      whileHover={{ scale: 1.02, x: 4 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={onSelect}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all group ${
+      data-testid="session-history-item"
+      // Ticket 23: this row used to be a <button> wrapping the delete
+      // <button> — invalid nesting that made "xoá" unreachable by
+      // keyboard. It is now a container with two sibling controls, so
+      // select and delete are separate tab stops (WCAG 2.1.1).
+      className={`w-full flex items-center gap-1 p-1.5 rounded-2xl transition-all group ${
         isActive
-          ? 'bg-gradient-to-r from-primary to-secondary text-white border-3 border-primary-dark shadow-[0_4px_0_hsl(var(--primary-dark))]'
+          ? 'bg-gradient-to-r from-[hsl(var(--chat-user-from))] to-[hsl(var(--chat-user-to))] text-white border-3 border-primary-dark shadow-[0_4px_0_hsl(var(--primary-dark))]'
           : 'bg-card hover:bg-muted border-3 border-border shadow-[0_3px_0_hsl(var(--border))] hover:shadow-[0_4px_0_hsl(var(--border))] hover:-translate-y-0.5'
       }`}
     >
-      <div className={`flex items-center justify-center w-9 h-9 rounded-xl ${isActive ? 'bg-white/20' : 'bg-muted'}`}>
-        <MessageSquare className={`w-4 h-4 ${isActive ? 'text-white' : 'text-primary'}`} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="font-bold text-sm truncate">{conversation.title}</div>
-        <div className={`text-xs truncate ${isActive ? 'text-white/80' : 'text-muted-foreground'}`}>{timeAgo}</div>
-      </div>
-      {onDelete && (
-        <motion.button
-          whileHover={{ scale: 1.2 }}
-          whileTap={{ scale: 0.8 }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(conversation.id);
-          }}
-          className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition-all ${
-            isActive ? 'hover:bg-white/20 text-white' : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'
-          }`}
-          aria-label="Xóa cuộc trò chuyện"
-        >
-          <Trash2 className="w-4 h-4" />
-        </motion.button>
-      )}
-    </motion.button>
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        onClick={onSelect}
+        aria-current={isActive ? 'true' : undefined}
+        className="chat-focus flex items-center gap-3 flex-1 min-w-0 px-2.5 py-1.5 rounded-xl text-left"
+      >
+        <div className={`flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ${isActive ? 'bg-white/20' : 'bg-muted'}`}>
+          <MessageSquare className={`w-4 h-4 ${isActive ? 'text-white' : 'text-primary'}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-sm truncate">{entry.question}</div>
+          <div className={`text-xs truncate ${isActive ? 'text-white' : 'text-muted-foreground'}`}>{timeAgo}</div>
+        </div>
+      </motion.button>
+      <motion.button
+        whileHover={{ scale: 1.2 }}
+        whileTap={{ scale: 0.8 }}
+        onClick={onDelete}
+        // Keyboard users get the same affordance as hover users: the
+        // delete control is invisible until the row is hovered or it
+        // itself is focused.
+        className={`chat-focus flex-shrink-0 p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus:opacity-100 ${
+          isActive ? 'hover:bg-white/20 text-white' : 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive'
+        }`}
+        aria-label="Xóa cuộc trò chuyện"
+      >
+        <Trash2 className="w-4 h-4" />
+      </motion.button>
+    </motion.div>
   );
 }
 

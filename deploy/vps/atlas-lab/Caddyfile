@@ -1,0 +1,73 @@
+# HUSC — Caddy reverse proxy + static SPA server
+#
+# Topology (spec 04 §P-A): one Caddy container ("web") serves the pre-built
+# React SPA (baked in at /srv/husc by uni-guide-ai/Dockerfile) and proxies
+# backend API paths to the "app" (uvicorn) container.
+#
+# DOMAIN env var (compose `environment`):
+#   unset or "localhost" → Caddy binds :443 with its internal CA (no ACME),
+#                          also redirects :80 → :443.
+#   production domain    → automatic HTTPS via ACME (Let's Encrypt).
+#
+# The FE PROD build is compiled with VITE_API_BASE_URL="" (same-origin), so
+# every API call lands on this Caddy instance and gets proxied below.
+#
+# ── The /admin/ collision ────────────────────────────────────────────────────
+# The SPA router and the API SHARE the /admin/ prefix, and two paths are BOTH
+# at once: /admin/records and /admin/releases are SPA screens AND GET API
+# routes. A path list cannot separate them, so the discriminator is the
+# request itself: only a BROWSER NAVIGATION asks for HTML. The SPA's own data
+# fetches (adminApi.ts) send `Accept: */*`, so they never match @spa_nav and
+# always reach the API.
+#
+# The path_regexp is still required on top of the Accept test: a citation link
+# (T05) opens a source document in a new tab, which IS a browser navigation
+# with `Accept: text/html` but must stream the file from the API. Enumerating
+# the SPA's own routes keeps /admin/source-documents/content out of it.
+# SPA routes are the exhaustive list from uni-guide-ai/src/App.tsx.
+{
+	email {$CADDY_ADMIN_EMAIL:admin@example.com}
+}
+
+{$DOMAIN:localhost} {
+	# atlas-lab staging: TLS from ragre's CertMagic output (read-only mount).
+	# Caddy does NOT issue or renew here; no ACME for this site.
+	tls /etc/atlas-tls/14-225-81-171.sslip.io.crt /etc/atlas-tls/14-225-81-171.sslip.io.key
+	# Browser navigation to a screen the SPA router owns → index.html.
+	# Listed BEFORE the API handle; handle blocks are mutually exclusive and
+	# evaluated in source order, so the more specific one must come first.
+	@spa_nav {
+		method GET HEAD
+		header Accept *text/html*
+		path_regexp spa_route ^/admin(/config|/ingest|/retrieval|/debt|/records(/new|/[^/]+/(edit|review))?|/releases)?$
+	}
+	handle @spa_nav {
+		root * /srv/husc
+		try_files {path} /index.html
+		file_server
+	}
+
+	# ── API paths → BE container ─────────────────────────────────────────────
+	# FastAPI routes served at root (no /api/ prefix). Full list: api/openapi.json.
+	#   /api/*  /v2/*  /v3/*  /query  /health  /warmup  /metrics  /admin/*
+	@backend_api {
+		path /api/* /v2/* /v3/* /query /health /warmup /metrics /admin/*
+	}
+	handle @backend_api {
+		reverse_proxy app:8000
+	}
+
+	# ── Static SPA ────────────────────────────────────────────────────────────
+	handle {
+		root * /srv/husc
+		try_files {path} /index.html
+		file_server
+	}
+
+	encode gzip zstd
+
+	log {
+		output stdout
+		format console
+	}
+}

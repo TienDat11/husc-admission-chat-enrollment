@@ -37,6 +37,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import re
+from src.services.log_redaction import safe_query
 
 from loguru import logger
 
@@ -150,22 +151,9 @@ _VAGUE_PLACEHOLDER_PATTERNS = re.compile(
 )
 
 
-# Year-agnostic contact block — replaces the old HYDE_META_ANSWER_INTRO that
-# hardcoded majors, fabricated major codes, tuition numbers, and a wrong phone.
-# Pure contact/intro queries (hotline, website, address, fanpage, "giới thiệu
-# về trường", "thông tin chung") return this block instead. Kills both the
-# current-year hallucination source AND next-year's stale-fact source.
-#
-# G1-T5 (durability S14.x): the hotline is no longer baked into the
-# template. It is sourced (in priority order) from:
-#   1. HUSC_HOTLINE env var (operator override, e.g. CI / staged deploy)
-#   2. /api/meta payload (`MetaResponse.contact_hotline`) when available
-#   3. _HOTLINE_FALLBACK below (the previous literal — preserves prod
-#      behavior when the data-driven paths return nothing).
-# Use `build_contact_block(meta=...)` to render. `CONTACT_BLOCK` is
-# retained as a module-level pre-rendered fallback for callers that
-# can't supply a meta payload (auto-answer path).
-import os
+# Contact block moved to services.contact_block (T10): kept importable
+# without the LLM client stack. Strings byte-identical to before.
+from services.contact_block import CONTACT_BLOCK, build_contact_block
 
 
 def _safe_parse_complexity(value, default: int = 1) -> int:
@@ -182,53 +170,6 @@ def _safe_parse_complexity(value, default: int = 1) -> int:
     except (ValueError, TypeError):
         logger.debug(f"Invalid complexity value {value!r}; falling back to {default}")
         return default
-
-
-_HOTLINE_FALLBACK = "0234.3823290"  # Phòng Đào tạo (HUSC)
-
-
-def _resolve_hotline(meta: Optional[dict] = None) -> str:
-    """Pick the best available hotline (env > meta > fallback).
-
-    Args:
-        meta: optional dict (e.g. /api/meta response). If it contains a
-            non-empty `contact_hotline` key, that value wins over the
-            fallback but is overridden by HUSC_HOTLINE env.
-
-    Returns:
-        The hotline string to embed in CONTACT_BLOCK.
-    """
-    env = os.getenv("HUSC_HOTLINE")
-    if env and env.strip():
-        return env.strip()
-    if meta:
-        v = meta.get("contact_hotline")
-        if isinstance(v, str) and v.strip():
-            return v.strip()
-    return _HOTLINE_FALLBACK
-
-
-def build_contact_block(meta: Optional[dict] = None) -> str:
-    """Render the CONTACT_BLOCK with the resolved hotline.
-
-    `meta` is the /api/meta response (or a subset dict containing
-    `contact_hotline`). When None or empty, the env-var or fallback
-    literal is used.
-    """
-    hotline = _resolve_hotline(meta)
-    return (
-        "Bạn có thể tra cứu thông tin tuyển sinh chính thức của Trường Đại học Khoa học - "
-        "Đại học Huế (HUSC) tại:\n\n"
-        "🌐 Cổng tuyển sinh: https://tuyensinh.husc.edu.vn\n"
-        "🌐 Trang chủ: https://husc.edu.vn\n"
-        f"📞 Hotline: {hotline} (Phòng Đào tạo)\n\n"
-        "Bạn muốn biết cụ thể về ngành nào, điểm chuẩn, học phí, tổ hợp xét tuyển hay phương thức xét tuyển? Mình sẽ tra cứu chi tiết giúp bạn."
-    )
-
-
-# Pre-rendered default (env not set, no meta) — matches the pre-fix
-# hardcoded string so legacy callers see no behavior change.
-CONTACT_BLOCK = build_contact_block()
 
 
 HYDE_REJECT_VAGUE = (
@@ -629,7 +570,7 @@ class SmartQueryRouter:
     2. HyDE: generate hypothetical document for embedding
     3. Classify: route to padded_rag or graph_rag
 
-    All LLM calls go through UnifiedLLMClient (gemini-2.5-flash primary).
+    All LLM calls go through UnifiedLLMClient (router role: gemini-3.5-flash-lite primary, deepseek-v4.1-flash fallback on the same gateway).
 
     Args:
         llm: UnifiedLLMClient instance (injected or auto-created).
@@ -839,15 +780,38 @@ class SmartQueryRouter:
             Có thể trả về sớm với auto_answer/skip_retrieval=True nếu phát hiện
             câu hỏi mơ hồ hoặc câu common cần meta-answer.
         """
+        # @spec(T20) criterion 2: the /v2 path can bypass GuardrailService.precheck
+        # (chat.json and /v2/query are separate entry points), so the same
+        # deterministic system-info-leak refusal fires here too — BEFORE the
+        # router cache read, so a stale cached non-refusal can never resurrect
+        # an attack answer, and before any LLM routing call. The refusal itself
+        # is never written to the cache (route() caches only on fall-through).
+        from src.services import injection_guard
+        if injection_guard.detect_system_info_request(query):
+            logger.info("Router: deterministic injection-guard refusal (T20)")
+            return RouterResult(
+                original_query=query,
+                step_back_query="",
+                hypothetical_doc="",
+                hyde_variants=[query],
+                route=QueryRoute.PADDED_RAG,
+                complexity=1,
+                intent="system_info_request",
+                reasoning="deterministic injection guard refusal (T20)",
+                auto_answer=injection_guard.SYSTEM_INFO_REFUSAL_ANSWER,
+                skip_retrieval=True,
+                is_in_scope=False,
+            )
+
         # Phase E.3: in-memory LRU cache short-circuits identical queries
         from src.services.router_cache import get_router_cache
         cache = get_router_cache()
         cached = cache.get(query)
         if cached is not None:
-            logger.debug(f"Router cache HIT for query: {query[:60]}")
+            logger.debug(f"Router cache HIT for query: {safe_query(query, max_chars=60)}")
             return cached
 
-        logger.info(f"Router: processing query [{query[:60]}]")
+        logger.info(f"Router: processing query [{safe_query(query, max_chars=60)}]")
 
         # ─── Pre-routing 1: Vague / placeholder rejection ───
         # Câu QUÁ mơ hồ (placeholder "...", chỉ "em hỏi", chỉ "?", quá ngắn không entity)
@@ -873,7 +837,7 @@ class SmartQueryRouter:
         if is_vague_placeholder or (word_count <= 3 and not has_entity):
             logger.warning(
                 f"Vague/placeholder query detected → rejecting with guidance. "
-                f"query={normalized_query[:60]} words={word_count} has_entity={has_entity}"
+                f"query={safe_query(normalized_query, max_chars=60)} words={word_count} has_entity={has_entity}"
             )
             result = RouterResult(
                 original_query=query,
@@ -901,7 +865,7 @@ class SmartQueryRouter:
         if is_other_school and not mentions_husc:
             logger.info(
                 f"Other-school query detected (no HUSC mention) → redirecting. "
-                f"query={normalized_query[:60]}"
+                f"query={safe_query(normalized_query, max_chars=60)}"
             )
             result = RouterResult(
                 original_query=query,
@@ -940,7 +904,7 @@ class SmartQueryRouter:
         if is_contact and not is_major_question and not _SPECIFIC_QUERY.search(normalized_query):
             logger.info(
                 f"HyDE contact/intro pattern matched → CONTACT_BLOCK (year-agnostic). "
-                f"query={normalized_query[:60]}"
+                f"query={safe_query(normalized_query, max_chars=60)}"
             )
             result = RouterResult(
                 original_query=query,
@@ -972,7 +936,7 @@ class SmartQueryRouter:
             fast_intent = "liet_ke" if is_enum_fast else "so_sanh"
             logger.info(
                 f"Fast-path: khớp pattern liệt kê/so sánh → graph (bỏ qua LLM classify). "
-                f"query={normalized_query[:60]}"
+                f"query={safe_query(normalized_query, max_chars=60)}"
             )
             result = RouterResult(
                 original_query=query,

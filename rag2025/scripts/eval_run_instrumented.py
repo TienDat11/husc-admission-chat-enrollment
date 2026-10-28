@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 import time
 from datetime import datetime
@@ -34,7 +35,7 @@ for _p in (str(_PROJECT), str(_SRC), str(_HERE)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-# Load .env so RAMCLOUDS_* model overrides (gen/hyde/ner) are picked up —
+# Load .env so NS24_* model overrides (gen/hyde/ner) are picked up —
 # the legacy runner does this too (eval_thi_sinh_thuc.py:17-18). Without it the
 # runner falls back to the hardcoded defaults in llm_generator.py.
 try:
@@ -47,6 +48,7 @@ from loguru import logger  # noqa: E402
 
 from config.settings import RAGSettings  # noqa: E402
 import eval_record as _er  # noqa: E402  (sibling script)
+from eval_intent import intent_counts, select_ci_subset  # noqa: E402  (sibling script)
 from src.services.aggregation_booster import boost_with_aggregation  # noqa: E402
 
 
@@ -183,6 +185,7 @@ def _build_record(
     total_ms: float,
     latency_attribution: Optional[Any],
     gt_lookup: Optional[Dict[str, str]],
+    llm_token_calls: Optional[List[Dict[str, Any]]] = None,
 ) -> Any:
     """Materialize a fully-populated EvalRecord from extracted data."""
     retrieved = []
@@ -200,14 +203,36 @@ def _build_record(
         )
 
     mv = _er.ModelVersion(
-        gen=settings.RAMCLOUDS_GEN_MODEL,
-        ner=settings.RAMCLOUDS_NER_MODEL,
-        hyde=settings.RAMCLOUDS_HYDE_MODEL,
+        gen=settings.NS24_GEN_MODEL,
+        ner=settings.NS24_NER_MODEL,
+        hyde=settings.NS24_HYDE_MODEL,
         embedding=settings.EMBEDDING_MODEL,
     )
     expected = None
     if gt_lookup:
         expected = gt_lookup.get(qid)
+
+    # T12: convert token call data to LLMTokens models + totals.
+    calls: List[Any] = []
+    total_prompt = 0
+    total_completion = 0
+    for c in (llm_token_calls or []):
+        p = int(c.get("prompt_tokens", 0) or 0)
+        comp = int(c.get("completion_tokens", 0) or 0)
+        calls.append(_er.LLMTokens(
+            prompt_tokens=p,
+            completion_tokens=comp,
+            provider=str(c.get("provider", "")),
+            model=str(c.get("model", "")),
+        ))
+        total_prompt += p
+        total_completion += comp
+    llm_tokens_total = _er.LLMTokensTotal(
+        prompt_tokens=total_prompt,
+        completion_tokens=total_completion,
+        total_tokens=total_prompt + total_completion,
+        call_count=len(calls),
+    ) if calls else None
 
     return _er.EvalRecord(
         run_id=run_id,
@@ -230,12 +255,116 @@ def _build_record(
             total_ms=total_ms,
         ),
         latency_attribution=latency_attribution,
+        llm_tokens=llm_tokens_total,
+        llm_token_calls=calls,
     )
 
 
 # =============================================================================
 # Core runner
 # =============================================================================
+def _snapshot_all_token_ledgers(pipeline: Any, generator: Any) -> List[Dict[str, Any]]:
+    """T12: collect token-usage dicts from every LLM client we can reach.
+
+    Defensive: any client that lacks ``token_ledger`` (e.g. test fakes,
+    older versions) is skipped silently.
+    """
+    calls: List[Dict[str, Any]] = []
+    seen_ids: set[int] = set()
+    candidates: List[Any] = []
+    for obj in (pipeline, generator):
+        if obj is None:
+            continue
+        # Generator LLM clients (primary + fallback + hyde)
+        for attr in ("unified_client", "unified_fallback_client",
+                    "_hyde_client"):
+            c = getattr(obj, attr, None)
+            if c is not None and id(c) not in seen_ids:
+                seen_ids.add(id(c))
+                candidates.append(c)
+        # Pipeline: router LLM client
+        router = getattr(obj, "_router", None)
+        if router is not None:
+            c = getattr(router, "_llm", None)
+            if c is not None and id(c) not in seen_ids:
+                seen_ids.add(id(c))
+                candidates.append(c)
+        # Pipeline: NER service clients (primary + fallback)
+        ner = getattr(obj, "_ner", None)
+        if ner is not None:
+            for attr in ("_llm", "_fallback_llm"):
+                c = getattr(ner, attr, None)
+                if c is not None and id(c) not in seen_ids:
+                    seen_ids.add(id(c))
+                    candidates.append(c)
+        # Pipeline: top-level _llm (router_llm)
+        c = getattr(obj, "_llm", None)
+        if c is not None and id(c) not in seen_ids:
+            seen_ids.add(id(c))
+            candidates.append(c)
+    for client in candidates:
+        ledger = getattr(client, "token_ledger", None)
+        if ledger is None:
+            continue
+        for call in ledger.snapshot():
+            calls.append({
+                "provider": call.provider,
+                "model": call.model,
+                "prompt_tokens": call.prompt_tokens,
+                "completion_tokens": call.completion_tokens,
+            })
+    return calls
+
+
+def _drain_token_ledgers(pipeline: Any, generator: Any) -> List[Dict[str, Any]]:
+    """T12: collect AND reset all token ledgers, returning this question's calls.
+
+    Defensive: clients without ``token_ledger`` (test fakes, older versions)
+    are skipped; ``reset()`` failures are swallowed so a broken ledger never
+    crashes the run.
+    """
+    calls = _snapshot_all_token_ledgers(pipeline, generator)
+    # Reset ledgers so the next question starts fresh
+    for obj in (pipeline, generator):
+        if obj is None:
+            continue
+        for attr in ("unified_client", "unified_fallback_client",
+                     "_hyde_client"):
+            c = getattr(obj, attr, None)
+            ledger = getattr(c, "token_ledger", None)
+            if ledger is not None:
+                try:
+                    ledger.reset()
+                except Exception:
+                    pass
+        router = getattr(obj, "_router", None)
+        if router is not None:
+            c = getattr(router, "_llm", None)
+            ledger = getattr(c, "token_ledger", None)
+            if ledger is not None:
+                try:
+                    ledger.reset()
+                except Exception:
+                    pass
+        ner = getattr(obj, "_ner", None)
+        if ner is not None:
+            for attr in ("_llm", "_fallback_llm"):
+                c = getattr(ner, attr, None)
+                ledger = getattr(c, "token_ledger", None)
+                if ledger is not None:
+                    try:
+                        ledger.reset()
+                    except Exception:
+                        pass
+        c = getattr(obj, "_llm", None)
+        ledger = getattr(c, "token_ledger", None)
+        if ledger is not None:
+            try:
+                ledger.reset()
+            except Exception:
+                pass
+    return calls
+
 
 
 async def run_one_instrumented(
@@ -284,6 +413,11 @@ async def run_one_instrumented(
 
         total_start = time.perf_counter()
 
+        # T12: drain token ledgers at the START so any calls made during
+        # this question are isolated. The drain resets ledgers; we call it
+        # again at the end to capture this question's calls.
+        _drain_token_ledgers(pipeline, generator)
+
         # ---- Seam 1: route (includes HyDE; fused inside router.route()) ----
         route_start = time.perf_counter()
         router_result: Any = None
@@ -318,6 +452,7 @@ async def run_one_instrumented(
                 total_ms=total_ms,
                 latency_attribution=_maybe_attribution(attribution),
                 gt_lookup=gt_lookup,
+                llm_token_calls=_drain_token_ledgers(pipeline, generator),
             )
 
         # ---- Seam 2: retrieval loop (embed + retrieve + dedupe + boost) ----
@@ -433,12 +568,97 @@ async def run_one_instrumented(
             total_ms=total_ms,
             latency_attribution=_maybe_attribution(attribution),
             gt_lookup=gt_lookup,
+            llm_token_calls=_drain_token_ledgers(pipeline, generator),
         )
     finally:
         _attribution_restore(cleanups)
 
 
 # =============================================================================
+# Provider-error capture (ticket 08) — verbatim evidence for the report.
+#
+# LLMGenerator swallows the provider exception (llm_generator.py:785-790 logs it
+# and returns a canned fallback), so the raw error never reaches the record. The
+# only honest place to get it verbatim is the pipeline's own log. This sink
+# captures the provider-failure lines during the run and flushes them to a
+# sidecar next to the JSONL, which `eval_per_intent_report.py` reads to mark
+# semantic_accuracy / groundedness as blocked_by_provider.
+# =============================================================================
+
+_PROVIDER_ERROR_PATTERNS = re.compile(
+    r"(LLM generation failed:|All LLM providers failed|LLM \[[^\]]+\] failed:)"
+)
+
+
+class _ProviderErrorCapture:
+    """Collect verbatim provider-failure log messages (loguru sink)."""
+
+    def __init__(self) -> None:
+        self._handler_id: Optional[int] = None
+        self._order: List[str] = []
+        self._counts: Dict[str, int] = {}
+
+    def __enter__(self) -> "_ProviderErrorCapture":
+        try:
+            self._handler_id = logger.add(self._sink, level="WARNING")
+        except Exception:  # pragma: no cover — defensive, never breaks a run
+            self._handler_id = None
+        return self
+
+    def _sink(self, message: Any) -> None:
+        try:
+            text = str(message.record["message"])
+        except Exception:  # pragma: no cover
+            return
+        if _PROVIDER_ERROR_PATTERNS.search(text):
+            if text not in self._counts:
+                self._order.append(text)
+            self._counts[text] = self._counts.get(text, 0) + 1
+
+    def __exit__(self, *exc: Any) -> None:
+        if self._handler_id is not None:
+            try:
+                logger.remove(self._handler_id)
+            except Exception:  # pragma: no cover
+                pass
+            self._handler_id = None
+
+    def entries(self) -> List[Dict[str, Any]]:
+        """Deduped, order-preserving verbatim errors with occurrence counts."""
+        return [
+            {"text": text, "count": self._counts[text], "source": "run_meta_log"}
+            for text in self._order
+        ]
+
+
+def run_meta_path(out_path: Any) -> Path:
+    """Sidecar path for a records JSONL: ``<stem>.run-meta.json``."""
+    return Path(out_path).with_suffix(".run-meta.json")
+
+
+def _write_run_meta(
+    out_path: Any, entries: List[Dict[str, Any]], completed: int
+) -> Path:
+    meta_path = run_meta_path(out_path)
+    meta_path.write_text(
+        json.dumps(
+            {
+                "schema": "eval-run-meta",
+                "schema_version": 1,
+                "records_file": Path(out_path).name,
+                "completed": completed,
+                "provider_errors": entries,
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return meta_path
+
+
 # Bulk runner + checkpointing
 # =============================================================================
 
@@ -460,12 +680,14 @@ async def run_all(
 
     Mirrors legacy's checkpoint-on-each-question pattern: every successful
     question is flushed to disk before moving on, so a crash mid-run loses
-    at most one record.
+    at most one record. Also writes the provider-error sidecar (ticket 08):
+    ``<out>.run-meta.json``.
     """
     out_file = Path(out_path)
     out_file.parent.mkdir(parents=True, exist_ok=True)
     completed = 0
-    with out_file.open("w", encoding="utf-8") as f:
+    capture = _ProviderErrorCapture()
+    with capture, out_file.open("w", encoding="utf-8") as f:
         for i, q in enumerate(questions):
             logger.info(f"{i+1}/{len(questions)}: {q['id']}")
             try:
@@ -485,6 +707,7 @@ async def run_all(
                 completed += 1
             except Exception as e:
                 logger.error(f"  -> ERROR: {q['id']}: {e}")
+    _write_run_meta(out_path, capture.entries(), completed)
     return completed
 
 
@@ -511,6 +734,16 @@ def main() -> None:
         type=int,
         default=None,
         help="Smoke mode: only run the first N questions (e.g. --limit 3).",
+    )
+    parser.add_argument(
+        "--ci-subset",
+        type=int,
+        default=None,
+        help=(
+            "CI mode: run only a deterministic, intent-stratified subset of N "
+            "questions (spans simple/multihop/comparative). Same input -> same "
+            "subset. Applied after --limit."
+        ),
     )
     parser.add_argument(
         "--questions",
@@ -543,6 +776,12 @@ def main() -> None:
     if args.limit is not None:
         questions = questions[: args.limit]
         logger.info(f"Smoke mode: limited to first {args.limit} questions")
+    if args.ci_subset is not None:
+        questions = select_ci_subset(questions, args.ci_subset)
+        logger.info(
+            f"CI subset: {len(questions)} questions, intent counts="
+            f"{intent_counts(questions)}"
+        )
     logger.info(f"Loaded {len(questions)} questions")
 
     gt_lookup: Optional[Dict[str, str]] = None

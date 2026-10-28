@@ -4,13 +4,19 @@ Ingest chunked JSONL files into LanceDB using Qwen3-Embedding.
 Default mode performs full rebuild (overwrite table).
 Incremental mode (--incremental) ingests only changed chunk files and appends
 new chunk IDs that are not already present in LanceDB.
+
+Canonical mode (--canonical-corpus [DIR]) ingests the corpus built by the
+ticket-15 re-index job (chunks.jsonl + vectors.jsonl + chunk_manifest.json),
+merging on row id and sweeping only canonical rows. It refuses a corpus whose
+stamp (ticket 06) is not the stamp the running code produces, and it works from
+an empty canonical footprint — the served table may hold legacy rows only, or
+not exist at all.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -24,7 +30,13 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import RAGSettings
+from src.infrastructure.lancedb_schema import EMBEDDING_DIM
 from src.services.embedding import EmbeddingService
+from src.services.reindex_job import (
+    CorpusStamp,
+    read_corpus_stamp,
+    stamp_is_stale,
+)
 
 load_dotenv()
 
@@ -33,6 +45,55 @@ MANIFEST_PATH = Path(__file__).parent.parent / "data" / "chunked" / ".ingest_man
 # M3-N2b: ingest target is unified husc_chunks (not legacy rag2025)
 import os
 TARGET_TABLE = os.environ.get("LANCEDB_UNIFIED_TABLE", "husc_chunks")
+
+# STEP 8b: ingest-time size-gate guardrail — a chunk may NEVER be silently
+# dropped for size; it is LOG-AND-FLAG (warning log + metadata marker) and the
+# count is surfaced at the end of the run. Knobs mirror config.settings defaults
+# (512 / 50) and resolve from settings when the caller provides them.
+HARD_MAX_TOKENS = 512
+SOFT_MIN_TOKENS = 50
+class IngestCorpusError(Exception):
+    """A canonical corpus cannot be served as-is.
+
+    Refusals that used to be ``return False``: the publish hook needs the
+    difference between "ingest refused" and "ingest succeeded", because a
+    refused ingest must fail the job (and keep the outbox entry), while
+    ``False`` told the hook the publish was fine.
+    """
+
+_ENCODING = None
+
+
+def _count_tokens(text: str) -> int:
+    """Token count via tiktoken cl100k_base (same encoding as chunker.py).
+
+    Lazy-loaded and cached at module level so ingest paths that never touch the
+    size gate (and tests) pay no import cost.
+    """
+    global _ENCODING
+    if _ENCODING is None:
+        import tiktoken
+
+        _ENCODING = tiktoken.get_encoding("cl100k_base")
+    return len(_ENCODING.encode(text))
+
+
+def _size_flag_for(
+    text: str,
+    hard_max: int = HARD_MAX_TOKENS,
+    soft_min: int = SOFT_MIN_TOKENS,
+) -> str:
+    """Classify a chunk against the size gates (STEP 8b).
+
+    Returns one of: 'oversized' (> hard_max), 'undersized' (< soft_min), 'ok'.
+    Pure classification — callers decide to log/flag, never to drop.
+    """
+    tokens = _count_tokens(text)
+    if tokens > hard_max:
+        return "oversized"
+    if tokens < soft_min:
+        return "undersized"
+    return "ok"
 
 
 def _file_digest(path: Path) -> str:
@@ -107,9 +168,14 @@ def _resolve_target_files(chunks_dir: Path, incremental: bool) -> List[Path]:
 
 
 def _normalize_for_hash(text: str) -> str:
-    """Normalize text for content hashing: strip whitespace + remove date patterns."""
-    t = re.sub(r"\d{2}/\d{2}/\d{4}", "", text)
-    return " ".join(t.split())
+    """Normalize text for content hashing: collapse whitespace only.
+
+    T7: date tokens (\\d{2}/\\d{2}/\\d{4}) are PRESERVED in the hashed text so
+    the content→vector reuse key is date-sensitive — two texts differing ONLY by
+    a date must not reuse each other's embedding. Other boilerplate
+    normalization (whitespace collapse) is unchanged.
+    """
+    return " ".join(text.split())
 
 
 def _content_hash(text: str) -> str:
@@ -119,7 +185,7 @@ def _content_hash(text: str) -> str:
 def _text_dedup_hash(text: str) -> str:
     """Normalized text hash for cross-file dedup (case/whitespace-insensitive).
 
-    T1.2: unlike `_content_hash` (re-embed guardrail, date-pattern-insensitive),
+    T1.2: unlike `_content_hash` (re-embed guardrail, date-sensitive since T7),
     this is the *insert* guard. Two JSONL files carrying the same text under
     different ids must be stored once. Lowercase + collapsed whitespace means
     "Nội dung X" and "  nội DUNG X  " resolve to the same hash.
@@ -171,6 +237,17 @@ def _load_chunks(files: List[Path]) -> List[Dict]:
                 # collide on _unique_id and silently overwrite in a rebuild.
                 chunk_id = str(obj.get("id") or obj.get("chunk_id") or f"chunk_{len(all_chunks)}")
                 source = meta.get("source", file.name)
+
+                # STEP 8a: inherit the chunker/normalize breadcrumbs (source
+                # label + section markers) so the persisted record keeps them
+                # in metadata_json. Read top-level first, then metadata.
+                breadcrumbs = obj.get("breadcrumbs")
+                if not isinstance(breadcrumbs, list):
+                    breadcrumbs = meta.get("breadcrumbs")
+                if not isinstance(breadcrumbs, list):
+                    breadcrumbs = []
+                breadcrumbs = [str(b) for b in breadcrumbs if str(b).strip()]
+
                 all_chunks.append(
                     {
                         # T1.5 (G9): globally-unique row id — bare chunk ids
@@ -185,6 +262,7 @@ def _load_chunks(files: List[Path]) -> List[Dict]:
                         "ingest_file": file.name,
                         "faq_type": obj.get("faq_type", meta.get("faq_type", "")),
                         "metadata": meta,
+                        "breadcrumbs": breadcrumbs,
                         "content_hash": _content_hash(text),
                     }
                 )
@@ -194,15 +272,27 @@ def _load_chunks(files: List[Path]) -> List[Dict]:
 
     all_chunks = [c for c in all_chunks if c.get("text")]
 
-    # T1.2: cross-file text dedup — keep one canonical chunk (first by
-    # ingest_file + chunk_id) when two files carry the same normalized text.
-    seen_text_hashes: Set[str] = set()
+    # T1.2: cross-file text dedup — keep one chunk (first by ingest_file +
+    # chunk_id) when two files carry the same normalized text. Scoped per
+    # canonical record AND per unit: two DIFFERENT records may legitimately
+    # carry identical text (e.g. "mã ngành: 7420201" in every record naming
+    # that major), and collapsing them would delete one record's chunk_id +
+    # lineage, leaving it uncitable. The same reasoning applies one level down:
+    # a record with two majors, or two years, holds several distinct facts that
+    # legitimately repeat a value, and each is separately citable — so the
+    # record's own unit fields are part of the identity of the text. Only
+    # repetition of the same text *within one unit* is duplication. Legacy
+    # chunks have no `record_version_key` → `rvk == ""` → they keep the
+    # original whole-corpus dedup, same winner as before.
+    seen_dedup_keys: Set[tuple] = set()
     deduped: List[Dict] = []
     for c in sorted(all_chunks, key=lambda x: (x["ingest_file"], x["chunk_id"])):
-        th = _text_dedup_hash(c["text"])
-        if th in seen_text_hashes:
+        rvk = str(c["metadata"].get("record_version_key") or "")
+        unit = str(c["metadata"].get("unit_key") or "")
+        key = (rvk, unit, _text_dedup_hash(c["text"]))
+        if key in seen_dedup_keys:
             continue
-        seen_text_hashes.add(th)
+        seen_dedup_keys.add(key)
         deduped.append(c)
 
     return deduped
@@ -294,6 +384,280 @@ def _trigger_graph_sync(new_ids: List[str]) -> None:
         logger.warning(f"Graph sync failed (non-fatal): {e}")
 
 
+def _table_exists(db, target: str) -> bool:
+    """Whether ``target`` exists, on any lancedb client version.
+
+    lancedb 0.29 ``list_tables()`` returns a ``ListTablesResponse`` (with a
+    ``.tables`` field), not a plain list — ``target in response`` is always
+    False. ``table_names()`` (deprecated) returns a plain list.
+    """
+    listed = db.list_tables()
+    names = listed.tables if hasattr(listed, "tables") else listed
+    return target in names
+
+# ── canonical corpus ingestion (ticket 15) ─────────────────────────────────
+#
+# The canonical track (tickets 02/03/05/06/28) reaches the served table through
+# here. Two things this path must get right that the legacy path does not have
+# to:
+#
+#   * it works from an EMPTY canonical footprint. The served table holds 1679
+#     legacy rows and zero canonical ones, so the first run is an initial
+#     ingestion, not a delta — every row is new and there is no prior canonical
+#     row to diff against.
+#   * it refuses a STALE corpus. The corpus carries the stamp (ticket 06) the
+#     code that built it produced; if that is not the stamp the running code
+#     would produce, the corpus describes a chunker this process does not have,
+#     and serving it would put chunk output in the index that no current code
+#     path can reproduce. Refused, loudly, with the fix named.
+
+CANONICAL_CORPUS_DIR = Path(__file__).parent.parent / "data" / "canonical_corpus"
+CANONICAL_CHUNKS_FILENAME = "chunks.jsonl"
+CANONICAL_VECTORS_FILENAME = "vectors.jsonl"
+#: What a canonical chunk records as its own ingest_file
+#: (``canonical_chunk_builder.INGEST_FILE``). Orphan scoping matches on it, so
+#: a canonical sweep can never delete a row another ingest script wrote.
+CANONICAL_INGEST_FILE = "chunks.jsonl"
+#: The only record status a served canonical chunk may carry
+#: (``canonical_chunk_builder.INDEXABLE_STATUS``). Checked per chunk at ingest,
+#: so a corpus that reached disk without going through the chunker's gate — a
+#: hand-assembled one, one built by older code, or one edited in between — is
+#: still refused before a single row is written.
+CANONICAL_PUBLISHED_STATUS = "published"
+
+def _read_corpus_jsonl(path: Path) -> List[Dict]:
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"no {path.name} at {path} — the re-index job (ticket 15) must build "
+            "the corpus before it can be ingested"
+        )
+    rows: List[Dict] = []
+    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{path}:{lineno} is not JSON: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError(f"{path}:{lineno} is not a JSON object")
+        rows.append(payload)
+    return rows
+
+def canonical_corpus_rows(
+    corpus_dir: Path, *, embedding_dim: int, stamp
+) -> List[Dict]:
+    """Rows for a built corpus, with both release-id views forced to agree.
+
+    ``husc_chunks`` records the release in two places: the top-level
+    ``release_id`` column (what the ingest stamps on the row) and
+    ``metadata_json.release_id`` (what the chunk carries). Both are written from
+    one value here, so a canonical row cannot be read as belonging to two
+    releases — the divergence ``HybridSearchService`` reports as an error.
+
+    Every chunk must have its vector, matching on ``chunk_id`` AND
+    ``content_hash``: a vector belonging to different text would be indexed
+    silently and only show up as a wrong answer. A chunk without one aborts the
+    run rather than being dropped — a canonical chunk that reaches the corpus
+    must reach the index.
+
+    The second gate, independent of ``build_chunk_index``: every chunk must
+    carry ``metadata.status == "published"``. The chunker refuses to *build* a
+    corpus out of unpublished records; this refuses to *serve* one that reached
+    the corpus some other way — a hand-assembled corpus, a corpus left by older
+    code, or a file edited between the two steps. Both read the status from the
+    artifact itself, so neither depends on the other having run.
+    """
+    chunks = _read_corpus_jsonl(Path(corpus_dir) / CANONICAL_CHUNKS_FILENAME)
+    vectors = {
+        str(entry.get("chunk_id")): entry
+        for entry in _read_corpus_jsonl(Path(corpus_dir) / CANONICAL_VECTORS_FILENAME)
+    }
+
+    rows: List[Dict] = []
+    for chunk in chunks:
+        chunk_id = str(chunk.get("id") or "")
+        meta = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else {}
+        release_id = str(meta.get("release_id") or "")
+        status = str(meta.get("status") or "")
+        if status != CANONICAL_PUBLISHED_STATUS:
+            raise ValueError(
+                f"canonical chunk {chunk_id or '<no id>'} is not "
+                f"{CANONICAL_PUBLISHED_STATUS} (status={status or '<missing>'}) — "
+                "only published record versions may reach the served table: a "
+                "draft, review or approved version is an edit that has not "
+                "replaced anything, and an archived one is a retracted fact. "
+                "Rebuild the corpus with build_chunk_index from ticket 05's "
+                "materialized_records.jsonl."
+            )
+        if not chunk_id or not release_id:
+            raise ValueError(
+                f"canonical chunk {chunk_id or '<no id>'} carries no release_id — "
+                "a chunk that cannot name its release cannot be rolled back"
+            )
+        entry = vectors.get(chunk_id)
+        if entry is None:
+            raise ValueError(f"canonical chunk {chunk_id} has no vector in the corpus")
+        if entry.get("content_hash") != chunk.get("content_hash"):
+            raise ValueError(
+                f"canonical chunk {chunk_id}: vector content_hash "
+                f"{entry.get('content_hash')!r} does not match the chunk's "
+                f"{chunk.get('content_hash')!r}"
+            )
+        vector = [float(x) for x in entry.get("vector") or []]
+        if len(vector) != embedding_dim:
+            raise ValueError(
+                f"canonical chunk {chunk_id}: vector has {len(vector)} dims, "
+                f"table schema expects {embedding_dim}"
+            )
+
+        meta_out = {
+            **meta,
+            # Both views, one value.
+            "release_id": release_id,
+            "corpus_stamp": stamp.to_dict(),
+            "ingest_file": str(meta.get("ingest_file") or CANONICAL_INGEST_FILE),
+            "content_hash": chunk.get("content_hash"),
+        }
+        admission_year = meta.get("admission_year")
+        rows.append(
+            {
+                "id": chunk_id,
+                "doc_id": str(chunk.get("chunk_id") or chunk_id),
+                "release_id": release_id,
+                "text": chunk.get("text") or "",
+                "summary": None,
+                "vector": vector,
+                "data_year": int(admission_year) if isinstance(admission_year, int) else 0,
+                "scope": "admissions",
+                "doc_type": str(meta.get("record_type") or "chunk"),
+                "status": "current",
+                "effective_from": 0,
+                "effective_to": 99991231,
+                "is_tombstone": False,
+                "superseded_by": None,
+                "metadata_json": json.dumps(meta_out, ensure_ascii=False, default=str),
+                "is_reference": False,
+                "crawl_date": None,
+            }
+        )
+    return rows
+
+def served_corpus_stamp(table) -> "CorpusStamp | None":
+    """The stamp the served table's rows agree on, or ``None``.
+
+    ``None`` covers both "no row carries a stamp" — the served table today, 1679
+    legacy rows — and "rows disagree". Both mean the table cannot be shown to
+    have been built by the running code, and the re-index treats that as stale.
+    """
+    rows = table.to_arrow().select(["metadata_json"]).to_pylist()
+    return CorpusStamp.from_rows(rows)
+
+def ingest_canonical_corpus(corpus_dir: str | Path | None = None) -> bool:
+    """Ingest a built canonical corpus into the served table. Ticket 15's write path.
+
+    Runs from an empty canonical footprint (the table may hold only legacy rows,
+    or not exist at all) and from a populated one: the write is a
+    ``merge_insert`` on ``id``, so re-running the same corpus updates rows in
+    place instead of duplicating them, and canonical rows the corpus no longer
+    contains are swept — scoped to canonical rows by ``ingest_file``, so no
+    legacy row is ever touched.
+
+    Raises:
+        IngestCorpusError: the corpus is stale (built by other chunking logic
+            than the running code) or holds no chunk. The publish hook that
+            calls this turns the raise into a FAILED job and keeps the outbox
+            entry, so the previous corpus keeps serving and the next tick
+            retries — which ``return False`` could not express, because the
+            hook would have treated ``False`` as success and created a
+            release for a corpus the table never received.
+    """
+    settings = RAGSettings()
+    corpus = Path(corpus_dir) if corpus_dir else CANONICAL_CORPUS_DIR
+
+    stamp = read_corpus_stamp(corpus)
+    if stamp_is_stale(stamp):
+        raise IngestCorpusError(
+            f"Canonical corpus at {corpus} is STALE "
+            f"(built by {stamp.to_dict() if stamp else 'nothing — no manifest stamp'}; "
+            f"code now {CorpusStamp.current().to_dict()}) — refusing to serve it. "
+            "Re-run the ticket-15 re-index job to rebuild the corpus."
+        )
+
+    embedding_dim = int(getattr(settings, "EMBEDDING_DIM", EMBEDDING_DIM))
+    rows = canonical_corpus_rows(corpus, embedding_dim=embedding_dim, stamp=stamp)
+    if not rows:
+        raise IngestCorpusError(
+            f"Canonical corpus at {corpus} holds no chunk — aborting"
+        )
+
+    db = lancedb.connect(settings.LANCEDB_URI)
+    target = TARGET_TABLE
+    ids = {row["id"] for row in rows}
+
+    if not _table_exists(db, target):
+        table = db.create_table(target, data=rows)
+        logger.info(
+            f"Initial canonical ingest: table={target} created with "
+            f"{table.count_rows()} row(s), release(s) "
+            f"{sorted({r['release_id'] for r in rows})}"
+        )
+    else:
+        table = db.open_table(target)
+        orphans = _orphan_ids(table, {CANONICAL_INGEST_FILE}, ids)
+        job = (
+            table.merge_insert("id")
+            .when_matched_update_all()
+            .when_not_matched_insert_all()
+        )
+        if orphans:
+            escaped = ", ".join(f"'{_esc(o)}'" for o in orphans)
+            job.when_not_matched_by_source_delete(condition=f"id IN ({escaped})")
+        job.execute(rows)
+        logger.info(
+            f"Canonical ingest: merged={len(rows)}, swept={len(orphans)}, "
+            f"total_rows={table.count_rows()}, table={target}"
+        )
+
+    _warn_on_release_view_mismatch(db, target)
+    return True
+
+def _warn_on_release_view_mismatch(db, target: str) -> None:
+    """Report rows whose two release-id views disagree, without touching them.
+
+    Canonical rows written here always agree (one value, two places). Legacy
+    rows carry a top-level ``release_id`` of ``"legacy"`` and no
+    ``metadata_json.release_id`` at all, so a table holding both spans two
+    release sets — the divergence ``HybridSearchService`` logs. Named here, at
+    the ingest that produced the mix, so it is diagnosable without reading the
+    BM25 path.
+    """
+    try:
+        table = db.open_table(target)
+        rows = table.to_arrow().select(["release_id", "metadata_json"]).to_pylist()
+    except Exception as exc:  # noqa: BLE001 - reporting only, never fatal
+        logger.warning(f"Release-view audit skipped: {exc}")
+        return
+    mismatched = 0
+    for row in rows:
+        meta = row.get("metadata_json")
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except json.JSONDecodeError:
+                meta = {}
+        if not isinstance(meta, dict):
+            meta = {}
+        if (row.get("release_id") or None) != (meta.get("release_id") or None):
+            mismatched += 1
+    if mismatched:
+        logger.warning(
+            f"Release-id views disagree on {mismatched}/{len(rows)} row(s) in "
+            f"{target}: the top-level column and metadata_json.release_id do not "
+            "match. Canonical rows are written agreeing; these are rows from "
+            "another ingest path."
+        )
+
 def ingest_lancedb(incremental: bool = False) -> bool:
     settings = RAGSettings()
     chunks_dir = Path(__file__).parent.parent / "data" / "chunked"
@@ -322,27 +686,22 @@ def ingest_lancedb(incremental: bool = False) -> bool:
     # M3-N1b: content-hash guardrail — skip re-embed when text unchanged
     db = lancedb.connect(settings.LANCEDB_URI)
     target = TARGET_TABLE
-    # lancedb 0.29 list_tables() returns a ListTablesResponse object (with a
-    # `.tables` field), not a plain list — `target in response` is always False.
-    # `table_names()` (deprecated) returns a plain list; keep a defensive guard
-    # so `table_exists` reflects reality on any client version.
-    _listed = db.list_tables()
-    _table_names = _listed.tables if hasattr(_listed, "tables") else _listed
-    table_exists = target in _table_names
+    table_exists = _table_exists(db, target)
 
     existing_hashes: Dict[str, str] = {}
     if incremental and table_exists:
         try:
             table_tmp = db.open_table(target)
-            rows = table_tmp.to_arrow().select(["id", "metadata_json"]).to_pylist()
+            # T7: recompute the id-keyed hash from the immutable `text` column
+            # (same rationale as the reuse map) so rows persisted under the
+            # old date-insensitive scheme still count as unchanged in
+            # incremental mode — otherwise an unchanged date-bearing chunk
+            # would be treated as changed and re-embedded.
+            rows = table_tmp.to_arrow().select(["id", "text"]).to_pylist()
             for r in rows:
-                try:
-                    meta = json.loads(r.get("metadata_json") or "{}")
-                    h = meta.get("content_hash")
-                    if h:
-                        existing_hashes[r["id"]] = h
-                except (json.JSONDecodeError, TypeError):
-                    pass
+                h = _content_hash(r.get("text") or "")
+                if h:
+                    existing_hashes[r["id"]] = h
         except Exception as e:
             logger.warning(f"Failed to load existing hashes: {e}")
 
@@ -358,12 +717,16 @@ def ingest_lancedb(incremental: bool = False) -> bool:
             old_rows = table_old.to_arrow().select(["metadata_json", "vector", "text"]).to_pylist()
             for r in old_rows:
                 try:
-                    meta = json.loads(r.get("metadata_json") or "{}")
-                    # Prefer the stored content_hash, but legacy rows (pre-T1.2)
-                    # lack it — fall back to recomputing from the immutable text
-                    # column, since content_hash depends only on text. Also guard
+                    # T7: ALWAYS recompute the key from the immutable `text`
+                    # column instead of trusting the persisted content_hash.
+                    # Persisted hashes may predate the date-sensitive scheme
+                    # (T7) or a different script's `_content_hash`; keying on
+                    # them would orphan already-embedded date-bearing rows and
+                    # force a re-embed. content_hash depends only on text, and
+                    # the reuse map is rebuilt per run, so recomputing keeps
+                    # keys consistent on both sides of a scheme change. Guard
                     # against embedding-model drift by requiring matching dim.
-                    h = meta.get("content_hash") or _content_hash(r.get("text") or "")
+                    h = _content_hash(r.get("text") or "")
                     vec = r.get("vector")
                     if h and vec is not None and len(vec) == settings.EMBEDDING_DIM:
                         content_to_vector[h] = vec
@@ -430,6 +793,8 @@ def ingest_lancedb(incremental: bool = False) -> bool:
 
     records = []
     skipped_no_vector = 0
+    # STEP 8b: size-gate counters, surfaced as a warning summary at the end.
+    size_flags = {"oversized": 0, "undersized": 0}
     for chunk in chunks:
         vector = embeddings_map.get(chunk["id"])
         if vector is None:
@@ -462,11 +827,40 @@ def ingest_lancedb(incremental: bool = False) -> bool:
         if faq_type:
             meta_out["source_faq_type"] = faq_type
 
+        # STEP 8a: inherit heading/title + breadcrumbs into metadata_json.
+        # Metadata-only variant: `text` stays byte-identical so content hashes
+        # (and existing embeddings) are preserved — injecting `### {heading}`
+        # into text would re-embed the whole corpus (~2h CPU).
+        heading = raw_meta.get("name") or raw_meta.get("title") or faq_type
+        if heading:
+            meta_out["title"] = str(heading)
+        if chunk.get("breadcrumbs"):
+            meta_out["breadcrumbs"] = chunk["breadcrumbs"]
+
+        # STEP 8b: LOG-AND-FLAG size gate — never drop a chunk for size, never
+        # silently accept an out-of-range one. Knobs fall back to module
+        # defaults when the caller's settings object omits them (tests).
+        size_flag = _size_flag_for(
+            chunk["text"],
+            getattr(settings, "HARD_MAX_TOKENS", HARD_MAX_TOKENS),
+            getattr(settings, "SOFT_MIN_TOKENS", SOFT_MIN_TOKENS),
+        )
+        meta_out["size_flag"] = size_flag
+        if size_flag != "ok":
+            size_flags[size_flag] += 1
+            logger.warning(
+                f"Size-gate: chunk {chunk['id']} flagged {size_flag} "
+                f"({_count_tokens(chunk['text'])} tokens) — kept as-is"
+            )
+
         records.append(
             {
                 "id": chunk["id"],
                 "doc_id": chunk.get("chunk_id") or chunk["id"],
-                "release_id": "legacy",
+                # Real release id when the chunk carries one (canonical
+                # corpus); the top-level column must agree with
+                # metadata_json.release_id, which spreads raw_meta below.
+                "release_id": raw_meta.get("release_id") or "legacy",
                 "text": chunk["text"],
                 "summary": None,
                 "vector": vector,
@@ -489,6 +883,13 @@ def ingest_lancedb(incremental: bool = False) -> bool:
 
     if skipped_no_vector:
         logger.warning(f"Skipped {skipped_no_vector} chunk(s) with no vector available")
+
+    if size_flags["oversized"] or size_flags["undersized"]:
+        logger.warning(
+            f"Size-gate summary: {size_flags['oversized']} oversized (> max), "
+            f"{size_flags['undersized']} undersized (< min) out of {len(records)} "
+            f"written record(s) — all kept, flagged via metadata_json['size_flag']"
+        )
 
     if not records:
         # T1.5 (python-reviewer HIGH): a full overwrite of an empty batch would
@@ -590,7 +991,25 @@ if __name__ == "__main__":
         action="store_true",
         help="Only ingest changed chunk files and append new chunk IDs",
     )
+    parser.add_argument(
+        "--canonical-corpus",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="DIR",
+        help=(
+            "Ingest a built canonical corpus (ticket 15) instead of the legacy "
+            "chunked JSONL set. DIR defaults to data/canonical_corpus. The "
+            "corpus's stamp must match the running code or the run is refused."
+        ),
+    )
     args = parser.parse_args()
 
-    ok = ingest_lancedb(incremental=args.incremental)
-    raise SystemExit(0 if ok else 1)
+    if args.canonical_corpus is not None:
+        try:
+            ingest_canonical_corpus(args.canonical_corpus or None)
+        except IngestCorpusError:
+            raise SystemExit(1)
+    else:
+        ok = ingest_lancedb(incremental=args.incremental)
+        raise SystemExit(0 if ok else 1)

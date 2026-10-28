@@ -1,0 +1,221 @@
+{
+  "fixture_id": "ttts2026_p12_chi_tieu_dh_luat_kinh_te",
+  "source_document": "new_data/THONG_TIN_TUYEN_SINH_202611.pdf",
+  "source_pages": [
+    12
+  ],
+  "corpus_file": "rag2025/data/chunked/chunked_24.jsonl",
+  "corpus_chunk_ids": [
+    61
+  ],
+  "chunk_path": "small_table",
+  "notes": "Continuation fragment of the same page-12 table as ttts2026_p12_chi_tieu_dh_luat: to hop mon rows for khoi nganh Luat + Luat Kinh te. The first pipe line is a real data row ('5. Ngu van, Dia ly, GDCD / C20 / HB') that the parser treats as the chunk header, so those three document cells travel in the header line and must still be present in the output.",
+  "markdown_lines": [
+    "|                  |     |          | 5. Ngữ văn, Địa lý, GDCD          | C20  | HB    |      |     |",
+    "| ---------------- | --- | -------- | --------------------------------- | ---- | ----- | ---- | --- |",
+    "|                  |     |          | 6. Ngữ văn, Địa lý, GD KT&PL      | X74  | THPT  |      |     |",
+    "|                  |     |          | 7. Ngữ văn, Toán, Tiếng Anh       | D01  |       |      |     |",
+    "|                  |     |          | 8. Ngữ văn, Lịch sử, Tiếng Anh    | D14  |       |      |     |",
+    "| 2  Luật Kinh tế  |     | 7380107  |                                   |      |       | 700  |     |",
+    "|                  |     |          | 9. Ngữ văn, GDCD, Tiếng Anh       | D66  |       |      |     |",
+    "|                  |     |          | 10. Ngữ văn, GD KT&PL, Tiếng Anh  | X78  |       |      |     |"
+  ],
+  "column_headers": [
+    "Số TT",
+    "Tên ngành/Chương trình đào tạo",
+    "Mã ngành (Mã xét tuyển)",
+    "Tổ hợp môn xét tuyển",
+    "Mã tổ hợp môn xét tuyển",
+    "Phương thức",
+    "Chỉ tiêu (Dự kiến)",
+    "Ghi chú"
+  ],
+  "rows": [
+    {
+      "page": 12,
+      "anchor": "6. Ngữ văn, Địa lý, GD KT&PL"
+    },
+    {
+      "page": 12,
+      "anchor": "7. Ngữ văn, Toán, Tiếng Anh"
+    },
+    {
+      "page": 12,
+      "anchor": "8. Ngữ văn, Lịch sử, Tiếng Anh"
+    },
+    {
+      "page": 12,
+      "anchor": "2 Luật Kinh tế"
+    },
+    {
+      "page": 12,
+      "anchor": "9. Ngữ văn, GDCD, Tiếng Anh"
+    },
+    {
+      "page": 12,
+      "anchor": "10. Ngữ văn, GD KT&PL, Tiếng Anh"
+    }
+  ],
+  "expected_cells": [
+    "5. Ngữ văn, Địa lý, GDCD",
+    "C20",
+    "HB",
+    "6. Ngữ văn, Địa lý, GD KT&PL",
+    "X74",
+    "THPT",
+    "7. Ngữ văn, Toán, Tiếng Anh",
+    "D01",
+    "8. Ngữ văn, Lịch sử, Tiếng Anh",
+    "D14",
+    "2  Luật Kinh tế",
+    "7380107",
+    "700",
+    "9. Ngữ văn, GDCD, Tiếng Anh",
+    "D66",
+    "10. Ngữ văn, GD KT&PL, Tiếng Anh",
+    "X78"
+  ],
+  "ambiguous_rows": [
+    {
+      "index": 3,
+      "columns": [
+        {
+          "col": 3,
+          "header": "Tổ hợp môn xét tuyển",
+          "inherited_from": "8. Ngữ văn, Lịch sử, Tiếng Anh"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "inherited_from": "D14"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "columns": [
+        {
+          "col": 0,
+          "header": "Số TT",
+          "inherited_from": "2  Luật Kinh tế"
+        },
+        {
+          "col": 2,
+          "header": "Mã ngành (Mã xét tuyển)",
+          "inherited_from": "7380107"
+        }
+      ]
+    }
+  ],
+  "staging_file": "rag2025/data/staging/pdf/pdf_2.md",
+  "provenance_anchor": "7380107",
+  "expected_data_cell_count": 14,
+  "cell_attribution": [
+    {
+      "row": 0,
+      "page": 12,
+      "cells": [
+        {
+          "col": 3,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "6. Ngữ văn, Địa lý, GD KT&PL"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "X74"
+        },
+        {
+          "col": 5,
+          "header": "Phương thức",
+          "text": "THPT"
+        }
+      ]
+    },
+    {
+      "row": 1,
+      "page": 12,
+      "cells": [
+        {
+          "col": 3,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "7. Ngữ văn, Toán, Tiếng Anh"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "D01"
+        }
+      ]
+    },
+    {
+      "row": 2,
+      "page": 12,
+      "cells": [
+        {
+          "col": 3,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "8. Ngữ văn, Lịch sử, Tiếng Anh"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "D14"
+        }
+      ]
+    },
+    {
+      "row": 3,
+      "page": 12,
+      "cells": [
+        {
+          "col": 0,
+          "header": "Số TT",
+          "text": "2  Luật Kinh tế"
+        },
+        {
+          "col": 2,
+          "header": "Mã ngành (Mã xét tuyển)",
+          "text": "7380107"
+        },
+        {
+          "col": 6,
+          "header": "Chỉ tiêu (Dự kiến)",
+          "text": "700"
+        }
+      ]
+    },
+    {
+      "row": 4,
+      "page": 12,
+      "cells": [
+        {
+          "col": 3,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "9. Ngữ văn, GDCD, Tiếng Anh"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "D66"
+        }
+      ]
+    },
+    {
+      "row": 5,
+      "page": 12,
+      "cells": [
+        {
+          "col": 3,
+          "header": "Tổ hợp môn xét tuyển",
+          "text": "10. Ngữ văn, GD KT&PL, Tiếng Anh"
+        },
+        {
+          "col": 4,
+          "header": "Mã tổ hợp môn xét tuyển",
+          "text": "X78"
+        }
+      ]
+    }
+  ]
+}

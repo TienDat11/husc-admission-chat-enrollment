@@ -51,7 +51,7 @@ def test_health_response_model_has_all_fields() -> None:
 def client(monkeypatch) -> TestClient:
     """Load main with env overrides and return TestClient."""
     monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "0")
-    monkeypatch.setenv("RAMCLOUDS_API_KEY", "")
+    monkeypatch.setenv("NS24_API_KEY", "")
     monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
 
     import importlib.util

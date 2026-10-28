@@ -19,7 +19,7 @@ export function ChatHeader({ onMenuClick }: ChatHeaderProps) {
           whileHover={{ scale: 1.1, rotate: 5 }}
           whileTap={{ scale: 0.9 }}
           onClick={onMenuClick}
-          className="lg:hidden p-2.5 rounded-xl bg-muted hover:bg-muted/80 transition-colors border-3 border-border shadow-[0_3px_0_hsl(var(--border))]"
+          className="lg:hidden chat-focus p-2.5 rounded-xl bg-muted hover:bg-muted/80 transition-colors border-3 border-border shadow-[0_3px_0_hsl(var(--border))]"
           aria-label="Mở menu"
         >
           <Menu className="w-5 h-5" />
@@ -51,7 +51,7 @@ export function ChatHeader({ onMenuClick }: ChatHeaderProps) {
         <motion.button
           whileHover={{ scale: 1.1, y: -2 }}
           whileTap={{ scale: 0.9 }}
-          className="hidden md:flex p-2.5 rounded-xl bg-muted hover:bg-muted/80 transition-colors border-3 border-border shadow-[0_3px_0_hsl(var(--border))]"
+          className="hidden md:flex chat-focus p-2.5 rounded-xl bg-muted hover:bg-muted/80 transition-colors border-3 border-border shadow-[0_3px_0_hsl(var(--border))]"
           aria-label="Thống kê"
         >
           <BarChart3 className="w-5 h-5 text-muted-foreground" />
@@ -63,7 +63,7 @@ export function ChatHeader({ onMenuClick }: ChatHeaderProps) {
           whileHover={{ scale: 1.1, rotate: 45, y: -2 }}
           whileTap={{ scale: 0.9 }}
           transition={{ type: 'spring', stiffness: 400 }}
-          className="p-2.5 rounded-xl bg-muted hover:bg-muted/80 transition-colors border-3 border-border shadow-[0_3px_0_hsl(var(--border))]"
+          className="chat-focus p-2.5 rounded-xl bg-muted hover:bg-muted/80 transition-colors border-3 border-border shadow-[0_3px_0_hsl(var(--border))]"
           aria-label="Cài đặt"
         >
           <Settings className="w-5 h-5 text-muted-foreground" />

@@ -1,0 +1,40 @@
+{"text":"Thông tư này thay thế Thông tư số 09/2020/TT-BGDĐT ngày 07/5/2020.","expect_positive":true,"expect_kind":"REPLACES","note":"Văn bản mới nêu rõ văn bản bị thay thế."}
+{"text":"Nghị định này thay thế Nghị định số 97/2023/NĐ-CP ngày 31/12/2023.","expect_positive":true,"expect_kind":"REPLACES","note":"Nghị định mới thay thế nghị định cũ."}
+{"text":"Quy chế này thay thế Quy chế tuyển sinh ban hành kèm theo Quyết định số 123/QĐ-ĐHKH.","expect_positive":true,"expect_kind":"REPLACES","note":"Quy chế mới thay thế quy chế trước đó."}
+{"text":"Đề án này thay thế Đề án tuyển sinh năm 2025 của Trường Đại học Khoa học.","expect_positive":true,"expect_kind":"REPLACES","note":"Đề án mới thay thế đề án năm trước."}
+{"text":"Nghị quyết số 15/NQ-HĐND thay thế Nghị quyết số 08/NQ-HĐND ngày 10/3/2022.","expect_positive":true,"expect_kind":"REPLACES","note":"Nghị quyết mới chỉ định nghị quyết bị thay thế."}
+{"text":"Thông báo này thay thế Thông báo số 22/TB-HĐTS ngày 15/6/2025.","expect_positive":true,"expect_kind":"REPLACES","note":"Thông báo mới thay thông báo cũ."}
+{"text":"Thông tư này sửa đổi, bổ sung một số điều của Quy chế tuyển sinh ban hành theo Thông tư 08/2022.","expect_positive":true,"expect_kind":"AMENDS","note":"Cụm sửa đổi bổ sung gắn với quy chế pháp quy."}
+{"text":"Nghị định số 45/2026/NĐ-CP sửa đổi một số điều của Nghị định số 12/2021/NĐ-CP.","expect_positive":true,"expect_kind":"AMENDS","note":"Nghị định mới sửa đổi nghị định cũ."}
+{"text":"Quyết định này sửa đổi, bổ sung Điều 4 của Quyết định số 1234/QĐ-ĐHKH.","expect_positive":true,"expect_kind":"AMENDS","note":"Quyết định nêu rõ điều khoản được sửa đổi."}
+{"text":"Thông tư số 03/2026/TT-BGDĐT sửa đổi Thông tư số 01/2023/TT-BGDĐT.","expect_positive":true,"expect_kind":"AMENDS","note":"Thông tư mới sửa đổi thông tư trước."}
+{"text":"Nghị quyết này bổ sung và sửa đổi một số quy định tại Nghị quyết số 18/2024/NQ-HĐND.","expect_positive":true,"expect_kind":"AMENDS","note":"Nghị quyết nêu hành vi sửa đổi văn bản cũ."}
+{"text":"Quy chế tuyển sinh được sửa đổi, bổ sung theo Quyết định số 88/QĐ-ĐHKH.","expect_positive":true,"expect_kind":"AMENDS","note":"Quy chế được sửa đổi bằng quyết định có số hiệu."}
+{"text":"Thông tư này điều chỉnh một số điều của Thông tư số 10/2021/TT-BGDĐT.","expect_positive":true,"expect_kind":"AMENDS","note":"Động từ điều chỉnh gắn với văn bản có số hiệu."}
+{"text":"Quyết định này đính chính nội dung tại Điều 5 của Quyết định số 1234/QĐ-ĐHKH.","expect_positive":true,"expect_kind":"CORRECTS","note":"Quyết định đính chính điều khoản cụ thể."}
+{"text":"Thông tư này cải chính sai sót tại khoản 2 Điều 7 của Thông tư số 02/2024/TT-BGDĐT.","expect_positive":true,"expect_kind":"CORRECTS","note":"Cải chính gắn với thông tư có số hiệu."}
+{"text":"Nghị quyết số 06/NQ-HĐND đính chính Điều 3 của Nghị quyết số 11/NQ-HĐND.","expect_positive":true,"expect_kind":"CORRECTS","note":"Nghị quyết mới đính chính nghị quyết cũ."}
+{"text":"Quy chế này cải chính lỗi dẫn chiếu tại Điều 9 của Quy chế ban hành kèm Quyết định số 45/QĐ-ĐHKH.","expect_positive":true,"expect_kind":"CORRECTS","note":"Cải chính lỗi trong quy chế pháp quy."}
+{"text":"Quyết định số 77/QĐ-UBND đính chính Quyết định số 66/QĐ-UBND ngày 02/2/2025.","expect_positive":true,"expect_kind":"CORRECTS","note":"Quyết định có số hiệu đính chính văn bản trước."}
+{"text":"Nghị định này sửa lỗi kỹ thuật trong Nghị định số 19/2022/NĐ-CP.","expect_positive":true,"expect_kind":"CORRECTS","note":"Sửa lỗi kỹ thuật gắn với nghị định cụ thể."}
+{"text":"Bãi bỏ toàn bộ Quyết định số 999/QĐ-ĐHKH ngày 01/01/2020.","expect_positive":true,"expect_kind":"REPEALS","note":"Bãi bỏ toàn bộ quyết định cũ."}
+{"text":"Nghị định này bãi bỏ Nghị định số 41/2019/NĐ-CP.","expect_positive":true,"expect_kind":"REPEALS","note":"Nghị định mới bãi bỏ nghị định trước."}
+{"text":"Thông tư số 05/2026/TT-BGDĐT hủy bỏ Thông tư số 14/2020/TT-BGDĐT.","expect_positive":true,"expect_kind":"REPEALS","note":"Thông tư nêu rõ hành vi hủy bỏ văn bản."}
+{"text":"Quyết định này chấm dứt hiệu lực Quyết định số 31/QĐ-ĐHKH.","expect_positive":true,"expect_kind":"REPEALS","note":"Chấm dứt hiệu lực quyết định cũ."}
+{"text":"Bãi bỏ một phần Quy chế ban hành kèm theo Quyết định số 101/QĐ-ĐHKH.","expect_positive":true,"expect_kind":"REPEALS","note":"Bãi bỏ một phần quy chế pháp quy."}
+{"text":"Nghị quyết này hủy bỏ Nghị quyết số 09/NQ-HĐND ngày 20/4/2021.","expect_positive":true,"expect_kind":"REPEALS","note":"Nghị quyết mới hủy bỏ nghị quyết cũ."}
+{"text":"Căn cứ Thông tư số 08/2022/TT-BGDĐT ngày 06/6/2022 của Bộ GDĐT;","expect_positive":false,"expect_kind":null,"note":"Căn cứ G2c: câu viện dẫn căn cứ, không phải quan hệ thay thế."}
+{"text":"theo quy định tại Điều 5 Thông tư số 08/2022/TT-BGDĐT","expect_positive":false,"expect_kind":null,"note":"Căn cứ G2c: câu tham chiếu điều khoản, không phải quan hệ pháp quy."}
+{"text":"Phương thức xét tuyển này thay thế phương thức cũ","expect_positive":false,"expect_kind":null,"note":"Căn cứ G2c: thay thế phương thức, không thay thế văn bản pháp quy."}
+{"text":"Danh sách thay thế được công bố sau","expect_positive":false,"expect_kind":null,"note":"Căn cứ G2c: thay thế danh sách, không thay thế văn bản pháp quy."}
+{"text":"Căn cứ thông báo số 27/TB-HĐTSĐH của Hội đồng tuyển sinh Đại học Huế, Trường Đại học Khoa học thông báo về việc xét tuyển thẳng.","expect_positive":false,"expect_kind":null,"note":"Câu thật từ data, Căn cứ G2c là phần căn cứ tham chiếu."}
+{"text":"Căn cứ thông báo số 11/TB-HĐTSĐH của Hội đồng tuyển sinh Đại học Huế, Trường Đại học Khoa học thông báo về việc xét tuyển thẳng.","expect_positive":false,"expect_kind":null,"note":"Câu thật từ data, Căn cứ G2c là phần mở đầu hành chính."}
+{"text":"Căn cứ các nguyên tắc và khung quy đổi hướng dẫn trên đây, các CSĐT xây dựng kế hoạch.","expect_positive":false,"expect_kind":null,"note":"Câu thật từ data, Căn cứ G2c dẫn nguyên tắc chứ không sửa văn bản."}
+{"text":"Căn cứ ngưỡng đầu vào đại học hệ chính quy năm 2026, Hội đồng tuyển sinh Đại học Huế tổ chức xét tuyển.","expect_positive":false,"expect_kind":null,"note":"Câu thật từ data, Căn cứ G2c dẫn ngưỡng đầu vào."}
+{"text":"Căn cứ vào kết quả học tập ở mỗi học kì, sinh viên được xét cấp học bổng khuyến khích.","expect_positive":false,"expect_kind":null,"note":"Câu thật từ data, Căn cứ G2c dẫn dữ liệu xét học bổng."}
+{"text":"Căn cứ Nghị định số 238/2025/NĐ-CP ngày 03 tháng 9 năm 2025 của Chính phủ quy định mức thu học phí.","expect_positive":false,"expect_kind":null,"note":"Câu thật từ data, Căn cứ G2c là viện dẫn nghị định."}
+{"text":"thay thế; thủ tục hành chính bị bãi bỏ lĩnh vực giáo dục đại học thuộc phạm vi quản lý.","expect_positive":false,"expect_kind":null,"note":"Câu thật từ data, từ thay thế không chỉ quan hệ văn bản."}
+{"text":"thay thế bằng danh mục chính thức từng đơn vị.","expect_positive":false,"expect_kind":null,"note":"Câu thật từ data, thay thế biểu danh mục nghiệp vụ."}
+{"text":"thay thế điểm môn ngoại ngữ, để xét tuyển thí sinh vào một ngành.","expect_positive":false,"expect_kind":null,"note":"Câu thật từ data, thay thế điểm môn chứ không văn bản."}
+{"text":"sửa đổi, bổ sung khác (nếu có).","expect_positive":false,"expect_kind":null,"note":"Câu thật từ data, cụm sửa đổi thiếu đối tượng văn bản."}
+{"text":"sửa đổi, bổ sung cơ sở dữ liệu khu vực ưu tiên cho các trường.","expect_positive":false,"expect_kind":null,"note":"Câu thật từ data, sửa đổi dữ liệu nghiệp vụ không phải văn bản."}

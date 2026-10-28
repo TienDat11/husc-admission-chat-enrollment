@@ -2,11 +2,13 @@
 Unit tests for chunker module (Epic 1.2)
 """
 import json
+import re
 import tempfile
 from pathlib import Path
 
 import pytest
 
+from config.settings import settings
 from src.chunker import ChunkConfig, Chunker, RAGChunk, chunk_jsonl
 
 
@@ -298,3 +300,171 @@ def test_size_gates_keep_normal_chunks_unchanged(config_path):
     assert len(out) == len(src)
     for a, b in zip(src, out):
         assert a == b
+
+
+def test_size_gates_follow_settings_hard_max(config_path, monkeypatch):
+    """Settings-driven: HARD_MAX_TOKENS from config.settings controls the cap.
+
+    Default is 512 (pin). Lowering the settings knob must lower the split cap —
+    the gate reads config.settings at call time, not a hardcoded module constant.
+    """
+    config = ChunkConfig(config_path)
+    chunker = Chunker(config)
+
+    monkeypatch.setattr(settings, "HARD_MAX_TOKENS", 100)
+    big = "y" * 1000  # ~1000 tokens, far above the patched cap
+    out = chunker._enforce_size_gates([big])
+
+    assert len(out) > 1
+    for piece in out:
+        assert len(chunker.tokenizer.encode(piece)) <= 100
+
+
+def test_size_gates_follow_settings_soft_min(config_path, monkeypatch):
+    """Settings-driven: SOFT_MIN_TOKENS from config.settings controls the floor.
+
+    With the default floor (50) two ~200-token chunks pass through untouched;
+    raising the floor above them via the settings knob must merge them.
+    """
+    config = ChunkConfig(config_path)
+    chunker = Chunker(config)
+
+    src = ["A" * 200, "B" * 200]  # ~200 tokens each, > default floor
+
+    out_default = chunker._enforce_size_gates(src)
+    assert len(out_default) == 2  # default SOFT_MIN_TOKENS=50 -> no merge
+
+    monkeypatch.setattr(settings, "SOFT_MIN_TOKENS", 400)
+    out_raised = chunker._enforce_size_gates(src)
+    assert len(out_raised) == 1  # floor above both chunks -> merged into one
+
+
+# ══════════════════════════════════════════════════════════════════
+# ST-6 structure guards — sentence-terminator priority + pipe-row
+# atomicity (chunker.py)
+# ══════════════════════════════════════════════════════════════════
+
+# ~32 tokens per repetition in cl100k — lets tests build pipe rows that truly
+# exceed the 512-token hard cap (repeated 'x' merges into few tokens and would
+# stay under the cap, accidentally passing the current code).
+_PHRASE = "nội dung chi tiết về điều kiện xét tuyển đại học năm 2026 của trường "
+
+
+def test_split_text_prefers_sentence_terminators(config_path):
+    """ST-6a: chunk boundaries prefer Vietnamese sentence terminators.
+
+    Sentences ending in ';' / ':' (terminators NOT covered by the old '. '
+    separator entry of the auto profile) must produce sentence-aligned chunk
+    edges — a boundary must never land mid-sentence at an arbitrary space.
+    RED on current code: it falls through to the plain-space split and the
+    first chunk edge lands mid-sentence.
+    """
+    config = ChunkConfig(config_path)
+    chunker = Chunker(config)
+    sentences = [
+        ("Nội dung câu số %d được soạn thảo để kiểm tra ưu tiên tách chunk "
+         "theo dấu câu tiếng Việt khi vượt ngưỡng kích thước mặc định của hồ sơ "
+         "xét tuyển%s" % (i, ";" if i % 2 else ":"))
+        for i in range(40)
+    ]
+    text = " ".join(sentences)  # one long line, no newlines, no '. ' anywhere
+    assert re.search(r"[;:]\s", text), "fixture must carry terminators"
+
+    profile = config.get_profile("auto")  # chunk_size 350
+    chunks = chunker._split_text(text, profile)
+
+    assert len(chunks) > 1
+    # First chunk edge must be a sentence terminator, not a bare word.
+    assert re.search(r"[.?!;:]\s*$", chunks[0].rstrip()), chunks[0][-80:]
+
+
+def test_split_text_pipe_rows_never_fragmented(config_path):
+    """ST-6b (PIN, green on current code): a pipe-table row is atomic in
+    _split_text. Cells carrying sentence terminators ('. ', ': ', '; ') must
+    not tempt a within-line split that fragments a row.
+    """
+    config = ChunkConfig(config_path)
+    chunker = Chunker(config)
+    rows = [
+        ("|Hồ sơ mẫu số %03d. Điều kiện xét tuyển: đã tốt nghiệp; ghi chú thêm "
+         "nội dung chi tiết để đủ độ dài vượt ngưỡng tách chunk của câu này.|"
+         % i)
+        for i in range(60)
+    ]
+    text = "\n".join(rows)  # single-\n joined; each row carries '. ', ': ', '; '
+
+    profile = config.get_profile("auto")
+    chunks = chunker._split_text(text, profile)
+
+    assert len(chunks) > 1
+    for row in rows:
+        assert any(row in c for c in chunks), f"pipe row fragmented: {row[:40]!r}"
+
+
+def test_enforce_size_gates_pipe_rows_never_split(config_path):
+    """ST-6b: _enforce_size_gates splits an oversized pipe table at row
+    boundaries — a chunk boundary must never land inside a table row.
+    RED on current code: the balanced token split cuts rows near boundaries
+    (non-uniform row lengths force a boundary to land mid-row).
+    """
+    config = ChunkConfig(config_path)
+    chunker = Chunker(config)
+    # Non-uniform row lengths force the balanced-split boundaries (434/867/...)
+    # to land MID-row; the unique 'Mã hồ sơ %02d' marker per row ensures a cut
+    # genuinely breaks the row string (it cannot coincide elsewhere).
+    rows = ["|Mã hồ sơ %02d|%s|" % (i, _PHRASE * (4 + (i % 4))) for i in range(12)]
+    table = "\n".join(rows)
+
+    out = chunker._enforce_size_gates([table])
+
+    assert len(out) > 1
+    for piece in out:
+        assert len(chunker.tokenizer.encode(piece)) <= HARD_MAX_TOKENS
+    for row in rows:
+        assert any(row in p for p in out), f"row split mid-row: {row[:30]!r}"
+
+
+def test_enforce_size_gates_single_oversized_pipe_row_kept_whole(config_path):
+    """ST-6b: a single pipe row above the hard cap is kept whole (and flagged),
+    never cut mid-row.
+    RED on current code: the balanced token split fragments the oversized row.
+    """
+    config = ChunkConfig(config_path)
+    chunker = Chunker(config)
+    giant_row = "|%s|" % (_PHRASE * 18)  # ~578 tokens, above the 512 cap
+    table = giant_row + "\n|Small row|"
+
+    out = chunker._enforce_size_gates([table])
+
+    assert any(giant_row in p for p in out), "giant pipe row must be kept whole"
+    assert any("|Small row|" in p for p in out)
+
+
+def test_overlap_window_shared_between_adjacent_chunks(config_path):
+    """ST-6d (PIN, green on current code): CHUNK_OVERLAP-driven boundary
+    duplication is INTENTIONAL overlap — the next chunk re-carries the previous
+    chunk's tail token window. Distinct from the mid-sentence cuts eliminated
+    by ST-6a/6b.
+    """
+    config = ChunkConfig(config_path)
+    chunker = Chunker(config)
+    sentences = [
+        ("Đây là câu văn mẫu số %d trong đoạn văn dùng để kiểm tra cơ chế chồng "
+         "lấn token giữa các chunk liền kề khi tách văn bản tiếng Việt dài bằng "
+         "ngưỡng token được cấu hình trong cài đặt chunking của hệ thống xét tuyển."
+         % i)
+        for i in range(20)
+    ]
+    text = " ".join(sentences)
+
+    profile = config.get_profile("auto")  # chunk_size 350, overlap 70
+    chunks = chunker._split_text(text, profile)
+
+    assert len(chunks) > 1
+    for i in range(1, len(chunks)):
+        prev_tokens = chunker.tokenizer.encode(chunks[i - 1])
+        window_text = chunker.tokenizer.decode(prev_tokens[-profile.overlap:]).strip()
+        assert window_text, "overlap window must be non-empty"
+        # The overlap window (last `overlap` tokens of the previous chunk) is
+        # re-carried at the start of the next chunk.
+        assert chunks[i].strip().startswith(window_text), f"pair {i}: no overlap"

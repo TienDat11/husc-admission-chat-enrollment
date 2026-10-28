@@ -128,7 +128,7 @@ def test_graphml_has_baseline_node_count():
     entity_index.json. The graphml node count is the canonical parity
     signal (it is the persisted NetworkX graph). entity_index is a
     deduped unique-entity table whose count can legitimately differ
-    (e.g. T7 incremental NER + groq fallback enriches edges before
+    (e.g. T7 incremental NER + ns24 fallback enriches edges before
     adding new unique entities). See test_entity_index_smoke_and_contains_fix_chunks
     for the entity_index-specific checks.
 
@@ -216,3 +216,62 @@ def test_fix_jsonls_are_loaded_into_chunk_corpus(bg):
     }
     missing = expected_min - found_ids
     assert not missing, f"fix JSONLs missing expected chunks: {missing}"
+
+
+# ---------------------------------------------------------------------------
+# 4) Corpus parity: *_enhanced + husc_canonical_2026 reach the graph corpus
+# ---------------------------------------------------------------------------
+def _write_chunk(path: Path, cid: str, text: str) -> None:
+    """Write one JSONL chunk row (id + text) to ``path``."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"id": cid, "text": text, "metadata": {"data_year": 2026}}, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_load_all_chunks_includes_enhanced_jsonl(bg, tmp_path):
+    """``*_enhanced.jsonl`` is REAL corpus and must NOT be stripped from the glob.
+
+    Regression (STEP 3 graph parity): build_graph globbed ``chunked_*.jsonl``
+    then filtered out any name containing ``enhanced`` — silently dropping
+    chunked_10_enhanced.jsonl (38 real 2026 subject rows) from the graph while
+    ingest includes it (scripts/ingest_lancedb.py:_list_chunk_files, T1.5-bl).
+    """
+    _write_chunk(tmp_path / "chunked_1.jsonl", "c1", "Chỉ tiêu CNTT 2026.")
+    _write_chunk(tmp_path / "chunked_10_enhanced.jsonl", "enh_2026", "Đề án tuyển sinh 2026.")
+    orig = bg.CHUNKED_DIR
+    bg.CHUNKED_DIR = tmp_path
+    try:
+        ids = {c.chunk_id for c in bg.load_all_chunks()}
+    finally:
+        bg.CHUNKED_DIR = orig
+    assert "enh_2026" in ids, (
+        "chunked_10_enhanced.jsonl was stripped from the graph glob — graph "
+        "corpus diverges from ingest (T1.5-bl includes *_enhanced)"
+    )
+
+
+def test_load_all_chunks_includes_husc_canonical_2026(bg, tmp_path):
+    """``husc_canonical_2026.jsonl`` (172-row canonical corpus) must be loaded.
+
+    It is NOT matched by the ``chunked_*.jsonl`` glob, so it must sit in the
+    explicit extra-file list — otherwise the graph omits 172 canonical rows
+    that the rag2025 blue table / ingest already cover.
+    """
+    _write_chunk(
+        tmp_path / "husc_canonical_2026.jsonl",
+        "historical_diem_chuan_2024_husc",
+        "Điểm chuẩn HUSC 2024.",
+    )
+    orig = bg.CHUNKED_DIR
+    bg.CHUNKED_DIR = tmp_path
+    try:
+        ids = {c.chunk_id for c in bg.load_all_chunks()}
+    finally:
+        bg.CHUNKED_DIR = orig
+    assert "historical_diem_chuan_2024_husc" in ids, (
+        "husc_canonical_2026.jsonl missing from build_graph file selection — "
+        "172 canonical rows would be absent from the graph"
+    )

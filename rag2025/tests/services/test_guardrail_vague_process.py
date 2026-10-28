@@ -35,42 +35,28 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 
-def _build_service_with_mock_groq(monkeypatch, is_in_scope: bool, call_counter=None):
-    """Mirror the AsyncGroq mock fixture used by the existing guardrail tests.
+def _build_service_with_mock_llm(monkeypatch, is_in_scope: bool, call_counter=None):
+    """Build a GuardrailService whose ns24 guardrail client is a fake.
 
-    Returns ``(svc, guardrail_mod)``. The fake ``.create()`` returns
+    Returns ``(svc, guardrail_mod)``. The fake ``chat_json`` returns
     ``is_in_scope`` and counts every invocation through ``call_counter``.
     """
-    monkeypatch.setenv("GROQ_API_KEY", "test-fake-groq-key")
-
     from config.settings import RAGSettings
     from services import guardrail as guardrail_mod
 
-    class _FakeCompletions:
-        def __init__(self, counter):
-            self._counter = counter
+    class _FakeLLM:
+        token_ledger = None
+        _providers = []
 
-        async def create(self, *args, **kwargs):
-            if self._counter is not None:
-                self._counter["calls"] += 1
-            content_str = (
-                '{"is_in_scope": %s, "reason": "mocked"}' % str(is_in_scope).lower()
-            )
-            resp = MagicMock()
-            resp.choices[0].message.content = content_str
-            return resp
+        async def chat_json(self, **kwargs):
+            if call_counter is not None:
+                call_counter["calls"] += 1
+            return {"is_in_scope": is_in_scope, "reason": "mocked"}
 
-    class _FakeChat:
-        completions = _FakeCompletions(call_counter)
-
-    class _FakeAsyncGroq:
-        def __init__(self, *a, **kw):
-            self.chat = _FakeChat()
-
-    monkeypatch.setattr(guardrail_mod, "AsyncGroq", _FakeAsyncGroq)
     guardrail_mod.GuardrailService.clear_major_scope_cache_for_testing()
-    settings = RAGSettings()
-    svc = guardrail_mod.GuardrailService(settings)
+    svc = guardrail_mod.GuardrailService(RAGSettings(_env_file=None))
+    svc._llm = _FakeLLM()
+    svc._model = "fake-guardrail-model"
     return svc, guardrail_mod
 
 
@@ -96,7 +82,7 @@ def test_vague_process_questions_in_scope(monkeypatch, q):
     Queries that still need the LLM are mocked to return in_scope=True.
     """
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=True, call_counter=counter
     )
     decision = asyncio.run(svc.precheck(q))
@@ -124,7 +110,7 @@ def test_denylist_still_blocked(monkeypatch, q):
     do not depend on the interrogative tails we just removed.
     """
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=True, call_counter=counter
     )
     decision = asyncio.run(svc.precheck(q))
@@ -153,7 +139,7 @@ def test_denylist_still_blocked(monkeypatch, q):
 def test_real_majors_still_in_scope(monkeypatch, q):
     """Real HUSC majors must keep working. They take the keyword fast-path."""
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=False, call_counter=counter
     )
     decision = asyncio.run(svc.precheck(q))
@@ -216,7 +202,7 @@ def test_process_questions_reach_keyword_fast_path(monkeypatch, q):
     entry should short-circuit to the keyword fast-path. NO LLM call.
     """
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=True, call_counter=counter
     )
     decision = asyncio.run(svc.precheck(q))

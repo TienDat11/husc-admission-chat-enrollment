@@ -1,5 +1,5 @@
 """
-TDD: NER disk cache + Groq-fallback fix for src/services/ner_service.py.
+TDD: NER disk cache for src/services/ner_service.py.
 
 Why: User is out of ramclouds quota. We must NOT re-NER 1575 chunks.
 Two contracts pinned here:
@@ -9,12 +9,7 @@ Two contracts pinned here:
      - Cache miss → NER, then PERSIST result if entities non-empty.
      - Chunk fails (LLM error, empty entities) → NOT cached (retry next run).
 
-  B) Groq fallback — when the primary ramclouds NER fails (quota/404) AND
-     the configured fallback model is a ramclouds-only name (gemini* /
-     minimax* / deepseek* / mimo* / gpt-*), we MUST swap to Groq's native
-     llama-3.1-8b-instant instead of force_model=ramclouds_name (which makes
-     Groq 404 "model does not exist"). This is a free LLM, so NER can still
-     complete when ramclouds quota is exhausted.
+    (Groq fallback contract removed: NER now uses the same-gateway ns24 fallback.)
 """
 from __future__ import annotations
 
@@ -73,7 +68,7 @@ def test_cache_hit_skips_llm_call(tmp_path):
             {"text": "Công nghệ thông tin", "type": "NGANH", "normalized": "cong_nghe_thong_tin"},
         ],
         "triples": [],
-        "model": "ramclouds/gemini-2.5-flash",
+        "model": "ns24/gemini-3.5-flash-lite",
     }
     cache_path.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -81,7 +76,7 @@ def test_cache_hit_skips_llm_call(tmp_path):
     fake_llm = MagicMock()
     fake_llm.chat_json = AsyncMock(side_effect=AssertionError("LLM called on cache hit!"))
 
-    svc = NERService(llm=fake_llm, fallback_llm=None, cache_path=cache_path)
+    svc = NERService(llm=fake_llm, cache_path=cache_path)
     res = asyncio_run(svc.extract(_chunk("chunk_X", text)))
 
     assert res.is_success
@@ -111,7 +106,7 @@ def test_cache_miss_when_text_changes(tmp_path):
         return_value={"entities": [{"text": "CNTT", "type": "NGANH", "normalized": "cntt"}], "triples": []}
     )
 
-    svc = NERService(llm=fake_llm, fallback_llm=None, cache_path=cache_path)
+    svc = NERService(llm=fake_llm, cache_path=cache_path)
     res = asyncio_run(svc.extract(_chunk("chunk_Y", new_text)))
 
     assert res.is_success
@@ -131,7 +126,7 @@ def test_cache_NOT_persisted_on_empty_entities(tmp_path):
         return_value={"entities": [], "triples": []}  # empty
     )
 
-    svc = NERService(llm=fake_llm, fallback_llm=None, cache_path=cache_path)
+    svc = NERService(llm=fake_llm, cache_path=cache_path)
     res = asyncio_run(svc.extract(_chunk("chunk_Z", "some text that NER botched")))
 
     # Result may not be success (no entities) but cache must be untouched
@@ -153,7 +148,7 @@ def test_cache_appended_after_each_success(tmp_path):
         }
     )
 
-    svc = NERService(llm=fake_llm, fallback_llm=None, cache_path=cache_path)
+    svc = NERService(llm=fake_llm, cache_path=cache_path)
     asyncio_run(svc.extract(_chunk("c1", "text one")))
     asyncio_run(svc.extract(_chunk("c2", "text two")))
 
@@ -227,91 +222,6 @@ def test_cache_put_concurrent_same_key(tmp_path):
         rec = json.loads(l)
         assert rec["chunk_id"] == "same_key"
     assert "same_key" in cache._index
-
-
-# ─── B) GROQ FALLBACK ───────────────────────────────────────────────────────
-
-
-def test_fallback_swaps_to_groq_llama_for_ramclouds_only_model():
-    """When primary fails AND fallback model is ramclouds-only (gemini*),
-    the NER service must expose a GROQ llama-3.1-8b-instant ladder, not
-    a force_model=gemini-* that would 404 on Groq."""
-
-    has_groq = bool(os.getenv("GROQ_API_KEY"))
-
-    primary = MagicMock()
-    primary.chat_json = AsyncMock(
-        return_value={"entities": [{"text": "CNTT", "type": "NGANH", "normalized": "cntt"}], "triples": []}
-    )
-
-    with patch.dict(
-        os.environ,
-        {
-            "RAMCLOUDS_NER_MODEL": "gemini-3.5-flash-low",
-            "RAMCLOUDS_NER_FALLBACK_MODEL": "minimax-m2.7",
-        },
-        clear=False,
-    ):
-        svc = NERService(llm=primary, fallback_llm=None)
-        if svc._groq_fallback_llm is not None:
-            groq_models = [p.model for p in svc._groq_fallback_llm._providers]
-            for m in groq_models:
-                # If any provider.model is gemini*/minimax*/deepseek* while
-                # the provider is groq, that is the bug.
-                if m.startswith(("gemini-", "minimax-", "deepseek-", "gpt-", "mimo-")):
-                    if any(p.name == "groq" for p in svc._groq_fallback_llm._providers):
-                        # Check the model actually matches the provider
-                        for p in svc._groq_fallback_llm._providers:
-                            if p.name == "groq" and p.model != "llama-3.1-8b-instant":
-                                pytest.fail(
-                                    f"Groq provider is forced to model={p.model!r} which it doesn't serve. "
-                                    "Groq provider MUST use llama-3.1-8b-instant."
-                                )
-        else:
-            # No groq → service can't be tested. Skip in CI without GROQ_API_KEY.
-            pytest.skip("No GROQ_API_KEY in env — Groq fallback ladder unavailable")
-
-
-def test_primary_quota_error_triggers_groq_fallback(tmp_path):
-    """Mock primary LLM to raise quota error → NER must use the groq fallback
-    (model = llama-3.1-8b-instant) instead of crashing."""
-    from openai import APIStatusError
-
-    primary = MagicMock()
-    # Ramclouds quota exhausted
-    quota_err = APIStatusError(
-        "insufficient_user_quota",
-        response=MagicMock(status_code=403),
-        body={"error": {"code": "insufficient_user_quota"}},
-    )
-    primary.chat_json = AsyncMock(side_effect=quota_err)
-
-    # Build a fake groq fallback LLM that returns entities
-    groq_fb = MagicMock()
-    groq_fb.chat_json = AsyncMock(
-        return_value={
-            "entities": [{"text": "Lịch sử", "type": "NGANH", "normalized": "lich_su"}],
-            "triples": [],
-        }
-    )
-
-    with patch.dict(
-        os.environ,
-        {"RAMCLOUDS_NER_MODEL": "gemini-3.5-flash-low"},
-        clear=False,
-    ):
-        # @spec(S22.A) — use a tmp cache so prior test state doesn't poison us.
-        svc = NERService(llm=primary, fallback_llm=None, cache_path=tmp_path / "ner_cache.jsonl")
-        # Inject groq fallback manually (avoid env dependency in CI)
-        svc._groq_fallback_llm = groq_fb
-
-        res = asyncio_run(svc.extract(_chunk("chunk_quota", "Lịch sử 62 chỉ tiêu")))
-
-    assert res.is_success
-    assert len(res.entities) == 1
-    assert res.entities[0].normalized == "lich_su"
-    assert primary.chat_json.await_count >= 1
-    assert groq_fb.chat_json.await_count >= 1, "groq fallback must be invoked when primary fails"
 
 
 # ─── F) NFD LEGACY BACKWARD COMPAT ──────────────────────────────────────────

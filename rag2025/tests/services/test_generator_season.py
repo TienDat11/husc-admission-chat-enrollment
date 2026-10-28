@@ -56,12 +56,8 @@ def _make_gen(answer_text: str = "Câu trả lời mặc định từ mô hình.
 
     gen = LLMGenerator.__new__(LLMGenerator)
     gen.generation_system_prompt = "TEST SYSTEM PROMPT"
-    gen.zai_client = None
-    gen.groq_client = None
     gen.has_any_provider = True
     gen.gen_model = "test-model"
-    gen.gen_fallback_model = "test-fallback"
-    gen.unified_fallback_client = None
 
     fake_unified = MagicMock()
     fake_unified._providers = ["primary"]

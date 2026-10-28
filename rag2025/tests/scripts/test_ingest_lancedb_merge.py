@@ -728,3 +728,272 @@ def test_unique_ids_across_documents(
         _row_id(mod, file1, "13"),
         _row_id(mod, file2, "13"),
     }, f"unexpected id scheme: {ids}"
+
+# ---------------------------------------------------------------------------
+# Test 9 — T1.2 dedup is scoped per canonical record (ticket 34)
+# ---------------------------------------------------------------------------
+
+def test_distinct_canonical_records_with_identical_text_both_survive(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """Two DIFFERENT canonical records carrying byte-identical text must both
+    survive ingest, each with its own `metadata_json.record_version_key`.
+
+    Ticket 06's real run lost 37/158 chunks exactly this way: an atom like
+    "mã ngành: 7420201" recurs in every record naming that major, and the
+    text-only dedup collapsed them into one — deleting the other record's
+    chunk_id + lineage so ticket 10 could not cite it.
+
+    RED pre-fix: the two rows collapse to 1 and one record_version_key is gone.
+    """
+    import rag2025.scripts.ingest_lancedb as mod
+
+    fake_manifest = tmp_workspace / ".ingest_manifest_rvk.json"
+    monkeypatch.setattr(mod, "MANIFEST_PATH", fake_manifest)
+    monkeypatch.setattr(mod, "TARGET_TABLE", "test_rvk")
+    monkeypatch.setattr(mod, "_trigger_graph_sync", lambda *_: None)
+
+    rvk_a = "CHI_TIEU:nganh:7220104:2026:canon-lietke29@1"
+    rvk_b = "CHI_TIEU:nganh:7420201:2026:canon-lietke30@1"
+    shared_text = "mã ngành: 7420201"
+
+    chunk_file = tmp_workspace / "chunked_canonical_rvk.jsonl"
+    _write_jsonl(chunk_file, [
+        {
+            "id": "a-atom",
+            "chunk_id": "a-atom",
+            "text": shared_text,
+            "metadata": {
+                "record_version_key": rvk_a,
+                "record_id": "rec-a",
+                "release_id": "R-2026-09-01",
+            },
+        },
+        {
+            "id": "b-atom",
+            "chunk_id": "b-atom",
+            "text": shared_text,
+            "metadata": {
+                "record_version_key": rvk_b,
+                "record_id": "rec-b",
+                "release_id": "R-2026-09-01",
+            },
+        },
+    ])
+
+    def _fake_resolve(chunks_dir, incremental):
+        return [chunk_file]
+
+    monkeypatch.setattr(mod, "_resolve_target_files", _fake_resolve)
+    monkeypatch.setattr(mod, "_refresh_manifest_for_all_files", lambda *_: None)
+
+    class FakeSettings:
+        LANCEDB_URI = temp_db.uri
+        LANCEDB_TABLE = "test_rvk"
+        EMBEDDING_MODEL = "fake"
+        EMBEDDING_DIM = 1024
+
+    monkeypatch.setattr(mod, "RAGSettings", FakeSettings)
+
+    vec_fixed = np.full(1024, 0.5)
+
+    class FakeEmbeddingService:
+        def __init__(self, settings):
+            pass
+
+        def encode_documents(self, texts):
+            return [vec_fixed.copy() for _ in texts]
+
+    monkeypatch.setattr(mod, "EmbeddingService", FakeEmbeddingService)
+
+    mod.ingest_lancedb(incremental=True)
+    table = temp_db.open_table("test_rvk")
+    assert table.count_rows() == 2, (
+        f"both canonical records must survive identical text; got "
+        f"{table.count_rows()} row(s)"
+    )
+    rows = table.to_arrow().to_pylist()
+    rvks = {json.loads(r["metadata_json"])["record_version_key"] for r in rows}
+    assert rvks == {rvk_a, rvk_b}, (
+        f"each surviving row must keep its OWN record_version_key: {rvks}"
+    )
+
+# ---------------------------------------------------------------------------
+# Test 9b — T1.2 dedup is scoped per semantic unit (ticket 06 identity)
+# ---------------------------------------------------------------------------
+
+
+def test_two_units_of_one_record_with_identical_text_both_survive(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """Two units of the SAME record carrying byte-identical text must both
+    survive ingest, each with its own `metadata_json.unit_key`.
+
+    Test 9 scopes the dedup key to the record, which fixes the cross-record
+    case but leaves the same collapse one level down. A record that lists two
+    majors, or two years, holds several facts that legitimately repeat a value
+    — "mã ngành: 7420201" appears as its own citable unit under each — and
+    `canonical_chunk_builder` gives each unit its own `chunk_id`
+    (``sha256(record_version_key + unit_key)``) precisely so they are separately
+    citable. A key of ``(record_version_key, text)`` throws that away: the
+    second unit's chunk_id and lineage vanish, and ticket 10 cannot cite it.
+
+    RED pre-fix: the two rows collapse to 1 and one unit_key is gone.
+    """
+    import rag2025.scripts.ingest_lancedb as mod
+
+    fake_manifest = tmp_workspace / ".ingest_manifest_unit.json"
+    monkeypatch.setattr(mod, "MANIFEST_PATH", fake_manifest)
+    monkeypatch.setattr(mod, "TARGET_TABLE", "test_unit")
+    monkeypatch.setattr(mod, "_trigger_graph_sync", lambda *_: None)
+
+    # One record version, two semantic units, one repeated value.
+    rvk = "CHI_TIEU:nganh:7420201:2026:canon-lietke29@1"
+    shared_text = "mã ngành: 7420201"
+
+    chunk_file = tmp_workspace / "chunked_canonical_unit.jsonl"
+    _write_jsonl(chunk_file, [
+        {
+            "id": "unit-a",
+            "chunk_id": "unit-a",
+            "text": shared_text,
+            "metadata": {
+                "record_version_key": rvk,
+                "unit_key": "CHI_TIEU|ma_nganh|0",
+                "record_id": "rec-unit",
+                "release_id": "R-2026-09-01",
+            },
+        },
+        {
+            "id": "unit-b",
+            "chunk_id": "unit-b",
+            "text": shared_text,
+            "metadata": {
+                "record_version_key": rvk,
+                "unit_key": "CHI_TIEU|ma_nganh|1",
+                "record_id": "rec-unit",
+                "release_id": "R-2026-09-01",
+            },
+        },
+    ])
+
+    def _fake_resolve(chunks_dir, incremental):
+        return [chunk_file]
+
+    monkeypatch.setattr(mod, "_resolve_target_files", _fake_resolve)
+    monkeypatch.setattr(mod, "_refresh_manifest_for_all_files", lambda *_: None)
+
+    class FakeSettings:
+        LANCEDB_URI = temp_db.uri
+        LANCEDB_TABLE = "test_unit"
+        EMBEDDING_MODEL = "fake"
+        EMBEDDING_DIM = 1024
+
+    monkeypatch.setattr(mod, "RAGSettings", FakeSettings)
+
+    vec_fixed = np.full(1024, 0.5)
+
+    class FakeEmbeddingService:
+        def __init__(self, settings):
+            pass
+
+        def encode_documents(self, texts):
+            return [vec_fixed.copy() for _ in texts]
+
+    monkeypatch.setattr(mod, "EmbeddingService", FakeEmbeddingService)
+
+    mod.ingest_lancedb(incremental=True)
+    table = temp_db.open_table("test_unit")
+    assert table.count_rows() == 2, (
+        f"both units of one record must survive identical text; got "
+        f"{table.count_rows()} row(s)"
+    )
+    rows = table.to_arrow().to_pylist()
+    unit_keys = {json.loads(r["metadata_json"])["unit_key"] for r in rows}
+    assert unit_keys == {"CHI_TIEU|ma_nganh|0", "CHI_TIEU|ma_nganh|1"}, (
+        f"each surviving row must keep its OWN unit_key: {unit_keys}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 10 — top-level release_id agrees with metadata_json (ticket 34)
+# ---------------------------------------------------------------------------
+
+def test_release_id_column_agrees_with_metadata_and_falls_back_to_legacy(
+    tmp_workspace: Path, temp_db: Any, monkeypatch: Any
+):
+    """The top-level `release_id` column must be the chunk's REAL release id,
+    matching `metadata_json.release_id`; only a chunk with no release metadata
+    falls back to "legacy".
+
+    Ticket 07 records the served corpus's release id from this column, so a
+    hardcoded "legacy" made its acceptance item false on every canonical chunk.
+    """
+    import rag2025.scripts.ingest_lancedb as mod
+
+    fake_manifest = tmp_workspace / ".ingest_manifest_rel.json"
+    monkeypatch.setattr(mod, "MANIFEST_PATH", fake_manifest)
+    monkeypatch.setattr(mod, "TARGET_TABLE", "test_release")
+    monkeypatch.setattr(mod, "_trigger_graph_sync", lambda *_: None)
+
+    chunk_file = tmp_workspace / "chunked_release.jsonl"
+    _write_jsonl(chunk_file, [
+        {
+            "id": "with-rel",
+            "chunk_id": "with-rel",
+            "text": "Học phí năm 2026",
+            "metadata": {"release_id": "R-2026-09-01"},
+        },
+        {
+            "id": "no-rel",
+            "chunk_id": "no-rel",
+            "text": "Điểm chuẩn năm 2026",
+            "metadata": {},
+        },
+    ])
+
+    def _fake_resolve(chunks_dir, incremental):
+        return [chunk_file]
+
+    monkeypatch.setattr(mod, "_resolve_target_files", _fake_resolve)
+    monkeypatch.setattr(mod, "_refresh_manifest_for_all_files", lambda *_: None)
+
+    class FakeSettings:
+        LANCEDB_URI = temp_db.uri
+        LANCEDB_TABLE = "test_release"
+        EMBEDDING_MODEL = "fake"
+        EMBEDDING_DIM = 1024
+
+    monkeypatch.setattr(mod, "RAGSettings", FakeSettings)
+
+    vec_fixed = np.full(1024, 0.5)
+
+    class FakeEmbeddingService:
+        def __init__(self, settings):
+            pass
+
+        def encode_documents(self, texts):
+            return [vec_fixed.copy() for _ in texts]
+
+    monkeypatch.setattr(mod, "EmbeddingService", FakeEmbeddingService)
+
+    mod.ingest_lancedb(incremental=True)
+    table = temp_db.open_table("test_release")
+    rows = {r["doc_id"]: r for r in table.to_arrow().to_pylist()}
+    assert set(rows) == {"with-rel", "no-rel"}
+
+    # Half 1 — a chunk carrying release metadata stamps it in BOTH places.
+    with_rel = rows["with-rel"]
+    assert with_rel["release_id"] == "R-2026-09-01", (
+        f"top-level column must carry the real release id, got "
+        f"{with_rel['release_id']!r}"
+    )
+    assert json.loads(with_rel["metadata_json"])["release_id"] == "R-2026-09-01"
+    assert with_rel["release_id"] == json.loads(with_rel["metadata_json"])["release_id"]
+
+    # Half 2 — a chunk with no release metadata still yields "legacy".
+    no_rel = rows["no-rel"]
+    assert no_rel["release_id"] == "legacy", (
+        f"absent release metadata must fall back to 'legacy', got "
+        f"{no_rel['release_id']!r}"
+    )

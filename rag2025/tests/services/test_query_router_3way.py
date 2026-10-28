@@ -30,12 +30,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 import src.services.router_cache as router_cache_mod  # noqa: E402
 from src.services.query_router import (  # noqa: E402
     HYDE_REJECT_VAGUE,
-    CONTACT_BLOCK,
     QueryRoute,
     SmartQueryRouter,
     _COMPARISON_PATTERNS,
     _ENUMERATION_PATTERNS,
 )
+from src.services.contact_block import CONTACT_BLOCK  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

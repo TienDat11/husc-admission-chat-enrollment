@@ -125,8 +125,8 @@ total_ans = sum(1 for r in results if r.get("has_answer"))
 fallback = sum(1 for r in results if _has_fallback(r.get("answer", "")))
 lats = [r["latency_s"] for r in results]
 # Read the actual gen model from results metadata (not hardcoded) so the
-# report reflects whichever model produced these answers (mimo-v2.5-pro now).
-GEN_MODEL = meta.get("gen_model") or "mimo-v2.5-pro"
+# report reflects whichever model produced these answers (gpt-6-luna now).
+GEN_MODEL = meta.get("gen_model") or "gpt-6-luna"
 routes = defaultdict(int)
 intents = defaultdict(lambda: {"t": 0, "ans": 0})
 for r in results:
@@ -251,7 +251,7 @@ def build_story_full():
         ['Routing PaddedRAG', f'{routes["padded_rag"]} câu ({routes["padded_rag"]/n*100:.1f}%)'],
         ['Routing GraphRAG', f'{routes["graph_rag"]} câu ({routes["graph_rag"]/n*100:.1f}%)'],
         ['Embedding', 'Qwen3-Embedding-0.6B (1024-dim)'],
-        ['Generation model', f'{GEN_MODEL} (primary) + gpt-5.4 (fallback)'],
+        ['Generation model', f'{GEN_MODEL} (primary) + claude-haiku-5-5 (fallback)'],
     ]
     t = Table(summary_data, colWidths=[5*cm, 10*cm])
     t.setStyle(TableStyle([

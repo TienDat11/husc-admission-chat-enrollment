@@ -34,7 +34,7 @@ def _load_main(monkeypatch) -> object:
     LanceDB / embeddings / generator are not required.
     """
     monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "0")
-    monkeypatch.setenv("RAMCLOUDS_API_KEY", "")
+    monkeypatch.setenv("NS24_API_KEY", "")
     # Ensure the default localhost allowlist + regex path is exercised
     # (no explicit ALLOWED_ORIGINS override).
     monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)

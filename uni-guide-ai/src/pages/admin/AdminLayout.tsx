@@ -2,6 +2,8 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useTheme } from "@/hooks/useTheme";
 
 const navItems = [
+  { to: "/admin/records", label: "Dữ liệu", end: false },
+  { to: "/admin/releases", label: "Release", end: false },
   { to: "/admin/config", label: "Config", end: false },
   { to: "/admin/ingest", label: "Ingest", end: false },
   { to: "/admin/retrieval", label: "Retrieval", end: false },
@@ -28,7 +30,7 @@ const AdminLayout = () => {
               className={({ isActive }) =>
                 `block rounded-sm px-3 py-1.5 text-xs transition-colors ${
                   isActive
-                    ? "bg-amber-500/10 text-amber-500 font-medium"
+                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium"
                     : isDark
                     ? "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
                     : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"

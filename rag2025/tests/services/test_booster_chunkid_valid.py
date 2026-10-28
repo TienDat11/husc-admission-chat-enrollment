@@ -50,11 +50,21 @@ def _all_rule_chunk_ids(year: int) -> set:
 def test_all_booster_chunk_ids_exist_in_db(monkeypatch) -> None:
     """Every chunk_id ref'd by booster rules must exist in rag2025 table.
 
-    This is the BUG-A regression guard: if a rule points at a
-    non-existent chunk_id (e.g. ``husc_thongbao_id49_2026`` after the
-    chunk was renamed), fetch_by_id silently returns None and the
-    booster de-boosts without any error. We fail loudly here instead.
+    This is the BUG-B regression guard (ticket 45). The original label
+    said BUG-A and blamed dead refs; the measured cause was different:
+    the guard compared the symbolic rule refs against the table's ``id``
+    column ONLY, while symbolic ids live in the ``doc_id`` column (the
+    ``id`` column holds sha256[:16] hashes). The lookup path resolves
+    ``id`` first, then ``doc_id`` (see ``LanceDBRetriever.fetch_by_id``),
+    so the membership check MUST read both columns — and it must NOT be
+    loosened: a ref present in NEITHER column is a dead reference and
+    fails loudly here, because fetch_by_id would silently return None
+    and the booster would de-boost without any error.
     """
+    # Pin is INTENTIONAL: measuring the rule set at a fixed admission
+    # year (2026) keeps this guard independent of the data clock. The
+    # 12 genuinely-missing _2027 refs are a corpus gap (tickets 28/41),
+    # not a query bug; they are tracked there, not silently here.
     monkeypatch.setenv("CURRENT_ADMISSION_YEAR", "2026")
     monkeypatch.delenv("APP_ENV", raising=False)
 
@@ -67,7 +77,7 @@ def test_all_booster_chunk_ids_exist_in_db(monkeypatch) -> None:
     refs = _all_rule_chunk_ids(year)
     assert refs, "Booster rules produced no chunk_ids — test setup error"
 
-    # Load LanceDB table once and check membership.
+    # Load LanceDB table once and check membership in BOTH id spaces.
     import lancedb
     settings_path = RAG_ROOT / ".env"
     if settings_path.exists():
@@ -80,11 +90,16 @@ def test_all_booster_chunk_ids_exist_in_db(monkeypatch) -> None:
     table = db.open_table(settings.LANCEDB_TABLE)
     df = table.to_pandas()
     db_ids = set(str(v) for v in df["id"].tolist())
+    db_doc_ids = set(str(v) for v in df["doc_id"].tolist())
 
-    stale = sorted(cid for cid in refs if cid not in db_ids)
+    stale = sorted(
+        cid for cid in refs if cid not in db_ids and cid not in db_doc_ids
+    )
     assert not stale, (
-        f"BUG-A regression: {len(stale)} booster chunk_ids do NOT exist "
-        f"in LanceDB table {settings.LANCEDB_TABLE!r}: {stale}"
+        f"BUG-B regression: {len(stale)} booster chunk_ids resolve in "
+        f"NEITHER the ``id`` nor the ``doc_id`` column of LanceDB table "
+        f"{settings.LANCEDB_TABLE!r} (dead references — fetch_by_id would "
+        f"return None and the booster silently de-boosts): {stale}"
     )
 
 

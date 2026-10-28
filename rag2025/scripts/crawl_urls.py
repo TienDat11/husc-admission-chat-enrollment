@@ -5,34 +5,36 @@ Default ID set: 63..74 (2026 cohort) + 59 (2025 history).
 Output: rag2025/data/raw/{notification_id}.html
 Idempotent: SHA256 compare existing → skip if unchanged.
 Bounded backoff: exponential 1s → 30s cap, 5 attempts max.
+
+The fetch policy itself (retry/backoff, streamed byte cap, User-Agent) lives in
+:mod:`src.services.web_fetch`, because ticket T21 needs the same policy for a URL
+an operator pastes and a second HTTP client would be a second set of bugs. This
+module keeps only what is specific to the ID-list crawl: the URL it builds, the
+default IDs, and the CLI.
 """
 from __future__ import annotations
 import argparse
-import hashlib
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
 import requests
 from loguru import logger
 
+# ``python rag2025/scripts/crawl_urls.py`` puts rag2025/ on the path, so the
+# shared core imports the same way it does for the service that uses it.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.services.web_fetch import (  # noqa: E402
+    MAX_ATTEMPTS,
+    TIMEOUT_S,
+    fetch_html,
+    sha256_bytes,
+)
+
 
 BASE_URL = "https://tuyensinh.husc.edu.vn/thongbao.php?id={nid}"
 DEFAULT_IDS = list(range(63, 75)) + [59]  # 12 × 2026 + 1 × 2025
-BACKOFF_BASE_S = 1.0
-BACKOFF_CAP_S = 30.0
-MAX_ATTEMPTS = 5
-TIMEOUT_S = 30
-USER_AGENT = "HUSC-Admission-Chat/1.0 (+temporal-reingest)"
-
-
-def _sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def _backoff_delay(attempt: int) -> float:
-    return min(BACKOFF_BASE_S * (2 ** attempt), BACKOFF_CAP_S)
 
 
 def fetch_url(
@@ -45,27 +47,20 @@ def fetch_url(
     """Fetch HTML body for one notification ID with bounded backoff.
 
     Raises RuntimeError on permanent failure after MAX_ATTEMPTS.
+
+    ``validate=False``: the URL is built here from ``BASE_URL`` and an int, so
+    there is no request field to guard — the SSRF check belongs to the caller
+    that takes a URL from a human.
     """
-    sess = session or requests.Session()
     url = BASE_URL.format(nid=nid)
-    last_exc: Exception | None = None
-    for attempt in range(max_attempts):
-        try:
-            resp = sess.get(url, timeout=timeout, headers={"User-Agent": USER_AGENT})
-            if resp.status_code == 200:
-                return resp.content
-            if 500 <= resp.status_code < 600:
-                last_exc = RuntimeError(f"HTTP {resp.status_code} on {url}")
-                logger.warning(f"id={nid} attempt={attempt + 1} status={resp.status_code} retrying")
-            else:
-                # 4xx — do not retry
-                raise RuntimeError(f"HTTP {resp.status_code} on {url} (no retry)")
-        except requests.RequestException as exc:
-            last_exc = exc
-            logger.warning(f"id={nid} attempt={attempt + 1} error={exc} retrying")
-        if attempt + 1 < max_attempts:
-            time.sleep(_backoff_delay(attempt))
-    raise RuntimeError(f"Failed to fetch id={nid} after {max_attempts} attempts: {last_exc}")
+    try:
+        return fetch_html(
+            url, session=session, timeout=timeout, max_attempts=max_attempts, validate=False
+        )
+    except Exception as exc:
+        # The CLI's contract (and its tests') is a RuntimeError naming the id,
+        # not the web_fetch hierarchy.
+        raise RuntimeError(f"Failed to fetch id={nid} after {max_attempts} attempts: {exc}") from exc
 
 
 def crawl_one(
@@ -86,10 +81,10 @@ def crawl_one(
     target = output_dir / f"{nid}.html"
 
     new_bytes = fetch_url(nid, session=session)
-    new_hash = _sha256_bytes(new_bytes)
+    new_hash = sha256_bytes(new_bytes)
 
     if target.exists() and not force:
-        existing_hash = _sha256_bytes(target.read_bytes())
+        existing_hash = sha256_bytes(target.read_bytes())
         if existing_hash == new_hash:
             return {"id": nid, "path": str(target), "sha256": new_hash, "status": "unchanged"}
         target.write_bytes(new_bytes)

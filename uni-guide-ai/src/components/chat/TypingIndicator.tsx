@@ -28,8 +28,9 @@ export function TypingIndicator() {
       {/* Typing Bubble - Locket style */}
       <div className="chat-bubble-bot px-6 py-4">
         <div className="flex items-center gap-3">
-          {/* Animated Dots */}
-          <div className="flex gap-2">
+          {/* Animated Dots — pure decoration (the announcement region carries
+              the state for screen readers). */}
+          <div className="flex gap-2" aria-hidden="true">
             {[0, 1, 2].map((i) => (
               <motion.span
                 key={i}
@@ -47,7 +48,7 @@ export function TypingIndicator() {
               />
             ))}
           </div>
-          <span className="text-sm text-muted-foreground font-bold">Đang suy nghĩ... 🤔</span>
+          <span className="text-sm text-[hsl(var(--chat-muted))] font-bold">Đang suy nghĩ... 🤔</span>
         </div>
       </div>
     </motion.div>

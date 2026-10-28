@@ -1,0 +1,56 @@
+# Data & corpus — mounted as a volume, never baked
+data/
+lancedb/
+logs/
+results/
+backup_mail_package_2026/
+backup_mail_package_2026.zip
+
+# Venvs & caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Secrets & local config
+.env
+.env.*
+
+# Docs / scratch
+*.md
+*.tex
+*.bib
+rag_book_extracted.txt
+note_5_question_chua_tra_loi_duoc.md
+oracle_audit.txt
+momus_audit.txt
+full_suite.log
+uvicorn_error_log.md
+_tmp_*
+_t25_*
+_gr_*
+_gr_review.py
+nul
+index/
+
+# Agent/IDE dirs
+.claude/
+.codex/
+.omc/
+.scratch/
+
+# Test artifacts
+test/
+test_qdrant.py
+test_retriever.py
+zip-file/
+book_analysis.json
+analyze_partial.py
+apply_config.bat
+benchmark_3_embeddings.bat
+fix_deps.bat
+help.bat
+reinstall_deps.py
+run_lab.bat
+setup_data.bat

@@ -12,7 +12,7 @@ def build_ablation_template() -> dict:
             "models": {
                 "embedding": "Qwen/Qwen3-Embedding-8B",
                 "reranker": "Qwen/Qwen3-Reranker-8B",
-                "router": "gemini-2.5-flash",
+                "router": "gemini-3.5-flash-lite",
             },
         },
         "variants": {

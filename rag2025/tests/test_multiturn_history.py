@@ -15,7 +15,7 @@ Hard contracts pinned by these tests (see /agents/architect verdict):
   4. Regression guard: the denylist DoS cases still block with 0 LLM
      calls even when history is supplied.
 
-Zero live LLM calls. AsyncGroq + UnifiedLLMClient are mocked.
+Zero live LLM calls. The ns24 guardrail client and UnifiedLLMClient are faked.
 """
 from __future__ import annotations
 
@@ -71,44 +71,38 @@ def test_unified_query_request_accepts_empty_history():
 
 
 # ---------------------------------------------------------------------------
-# Shared guardrail fixture (mock AsyncGroq, count LLM calls)
+# Shared guardrail fixture (fake ns24 client, count LLM calls)
 # ---------------------------------------------------------------------------
 def _build_guardrail_with_mock(monkeypatch, is_in_scope: bool, call_counter=None):
-    monkeypatch.setenv("GROQ_API_KEY", "test-fake-groq-key")
+    """Build a GuardrailService whose ns24 guardrail client is a fake.
 
+    The fake ``chat_json`` returns ``is_in_scope``, counts calls, and records
+    its kwargs on ``last_kwargs`` so callers can inspect the prompt sent.
+    """
     from config.settings import RAGSettings
     from services import guardrail as guardrail_mod
 
-    class _FakeCompletions:
+    class _FakeLLM:
+        token_ledger = None
+        _providers = []
+
         def __init__(self, counter):
             self._counter = counter
             self.last_kwargs: Dict[str, Any] = {}
 
-        async def create(self, *args, **kwargs):
+        async def chat_json(self, **kwargs):
             if self._counter is not None:
                 self._counter["calls"] += 1
             self.last_kwargs = kwargs
-            content_str = (
-                '{"is_in_scope": %s, "reason": "mocked"}' % str(is_in_scope).lower()
-            )
-            resp = MagicMock()
-            resp.choices[0].message.content = content_str
-            return resp
+            return {"is_in_scope": is_in_scope, "reason": "mocked"}
 
     counter = call_counter or {"calls": 0}
-    fake = _FakeCompletions(counter)
+    fake = _FakeLLM(counter)
 
-    class _FakeChat:
-        completions = fake
-
-    class _FakeAsyncGroq:
-        def __init__(self, *a, **kw):
-            self.chat = _FakeChat()
-
-    monkeypatch.setattr(guardrail_mod, "AsyncGroq", _FakeAsyncGroq)
     guardrail_mod.GuardrailService.clear_major_scope_cache_for_testing()
-    settings = RAGSettings()
-    svc = guardrail_mod.GuardrailService(settings)
+    svc = guardrail_mod.GuardrailService(RAGSettings(_env_file=None))
+    svc._llm = fake
+    svc._model = "fake-guardrail-model"
     return svc, guardrail_mod, fake
 
 
@@ -146,8 +140,6 @@ def _build_generator_with_capture(monkeypatch):
     svc = gen_mod.LLMGenerator.__new__(gen_mod.LLMGenerator)
     svc.unified_client = primary
     svc.unified_fallback_client = fallback
-    svc.groq_client = None
-    svc.zai_client = None
     svc.gen_model = "fake-model"
     svc.gen_fallback_model = "fake-fallback"
     svc.generation_system_prompt = "SYS"
@@ -238,18 +230,12 @@ async def test_guardrail_history_only_in_llm_user_message(monkeypatch):
     )
     # The captured user-message must contain the history block AND the
     # current question, and the system prompt must remain unchanged.
-    user_msgs = fake.last_kwargs.get("messages", [])
-    user_msg_content = next(
-        (m["content"] for m in user_msgs if m.get("role") == "user"), ""
-    )
-    assert "Ngữ cảnh trước:" in user_msg_content
-    assert "Học phí ngành CNTT HUSC?" in user_msg_content
-    assert "trường có bao nhiêu cơ sở vật chất?" in user_msg_content
+    user_content = fake.last_kwargs.get("user_message", "")
+    assert "Ngữ cảnh trước:" in user_content
+    assert "Học phí ngành CNTT HUSC?" in user_content
+    assert "trường có bao nhiêu cơ sở vật chất?" in user_content
     # System prompt is the unchanged hardened scope prompt (HUSC anchor).
-    system_content = next(
-        (m["content"] for m in user_msgs if m.get("role") == "system"), ""
-    )
-    assert "HUSC" in system_content
+    assert "HUSC" in fake.last_kwargs.get("system_message", "")
 
 
 # ---------------------------------------------------------------------------

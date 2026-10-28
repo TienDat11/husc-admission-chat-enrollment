@@ -3,7 +3,7 @@ Graph Builder Script – Offline Knowledge Graph Construction
 
 Pipeline:
 1. Load JSONL chunks from data/chunked/
-2. Extract entities & triples via NER (RAMCLOUDS_MODEL via ramclouds.me/v1)
+2. Extract entities & triples via NER (NS24_NER_MODEL via the ns24 gateway)
 3. Build NetworkX MultiDiGraph (schema-versioned, edge-key deduplication)
 4. Save to data/graph/knowledge_graph.graphml + entity_index.json
 
@@ -84,16 +84,21 @@ def _is_noise_chunk(data: dict) -> bool:
 def load_all_chunks(limit: int = 0) -> list[Chunk]:
     """Load all chunks from JSONL files in data/chunked/.
 
-    Includes canonical_v2 (Q5/Q6 cô-approved) and nganh_detail_2026 (28 ngành web crawl)
-    in addition to chunked_*.jsonl. Files in data/chunked_quarantine_*/ are excluded.
+    Includes canonical_v2, husc_canonical_2026, and nganh_detail_2026 in
+    addition to chunked_*.jsonl (including chunked_*_enhanced.jsonl, which
+    carries real 2026 subject data — T1.5-bl parity with ingest).
+    Files in data/chunked_quarantine_*/ are excluded.
     """
     chunks: list[Chunk] = []
     jsonl_files = sorted(CHUNKED_DIR.glob("chunked_*.jsonl"))
-    jsonl_files = [f for f in jsonl_files if "enhanced" not in f.name]
+    # STEP 3 graph parity: do NOT strip *_enhanced. chunked_10_enhanced.jsonl is
+    # real 2026 subject data (38 rows) and ingest already includes it (T1.5-bl,
+    # scripts/ingest_lancedb.py:_list_chunk_files).
     # 2026 canonical + ngành detail sources (parity with husc_v2026_clean blue table).
     extra = [
         CHUNKED_DIR / "husc_2026_canonical_v2.jsonl",
         CHUNKED_DIR / "nganh_detail_2026.jsonl",
+        CHUNKED_DIR / "husc_canonical_2026.jsonl",  # 172-row canonical corpus
     ]
     # S18.6-T7: T1-T4 surgical fix JSONL + T6 yearly auto-ingest outputs.
     # These carry the new chunks (dkxt.hueuni, VneID, lệ phí 30k, 2.079,
@@ -236,7 +241,7 @@ async def main(dry_run: bool, limit: int, incremental: bool, concurrency: int = 
         return
 
     ner = NERService()
-    ner_model = os.getenv("RAMCLOUDS_NER_MODEL", "deepseek-v4-flash")
+    ner_model = os.getenv("NS24_NER_MODEL", "gemini-3.5-flash-lite")
     logger.info(f"Step 1: NER extraction ({len(chunks)} chunks via {ner_model}, concurrency={concurrency})...")
     results = await ner.extract_batch(chunks, concurrency=concurrency)
 
@@ -312,6 +317,15 @@ if __name__ == "__main__":
         "--force-reextract", action="store_true",
         help="Force re-extraction of all chunks even if in entity_index"
     )
+    parser.add_argument(
+        "--release-dir", default="",
+        help=(
+            "Publish this build as the graph of the release at this directory: "
+            "copy the artifact into <release-dir>/graph/ and record path+sha256+"
+            "schema_version in its release_manifest.json (FIX-02). Without it "
+            "the graph is built in place only, and the release pins no graph."
+        ),
+    )
     args = parser.parse_args()
 
     asyncio.run(main(
@@ -321,3 +335,21 @@ if __name__ == "__main__":
         concurrency=args.concurrency,
         force_reextract=args.force_reextract,
     ))
+
+    # Publishing the graph is a separate, explicit step *after* a successful
+    # build: a release must never pin a graph the build did not produce, and a
+    # dry run must never pin one at all.
+    if args.release_dir:
+        if args.dry_run:
+            logger.warning(
+                "--release-dir ignored under --dry-run: nothing was built, so "
+                "there is nothing to pin"
+            )
+        else:
+            from src.infrastructure.graph_artifact import publish_release_graph
+
+            manifest = publish_release_graph(args.release_dir, GRAPH_PATH)
+            logger.info(
+                f"Release {manifest.release_id} now pins graph "
+                f"{manifest.graph_path} (sha256={manifest.graph_sha256[:16]}…)"
+            )

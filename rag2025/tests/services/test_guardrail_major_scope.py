@@ -26,41 +26,34 @@ RAG_ROOT = Path(__file__).resolve().parents[2]
 SCOPE_FILE = RAG_ROOT / "data" / "major_codes" / "husc_majors_current.json"
 
 
-def _build_service_with_mock_groq(monkeypatch, is_in_scope: bool, call_counter=None):
-    """Construct a GuardrailService with a fake AsyncGroq client that
-    returns ``is_in_scope`` and counts every ``.create()`` invocation.
-    """
-    monkeypatch.setenv("GROQ_API_KEY", "test-fake-groq-key")
+class _FakeLLM:
+    """Stands in for the ns24 guardrail role client; records chat_json calls."""
 
+    def __init__(self, is_in_scope: bool, counter=None):
+        self._is_in_scope = is_in_scope
+        self._counter = counter
+        self.token_ledger = None
+        self._providers = []
+
+    async def chat_json(self, **kwargs):
+        if self._counter is not None:
+            self._counter["calls"] += 1
+        return {"is_in_scope": self._is_in_scope, "reason": "mocked"}
+
+
+def _build_service_with_mock_llm(monkeypatch, is_in_scope: bool, call_counter=None):
+    """Build a GuardrailService whose ns24 guardrail client is a fake.
+
+    The service calls ``self._llm.chat_json``; we inject a fake there and
+    mark a model present so the LLM path is reachable.
+    """
     from config.settings import RAGSettings
     from services import guardrail as guardrail_mod
 
-    class _FakeCompletions:
-        def __init__(self, counter):
-            self._counter = counter
-
-        async def create(self, *args, **kwargs):
-            if self._counter is not None:
-                self._counter["calls"] += 1
-            content_str = (
-                '{"is_in_scope": %s, "reason": "mocked"}' % str(is_in_scope).lower()
-            )
-            resp = MagicMock()
-            resp.choices[0].message.content = content_str
-            return resp
-
-    class _FakeChat:
-        completions = _FakeCompletions(call_counter)
-
-    class _FakeAsyncGroq:
-        def __init__(self, *a, **kw):
-            self.chat = _FakeChat()
-
-    monkeypatch.setattr(guardrail_mod, "AsyncGroq", _FakeAsyncGroq)
-    # Force the loader to re-read the JSON file on each service build.
     guardrail_mod.GuardrailService.clear_major_scope_cache_for_testing()
-    settings = RAGSettings()
-    svc = guardrail_mod.GuardrailService(settings)
+    svc = guardrail_mod.GuardrailService(RAGSettings(_env_file=None))
+    svc._llm = _FakeLLM(is_in_scope, call_counter)
+    svc._model = "fake-guardrail-model"
     return svc, guardrail_mod
 
 
@@ -73,7 +66,7 @@ def _llm_call_counter():
 # ---------------------------------------------------------------------------
 def test_kinh_te_blocked_deterministically_no_llm(monkeypatch):
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=True, call_counter=counter)
+    svc, mod = _build_service_with_mock_llm(monkeypatch, is_in_scope=True, call_counter=counter)
     decision = asyncio.run(svc.precheck("Ngành Kinh Tế điểm chuẩn bao nhiêu?"))
     assert decision.is_in_scope is False
     assert decision.internal_code == "NOT_IN_HUSC_SCOPE"
@@ -89,7 +82,7 @@ def test_kinh_te_blocked_deterministically_no_llm(monkeypatch):
 # ---------------------------------------------------------------------------
 def test_luat_blocked_even_with_husc_alias(monkeypatch):
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=True, call_counter=counter)
+    svc, mod = _build_service_with_mock_llm(monkeypatch, is_in_scope=True, call_counter=counter)
     decision = asyncio.run(svc.precheck("Ngành Luật HUSC học phí?"))
     assert decision.is_in_scope is False
     assert decision.reason == "major_not_offered"
@@ -101,7 +94,7 @@ def test_luat_blocked_even_with_husc_alias(monkeypatch):
 # ---------------------------------------------------------------------------
 def test_cntt_in_scope_via_keyword(monkeypatch):
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=False, call_counter=counter)
+    svc, mod = _build_service_with_mock_llm(monkeypatch, is_in_scope=False, call_counter=counter)
     decision = asyncio.run(svc.precheck("Học phí ngành Công nghệ thông tin?"))
     assert decision.is_in_scope is True
     assert decision.reason == "in_scope_keyword"
@@ -114,7 +107,7 @@ def test_cntt_in_scope_via_keyword(monkeypatch):
 # ---------------------------------------------------------------------------
 def test_ban_dan_2026_major_in_scope(monkeypatch):
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=True, call_counter=counter)
+    svc, mod = _build_service_with_mock_llm(monkeypatch, is_in_scope=True, call_counter=counter)
     decision = asyncio.run(
         svc.precheck("Vật lý học - Chương trình Công nghệ bán dẫn có gì hay?")
     )
@@ -130,7 +123,7 @@ def test_ban_dan_2026_major_in_scope(monkeypatch):
 # ---------------------------------------------------------------------------
 def test_khoa_hoc_du_lieu_in_scope(monkeypatch):
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=False, call_counter=counter)
+    svc, mod = _build_service_with_mock_llm(monkeypatch, is_in_scope=False, call_counter=counter)
     decision = asyncio.run(svc.precheck("Điểm chuẩn ngành Khoa học dữ liệu 2026?"))
     assert decision.is_in_scope is True
     assert decision.reason == "in_scope_keyword"
@@ -147,7 +140,7 @@ def test_khoa_hoc_du_lieu_in_scope(monkeypatch):
 ])
 def test_generic_admission_questions_not_blocked(monkeypatch, q):
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(monkeypatch, is_in_scope=False, call_counter=counter)
+    svc, mod = _build_service_with_mock_llm(monkeypatch, is_in_scope=False, call_counter=counter)
     decision = asyncio.run(svc.precheck(q))
     assert decision.is_in_scope is True, f"generic question should be in_scope: {q!r}"
     # LLM not consulted (no major phrase + admission keyword)
@@ -183,7 +176,7 @@ def test_dynamic_mtime_reload_adds_new_major(monkeypatch, tmp_path):
         os.utime(SCOPE_FILE, (new_mtime, new_mtime))
 
         counter = _llm_call_counter()
-        svc, mod = _build_service_with_mock_groq(
+        svc, mod = _build_service_with_mock_llm(
             monkeypatch, is_in_scope=True, call_counter=counter
         )
 
@@ -223,7 +216,7 @@ def test_fallback_when_scope_file_missing(monkeypatch, tmp_path):
         os.utime(SCOPE_FILE, (SCOPE_FILE.stat().st_mtime + 5,) * 2)
 
         counter = _llm_call_counter()
-        svc, mod = _build_service_with_mock_groq(
+        svc, mod = _build_service_with_mock_llm(
             monkeypatch, is_in_scope=True, call_counter=counter
         )
 
@@ -251,7 +244,7 @@ def test_fallback_when_scope_file_missing(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 def test_pii_wins_over_major_scope(monkeypatch):
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=False, call_counter=counter
     )
     decision = asyncio.run(
@@ -269,7 +262,7 @@ def test_pii_wins_over_major_scope(monkeypatch):
 # ---------------------------------------------------------------------------
 def test_y_da_khoa_blocked(monkeypatch):
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=True, call_counter=counter
     )
     decision = asyncio.run(svc.precheck("Ngành Y đa khoa điểm chuẩn?"))
@@ -283,7 +276,7 @@ def test_y_da_khoa_blocked(monkeypatch):
 # ---------------------------------------------------------------------------
 def test_kinh_te_no_diacritics_blocked(monkeypatch):
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=True, call_counter=counter
     )
     decision = asyncio.run(svc.precheck("nganh kinh te hoc phi bao nhieu?"))
@@ -297,7 +290,7 @@ def test_kinh_te_no_diacritics_blocked(monkeypatch):
 # ---------------------------------------------------------------------------
 def test_extract_major_phrase_patterns(monkeypatch):
     counter = _llm_call_counter()
-    svc, mod = _build_service_with_mock_groq(
+    svc, mod = _build_service_with_mock_llm(
         monkeypatch, is_in_scope=True, call_counter=counter
     )
     # "ngành X ..."

@@ -3,16 +3,26 @@ HybridSearchService — dense + BM25 sparse retrieval with RRF fusion.
 
 Works natively with RetrievedDocument (no adapter needed).
 Integrates directly with LanceDBRetriever.
+
+The sparse half is analyzed by ``services.vietnamese_analyzer`` (diacritic
+folding + punctuation-aware tokens + exact-code postings), applied identically
+to the indexed chunks and to the query. Dense retrieval and RRF (k=60) are
+untouched by that: the analyzer only decides which chunks the sparse list
+offers to the fusion.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
-from typing import Any, Dict, List, Optional
+import math
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from rank_bm25 import BM25Okapi
 
 from services.lancedb_retrieval import (
+    _current_as_of_int,
+    _drop_by_effectiveness,
     CURRENT_ADMISSION_YEAR,
     LanceDBRetriever,
     RetrievedDocument,
@@ -20,9 +30,33 @@ from services.lancedb_retrieval import (
     YEAR_BOOST_FACTOR,
     OLD_YEAR_DEMOTE_FACTOR,
 )
+from services.vietnamese_analyzer import (
+    ANALYZER_VERSION,
+    analyze,
+)
 from config.settings import RAGSettings
 
 logger = logging.getLogger(__name__)
+
+# Exact-code boost (ticket 07).
+#
+# A code query must not be diluted by tokenization: "Thông tư 08/2022/TT-BGDĐT"
+# tokenizes to 08/2022/tt/bgddt, where 08 and 2022 are corpus-wide noise, and
+# "tổ hợp A00, A01" used to keep the comma attached to the code, so the token
+# matched nothing at all. So chunks that DECLARE a code the query names get an
+# additive boost on their BM25 score.
+#
+# Magnitude, measured on the served 1679-chunk HUSC corpus (max raw BM25 per
+# query, no boost): "A00" 4.81, "7480201" 6.47, "học phí" 7.33, "điểm chuẩn
+# 2026" 10.38, "xét tuyển tổ hợp A00 A01 D01" 19.21, "thông tư
+# 08/2022/TT-BGDĐT quy chế tuyển sinh" 35.17. +5.0 per matched code is worth
+# about one strong term: enough to put a code-bearing chunk at the head of a
+# short code query, deliberately NOT enough to override a long query whose
+# terms already point elsewhere.
+EXACT_CODE_BOOST = 5.0
+# A chunk naming several of the query's codes is a better match, but the boost
+# must not scale without bound on a "list every tổ hợp" query.
+EXACT_CODE_MAX_MATCHES = 3
 
 
 class HybridSearchService:
@@ -40,6 +74,17 @@ class HybridSearchService:
         self._settings = settings
         self._bm25: Optional[BM25Okapi] = None
         self._corpus_docs: List[RetrievedDocument] = []
+        # T15 effectiveness law: flat eligibility bounds per chunk_id,
+        # so the per-request sparse filter can drop a chunk that expired
+        # AFTER the index was built (no rebuild needed). Same key the RRF
+        # fusion uses; absent key = un-stamped = KEEP.
+        self._corpus_eligibility: Dict[str, Dict[str, Any]] = {}
+        # Folded exact codes -> positions in `_corpus_docs`. Built at index time
+        # with the same detector the query side uses, so a code is matched by
+        # string equality on canonical form (never by substring).
+        self._code_postings: Dict[str, List[int]] = {}
+        # Identity of the indexed corpus — see `corpus_version`.
+        self._corpus_version: Dict[str, Any] = {}
 
     # ------------------------------------------------------------------
     # Index Build
@@ -57,7 +102,8 @@ class HybridSearchService:
             adapter = self._retriever._adapter
             table = adapter._table
 
-            cols = ["text", "sparse_terms", "source", "chunk_id", "metadata_json", "id"]
+            cols = ["text", "source", "chunk_id", "metadata_json", "id", "release_id", "is_tombstone",
+                    "status", "effective_from", "effective_to"]
             available_cols = table.schema.names
             load_cols = [c for c in cols if c in available_cols]
 
@@ -81,6 +127,11 @@ class HybridSearchService:
 
             tokenized_corpus: List[List[str]] = []
             self._corpus_docs = []
+            self._corpus_eligibility = {}
+            self._code_postings = {}
+            releases: set = set()
+            meta_releases: set = set()
+            digest = hashlib.sha256()
 
             for _, row in df.iterrows():
                 # Exclude superseded chunks from BM25 index
@@ -88,35 +139,161 @@ class HybridSearchService:
                 meta = json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
                 if meta.get("is_superseded", False):
                     continue
+                # T15: a tombstoned row is never in the BM25 corpus.
+                # The top-level column is the primary source; the metadata
+                # mirror is a fallback for tables where only one is stamped.
+                #
+                # NULL trap (pandas): `is_tombstone` is nullable; a missing
+                # stamp arrives as `float('nan')` inside a DataFrame, and
+                # `nan is None` is False while `bool(nan)` is True — so a
+                # bare truthiness check would silently drop every un-stamped
+                # chunk. Treat NaN and None as "not tombstoned".
+                is_tombstone = row.get("is_tombstone")
+                if isinstance(is_tombstone, float) and math.isnan(is_tombstone):
+                    is_tombstone = None
+                if is_tombstone is None:
+                    is_tombstone = meta.get("is_tombstone", False)
+                if is_tombstone is not None and is_tombstone:
+                    continue
+                # T15 effectiveness law: flat row + NaN-aware window,
+                # same rule as the dense belt in lancedb_retrieval.
+                if _drop_by_effectiveness(dict(row), meta, _current_as_of_int()):
+                    continue
 
-                sparse_terms = row.get("sparse_terms")
-                if sparse_terms and isinstance(sparse_terms, list) and len(sparse_terms) > 0:
-                    tokens = [str(t) for t in sparse_terms]
-                else:
-                    raw = str(row.get("text", "")).lower().split()
-                    tokens = raw if raw else [""]
+                text = str(row.get("text", ""))
+                chunk_id = str(row.get("chunk_id") or row.get("id") or "")
+
+                # Index side of the analyzer. The chunk's own text is the only
+                # token source: `sparse_terms`, where a table carries it, was
+                # produced by a different (chunker-side) tokenizer, and mixing
+                # two analyzers is what makes a sparse index unqueryable.
+                analyzed = analyze(text)
+                tokens = analyzed.tokens or [""]
+
+                position = len(self._corpus_docs)
+                for code in analyzed.codes:
+                    self._code_postings.setdefault(code, []).append(position)
 
                 tokenized_corpus.append(tokens)
                 self._corpus_docs.append(
                     RetrievedDocument(
-                        text=str(row.get("text", "")),
+                        text=text,
                         source=str(row.get("source") or meta.get("source") or ""),
-                        chunk_id=str(row.get("chunk_id") or row.get("id") or ""),
+                        chunk_id=chunk_id,
                         metadata=meta,
                         score=0.0,
                         point_id=None,
                     )
                 )
+                # T15 effectiveness law: snapshot flat bounds (NaN-coerced)
+                # so per-request filter applies SAME clock dense arm uses —
+                # chunk expiring after build drops on next retrieve().
+                _ef = row.get("effective_from")
+                if isinstance(_ef, float) and math.isnan(_ef):
+                    _ef = None
+                _et = row.get("effective_to")
+                if isinstance(_et, float) and math.isnan(_et):
+                    _et = None
+                _st = row.get("status")
+                if isinstance(_st, float) and math.isnan(_st):
+                    _st = None
+                self._corpus_eligibility[chunk_id] = {
+                    "status": _st,
+                    "effective_from": _ef,
+                    "effective_to": _et,
+                    "is_tombstone": is_tombstone,
+                }
+
+                digest.update(chunk_id.encode("utf-8"))
+                digest.update(b"\x00")
+                digest.update(text.encode("utf-8"))
+                digest.update(b"\n")
+
+                # Two places a release id can live, recorded separately rather
+                # than silently preferring one:
+                #   * the top-level `release_id` column — what the ingest stamps
+                #     on the row as a whole;
+                #   * `metadata_json.release_id` — what the chunk itself carries,
+                #     spread from the chunker's own record.
+                # They are the same value once the publish path is consistent;
+                # a disagreement means the row stamp is out of sync with the
+                # chunk and is reported below, not papered over.
+                release = row.get("release_id") if "release_id" in load_cols else None
+                if isinstance(release, str) and release:
+                    releases.add(release)
+                meta_release = meta.get("release_id")
+                if isinstance(meta_release, str) and meta_release:
+                    meta_releases.add(meta_release)
+
+            if not tokenized_corpus:
+                logger.warning(
+                    "HybridSearchService: no indexable chunks (all superseded?), BM25 not built"
+                )
+                return False
 
             self._bm25 = BM25Okapi(tokenized_corpus)
+            if len(releases) > 1:
+                # A served table spanning two releases is a partial publish: the
+                # sparse index would then be built from a mix the dense side
+                # does not describe either. Loud, not fatal — the dense side
+                # serves the same mixed table, so failing here would only take
+                # hybrid search down without fixing the corpus.
+                logger.warning(
+                    "HybridSearchService: BM25 corpus spans %d release_ids %s — "
+                    "the serving table is a partial publish",
+                    len(releases),
+                    sorted(releases),
+                )
+            if meta_releases and releases != meta_releases:
+                # The chunks say one thing and the row stamp says another: the
+                # ingest column is out of sync with the chunks it wrote. Named
+                # loudly because every downstream consumer keying staleness on
+                # the column would otherwise trust the wrong value.
+                logger.error(
+                    "HybridSearchService: release_id column %s disagrees with "
+                    "metadata_json.release_id %s — the serving table's row stamp "
+                    "is out of sync with the chunks",
+                    sorted(releases),
+                    sorted(meta_releases),
+                )
+            self._corpus_version = {
+                "analyzer": ANALYZER_VERSION,
+                "release_ids": sorted(releases),
+                "metadata_release_ids": sorted(meta_releases),
+                "chunk_count": len(self._corpus_docs),
+                "corpus_sha256": digest.hexdigest(),
+                "table": getattr(getattr(self._retriever, "_config", None), "table_name", None),
+                "code_count": len(self._code_postings),
+            }
             logger.info(
-                f"HybridSearchService: BM25 index built — {len(self._corpus_docs)} chunks"
+                f"HybridSearchService: BM25 index built — {len(self._corpus_docs)} chunks, "
+                f"analyzer={ANALYZER_VERSION}, release_ids={sorted(releases) or 'unset'}, "
+                f"metadata_release_ids={sorted(meta_releases) or 'unset'}, "
+                f"corpus_sha256={digest.hexdigest()[:12]}, codes={len(self._code_postings)}"
             )
             return True
 
         except Exception as e:
             logger.error(f"HybridSearchService: BM25 build failed: {e}", exc_info=True)
             return False
+
+    @property
+    def corpus_version(self) -> Dict[str, Any]:
+        """Identity of the corpus the BM25 index was built from.
+
+        ``release_ids`` comes from the table's own ``release_id`` column, so the
+        sparse index cannot silently drift from the index being served: a
+        re-publish that changes the release shows up here (and in
+        ``corpus_sha256``, which covers every indexed chunk id + text).
+
+        ``metadata_release_ids`` is the release id the indexed chunks carry in
+        their own metadata. Both are recorded because the two can disagree (a
+        row stamp out of sync with the chunks it wrote) — in that case an error
+        is logged naming both rather than one silently winning.
+
+        Empty dict until :meth:`build_bm25_index` succeeds.
+        """
+        return dict(self._corpus_version)
 
     # ------------------------------------------------------------------
     # Retrieval
@@ -154,9 +331,51 @@ class HybridSearchService:
             return dense_result
 
         sparse_docs = self._bm25_search(query, top_k=top_k * 2)
+        sparse_docs = self._apply_post_fetch_filter(sparse_docs, mf)
         fused = self._rrf_fusion(dense_docs, sparse_docs, top_k=top_k)
         confidence = sum(d.score for d in fused) / len(fused) if fused else 0.0
         return RetrievalResult(documents=fused, confidence=confidence)
+
+    def _apply_post_fetch_filter(
+        self,
+        docs: List[RetrievedDocument],
+        metadata_filter: Dict[str, Any],
+    ) -> List[RetrievedDocument]:
+        """Put BM25 candidates through the SAME post-fetch rule as dense.
+
+        The BM25 index is an in-memory scan of the whole table, so without
+        this the sparse arm would fuse in chunks that the dense arm had
+        excluded (superseded, prior-year) — the filter asymmetry ticket 09
+        criterion 4 forbids. Rows are shaped the way the retriever's filter
+        expects (`metadata_json` may be a dict) and survivors are matched
+        back by position.
+        """
+        if not docs:
+            return docs
+
+        rows = [
+            {
+                "text": doc.text,
+                "source": doc.source,
+                "chunk_id": doc.chunk_id,
+                "metadata_json": doc.metadata or {},
+            }
+            for doc in docs
+        ]
+        # T15 effectiveness law: re-attach the flat bounds
+        # snapshotted at index build so a chunk that expired
+        # (or flipped status) after the build is dropped HERE —
+        # the dense arm reads the flat columns directly, the
+        # sparse arm must not go stale. Absent key = un-stamped.
+        for row in rows:
+            eligibility = self._corpus_eligibility.get(row["chunk_id"])
+            if eligibility:
+                row.update(eligibility)
+        kept_ids = {
+            row["chunk_id"]
+            for row in self._retriever.apply_post_fetch_filters(rows, metadata_filter)
+        }
+        return [doc for doc in docs if doc.chunk_id in kept_ids]
 
     # ------------------------------------------------------------------
     # Internals
@@ -164,12 +383,16 @@ class HybridSearchService:
 
     def _bm25_search(self, query: str, top_k: int) -> List[RetrievedDocument]:
         """Return top-k docs from BM25 index as RetrievedDocument list."""
-        tokens = query.lower().split()
+        analyzed = analyze(query)
+        tokens = analyzed.tokens
         if not tokens:
             logger.warning("_bm25_search called with empty token list — returning []")
             return []
 
         scores = self._bm25.get_scores(tokens)
+        if analyzed.codes:
+            scores = self._apply_exact_code_boost(scores, analyzed.codes)
+
         scored = sorted(zip(scores, self._corpus_docs), key=lambda x: x[0], reverse=True)
 
         results = []
@@ -192,6 +415,26 @@ class HybridSearchService:
         # Re-sort by adjusted score and return top_k
         results.sort(key=lambda d: d.score, reverse=True)
         return results[:top_k]
+
+    def _apply_exact_code_boost(
+        self, scores: Sequence[float], codes: Tuple[str, ...]
+    ) -> List[float]:
+        """Add :data:`EXACT_CODE_BOOST` to chunks that declare the query's codes.
+
+        ``codes`` are already canonical (folded, whitespace-free) and the
+        postings were built with the same detector, so this is exact string
+        equality — a query for ``7480201`` does not boost ``7480201VJ``, and a
+        code written ``A00,`` is still the same code as ``A00``.
+        """
+        matched: Dict[int, int] = {}
+        for code in codes:
+            for position in self._code_postings.get(code, ()):
+                matched[position] = matched.get(position, 0) + 1
+
+        boosted = list(scores)
+        for position, hits in matched.items():
+            boosted[position] += EXACT_CODE_BOOST * min(hits, EXACT_CODE_MAX_MATCHES)
+        return boosted
 
     @staticmethod
     def _apply_temporal_bm25_boost(doc: RetrievedDocument, raw_score: float) -> float:

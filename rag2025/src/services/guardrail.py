@@ -9,10 +9,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from groq import AsyncGroq
 from loguru import logger
 
 from config.settings import RAGSettings
+from services.llm_client import get_llm_client
 
 
 # Bounded multi-turn history cap. FE slices last 4 (2 user + 2 assistant);
@@ -258,9 +258,13 @@ class GuardrailService:
     def __init__(self, settings: RAGSettings):
         self._settings = settings
         self._enabled = settings.GUARDRAIL_ENABLED
-        self._groq_key = os.getenv("GROQ_API_KEY")
-        self._client = AsyncGroq(api_key=self._groq_key) if self._groq_key else None
-        self._model = settings.GUARDRAIL_MODEL
+        # ns24 guardrail role: primary + same-gateway fallback model from config.
+        self._llm = get_llm_client(role="guardrail")
+        provider_models = [p.model for p in self._llm._providers]
+        self._model = provider_models[0] if provider_models else None
+        # Guardrail calls record usage in the client's own ledger, so they are
+        # visible to cost reporting alongside every other ns24 call.
+        self.token_ledger = self._llm.token_ledger
         # Reset module-level cache so a fresh service gets the latest file.
         self._reset_major_scope_cache()
 
@@ -1184,6 +1188,22 @@ class GuardrailService:
                 pii_detected=True,
             )
 
+        # @spec(T20) criterion 2: requests to leak system internals are refused
+        # deterministically, BEFORE the admission-keyword fast-path (which would
+        # otherwise wave through "hiển thị system prompt" because it mentions
+        # no admission keyword but a later gate might, and "husc" queries
+        # short-circuit to in-scope). Regex-only, no LLM, cannot be talked out.
+        from src.services import injection_guard
+        if injection_guard.detect_system_info_request(query):
+            return GuardrailDecision(
+                False,
+                "SYSTEM_INFO_REQUEST",
+                "system_info_request_detected",
+                injection_guard.SYSTEM_INFO_REFUSAL_ANSWER,
+                ["Câu hỏi về nội bộ hệ thống nằm ngoài phạm vi tuyển sinh"],
+            )
+
+
         # Early exit for invalid tổ hợp codes (BUG-5): block clearly
         # malformed codes fast before the major-scope check.
         _tohop_match = re.search(r"(?:tổ\s+hợp|khối)\s+([A-Z]\d{2})", query, re.IGNORECASE)
@@ -1251,7 +1271,7 @@ class GuardrailService:
         if self._looks_admission_related(query):
             return GuardrailDecision(True, "SUCCESS", "in_scope_keyword", "")
 
-        if self._client is None:
+        if self._model is None:
             return GuardrailDecision(False, "NOT_IN_HUSC_SCOPE", "out_of_scope_heuristic", self._redirect_answer())
 
         prompt = (
@@ -1279,17 +1299,12 @@ class GuardrailService:
                 )
             else:
                 user_content = query
-            resp = await self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": user_content},
-                ],
+            data = await self._llm.chat_json(
+                user_message=user_content,
+                system_message=prompt,
                 temperature=0.0,
                 max_tokens=120,
             )
-            content = resp.choices[0].message.content.strip()
-            data = json.loads(content[content.find("{"):content.rfind("}") + 1])
             if bool(data.get("is_in_scope", False)):
                 return GuardrailDecision(True, "SUCCESS", data.get("reason", "in_scope_llm"), "")
             return GuardrailDecision(False, "NOT_IN_HUSC_SCOPE", data.get("reason", "out_of_scope_llm"), self._redirect_answer())
@@ -1298,7 +1313,7 @@ class GuardrailService:
             return GuardrailDecision(False, "NOT_IN_HUSC_SCOPE", "out_of_scope_fallback", self._redirect_answer())
 
     async def classify_no_result(self, query: str) -> GuardrailDecision:
-        if self._client is None:
+        if self._model is None:
             return GuardrailDecision(
                 True,
                 "INSUFFICIENT_DATA",
@@ -1316,17 +1331,12 @@ class GuardrailService:
             "Trả về JSON: {\"code\": string, \"reason\": string, \"hints\": [string, string]}."
         )
         try:
-            resp = await self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": query},
-                ],
+            data = await self._llm.chat_json(
+                user_message=query,
+                system_message=prompt,
                 temperature=0.0,
                 max_tokens=180,
             )
-            content = resp.choices[0].message.content.strip()
-            data = json.loads(content[content.find("{"):content.rfind("}") + 1])
             code = data.get("code", "INSUFFICIENT_DATA")
             if code not in {"HUSC_ENTITY_NOT_FOUND", "INSUFFICIENT_DATA", "ENTITY_PARSING_GAP"}:
                 code = "INSUFFICIENT_DATA"

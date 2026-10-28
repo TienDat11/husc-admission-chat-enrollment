@@ -133,9 +133,9 @@ class FakeGenerator:
 class _SettingsStub:
     """Stand-in for RAGSettings; provides only the model-version fields."""
 
-    RAMCLOUDS_GEN_MODEL = "stub-gen"
-    RAMCLOUDS_NER_MODEL = "stub-ner"
-    RAMCLOUDS_HYDE_MODEL = "stub-hyde"
+    NS24_GEN_MODEL = "stub-gen"
+    NS24_NER_MODEL = "stub-ner"
+    NS24_HYDE_MODEL = "stub-hyde"
     EMBEDDING_MODEL = "stub-emb"
 
 
@@ -543,3 +543,143 @@ def test_attribution_failure_does_not_break_run(runner, er):
     if record.latency_attribution is not None:
         assert record.latency_attribution.hyde_ms is None
         assert record.latency_attribution.router_inner_ms is None
+
+
+# =============================================================================
+# 10. T12 — per-question LLM token accounting
+# =============================================================================
+
+
+class FakeLedger:
+    """Mimics TokenLedger — snapshot() + reset() for the drain pattern."""
+
+    def __init__(self, calls):
+        self._calls = list(calls)
+
+    def snapshot(self):
+        return list(self._calls)
+
+    def reset(self):
+        self._calls.clear()
+
+
+class FakeFakeGeneratorWithTokens:
+    """Generator carrying two LLM clients with known token usage."""
+
+    def __init__(self, primary_calls, fallback_calls):
+        self.unified_client = _client_with_ledger(primary_calls)
+        self.unified_fallback_client = _client_with_ledger(fallback_calls)
+
+    async def generate_answer(self, *, query, chunks, confidence, is_program_list_query):
+        return {"answer": "x" * 200, "provider": "fake"}
+
+
+def _client_with_ledger(calls):
+    class C:
+        def __init__(self, calls):
+            self.token_ledger = FakeLedger(calls)
+
+    return C(calls)
+
+
+def _make_call(provider: str, model: str, p: int, c: int):
+    class Call:
+        pass
+    call = Call()
+    call.provider = provider
+    call.model = model
+    call.prompt_tokens = p
+    call.completion_tokens = c
+    return call
+
+
+def test_drain_collects_and_resets_ledgers(runner, er):
+    """T12 helper contract: drain returns current calls AND resets ledgers."""
+    primary_calls = [
+        _make_call("ns24", "gemini-3.5-flash-lite", 50, 10),
+        _make_call("ns24", "gemini-3.5-flash-lite", 100, 20),
+    ]
+    fallback_calls = [_make_call("ns24", "deepseek-v4.1-flash", 10, 2)]
+    generator = FakeFakeGeneratorWithTokens(primary_calls, fallback_calls)
+    pipeline = FakePipeline(
+        FakeRouterResult(),
+        FakeRagResult(route="graph_rag", router_result=FakeRouterResult(), documents=[]),
+    )
+
+    calls = runner._drain_token_ledgers(pipeline, generator)
+    assert len(calls) == 3
+    assert {c["provider"] for c in calls} == {"ns24"}
+    # ledger reset after drain — second drain is empty
+    assert runner._drain_token_ledgers(pipeline, generator) == []
+
+
+class _RecordingGenerator:
+    """Generator that records fake LLM calls into its own ledger during
+    generate_answer — mimics real pipeline usage where calls happen
+    BETWEEN the runner's initial drain and final drain."""
+
+    def __init__(self, calls):
+        self.unified_client = _client_with_ledger([])
+        self._to_record = list(calls)
+
+    async def generate_answer(self, *, query, chunks, confidence, is_program_list_query):
+        for call in self._to_record:
+            self.unified_client.token_ledger._calls.append(call)
+        return {"answer": "x" * 200, "provider": "fake"}
+
+
+def test_llm_tokens_total_per_question(runner, er):
+    """T12 acceptance: record carries per-call entries + totals for the question."""
+    doc = FakeDoc("c-1", "src", 0.5, "body", {})
+    router_result = FakeRouterResult()
+    rag_result = FakeRagResult(route="graph_rag", router_result=router_result, documents=[doc])
+    pipeline = FakePipeline(router_result, rag_result)
+    retriever = FakeRetriever([doc])
+    embedding = FakeEmbedding()
+
+    generator = _RecordingGenerator([
+        _make_call("ns24", "gemini-3.5-flash-lite", 50, 10),
+        _make_call("ns24", "deepseek-v4.1-flash", 10, 2),
+    ])
+
+    record = asyncio.run(
+        runner.run_one_instrumented(
+            {"id": "msg012", "question": "Q?"},
+            pipeline=pipeline,
+            retriever=retriever,
+            embedding=embedding,
+            generator=generator,
+            run_id="r1", seed=42, settings=_SettingsStub(),
+        )
+    )
+
+    assert record.llm_tokens is not None
+    assert record.llm_tokens.call_count == 2
+    assert record.llm_tokens.prompt_tokens == 60
+    assert record.llm_tokens.completion_tokens == 12
+    assert record.llm_tokens.total_tokens == 72
+    assert {c.provider for c in record.llm_token_calls} == {"ns24"}
+
+
+def test_no_llm_clients_means_no_tokens(runner, er):
+    """No LLM clients on generator/pipeline → llm_tokens stays None."""
+    doc = FakeDoc("c-1", "src", 0.5, "body", {})
+    router_result = FakeRouterResult()
+    rag_result = FakeRagResult(route="graph_rag", router_result=router_result, documents=[doc])
+    pipeline = FakePipeline(router_result, rag_result)
+    retriever = FakeRetriever([doc])
+    embedding = FakeEmbedding()
+    generator = FakeGenerator(answer_text="x" * 200)  # bare FakeGenerator, no clients
+
+    record = asyncio.run(
+        runner.run_one_instrumented(
+            {"id": "msg013", "question": "Q?"},
+            pipeline=pipeline,
+            retriever=retriever,
+            embedding=embedding,
+            generator=generator,
+            run_id="r1", seed=42, settings=_SettingsStub(),
+        )
+    )
+    assert record.llm_tokens is None
+    assert record.llm_token_calls == []

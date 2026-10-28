@@ -1,0 +1,301 @@
+{
+  "fixture_id": "ttts2026_p57_diem_trung_tuyen_kinh_te",
+  "source_document": "new_data/THONG_TIN_TUYEN_SINH_202611.pdf",
+  "source_pages": [
+    57
+  ],
+  "corpus_file": "rag2025/data/chunked/chunked_24.jsonl",
+  "corpus_chunk_ids": [
+    388
+  ],
+  "chunk_path": "wide_table",
+  "notes": "Diem trung tuyen / chi tieu / so nhap hoc nam 2024 va 2025 cho cac nganh khoi Kinh te (page 57). 12 printed columns -> wide_table bypass keeps the whole fragment as one chunk even if oversized. The printed page merges 'So TT' with the program name in the PDF layout, so the fragment's row 0 carries the STT of the row that precedes it on the page.",
+  "markdown_lines": [
+    "| 4   | 7903124  |                   |       | 20   | 8    | 17,00  |       | 30   | 13   | 16,00  |     |",
+    "| --- | -------- | ----------------- | ----- | ---- | ---- | ------ | ----- | ---- | ---- | ------ | --- |",
+    "|     |          | Tài chính         | THPT  |      |      |        | THPT  |      |      |        |     |",
+    "| 5   | 7310106  | Kinh tế quốc tế   |       | 85   | 56   | 17,00  |       | 70   | 69   | 15,00  |     |",
+    "|     |          | Logistics&  Quản  | lý    |      |      |        |       |      |      |        |     |",
+    "| 5   | 7510605  |                   |       | 230  | 250  | 22,00  |       | 344  | 352  | 18,00  |     |"
+  ],
+  "column_headers": [
+    "TT",
+    "Mã ngành",
+    "Tên ngành",
+    "Phương thức tuyển sinh (năm 2024)",
+    "Chỉ tiêu (năm 2024)",
+    "Số nhập học (năm 2024)",
+    "Điểm TT (năm 2024)",
+    "Phương thức tuyển sinh (năm 2025)",
+    "Chỉ tiêu (năm 2025)",
+    "Số nhập học (năm 2025)",
+    "Điểm TT (năm 2025)",
+    "Ghi chú"
+  ],
+  "rows": [
+    {
+      "page": 57,
+      "anchor": "Tài chính"
+    },
+    {
+      "page": 57,
+      "anchor": "Kinh tế quốc tế"
+    },
+    {
+      "page": 57,
+      "anchor": "Logistics& Quản"
+    },
+    {
+      "page": 57,
+      "anchor": "7510605"
+    }
+  ],
+  "expected_cells": [
+    "4",
+    "7903124",
+    "20",
+    "8",
+    "17,00",
+    "30",
+    "13",
+    "16,00",
+    "Tài chính",
+    "THPT",
+    "THPT",
+    "5",
+    "7310106",
+    "Kinh tế quốc tế",
+    "85",
+    "56",
+    "17,00",
+    "70",
+    "69",
+    "15,00",
+    "Logistics&  Quản",
+    "lý",
+    "5",
+    "7510605",
+    "230",
+    "250",
+    "22,00",
+    "344",
+    "352",
+    "18,00"
+  ],
+  "ambiguous_rows": [
+    {
+      "index": 0,
+      "columns": [
+        {
+          "col": 0,
+          "header": "TT",
+          "inherited_from": "4"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành",
+          "inherited_from": "7903124"
+        },
+        {
+          "col": 4,
+          "header": "Chỉ tiêu (năm 2024)",
+          "inherited_from": "20"
+        },
+        {
+          "col": 5,
+          "header": "Số nhập học (năm 2024)",
+          "inherited_from": "8"
+        },
+        {
+          "col": 6,
+          "header": "Điểm TT (năm 2024)",
+          "inherited_from": "17,00"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "columns": [
+        {
+          "col": 3,
+          "header": "Phương thức tuyển sinh (năm 2024)",
+          "inherited_from": "THPT"
+        },
+        {
+          "col": 7,
+          "header": "Phương thức tuyển sinh (năm 2025)",
+          "inherited_from": "THPT"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "columns": [
+        {
+          "col": 0,
+          "header": "TT",
+          "inherited_from": "5"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành",
+          "inherited_from": "7310106"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "columns": [
+        {
+          "col": 2,
+          "header": "Tên ngành",
+          "inherited_from": "Logistics&  Quản"
+        },
+        {
+          "col": 3,
+          "header": "Phương thức tuyển sinh (năm 2024)",
+          "inherited_from": "lý"
+        }
+      ]
+    }
+  ],
+  "staging_file": "rag2025/data/staging/pdf/pdf_2.md",
+  "provenance_anchor": "7903124",
+  "expected_data_cell_count": 22,
+  "cell_attribution": [
+    {
+      "row": 0,
+      "page": 57,
+      "cells": [
+        {
+          "col": 2,
+          "header": "Tên ngành",
+          "text": "Tài chính"
+        },
+        {
+          "col": 3,
+          "header": "Phương thức tuyển sinh (năm 2024)",
+          "text": "THPT"
+        },
+        {
+          "col": 7,
+          "header": "Phương thức tuyển sinh (năm 2025)",
+          "text": "THPT"
+        }
+      ]
+    },
+    {
+      "row": 1,
+      "page": 57,
+      "cells": [
+        {
+          "col": 0,
+          "header": "TT",
+          "text": "5"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành",
+          "text": "7310106"
+        },
+        {
+          "col": 2,
+          "header": "Tên ngành",
+          "text": "Kinh tế quốc tế"
+        },
+        {
+          "col": 4,
+          "header": "Chỉ tiêu (năm 2024)",
+          "text": "85"
+        },
+        {
+          "col": 5,
+          "header": "Số nhập học (năm 2024)",
+          "text": "56"
+        },
+        {
+          "col": 6,
+          "header": "Điểm TT (năm 2024)",
+          "text": "17,00"
+        },
+        {
+          "col": 8,
+          "header": "Chỉ tiêu (năm 2025)",
+          "text": "70"
+        },
+        {
+          "col": 9,
+          "header": "Số nhập học (năm 2025)",
+          "text": "69"
+        },
+        {
+          "col": 10,
+          "header": "Điểm TT (năm 2025)",
+          "text": "15,00"
+        }
+      ]
+    },
+    {
+      "row": 2,
+      "page": 57,
+      "cells": [
+        {
+          "col": 2,
+          "header": "Tên ngành",
+          "text": "Logistics&  Quản"
+        },
+        {
+          "col": 3,
+          "header": "Phương thức tuyển sinh (năm 2024)",
+          "text": "lý"
+        }
+      ]
+    },
+    {
+      "row": 3,
+      "page": 57,
+      "cells": [
+        {
+          "col": 0,
+          "header": "TT",
+          "text": "5"
+        },
+        {
+          "col": 1,
+          "header": "Mã ngành",
+          "text": "7510605"
+        },
+        {
+          "col": 4,
+          "header": "Chỉ tiêu (năm 2024)",
+          "text": "230"
+        },
+        {
+          "col": 5,
+          "header": "Số nhập học (năm 2024)",
+          "text": "250"
+        },
+        {
+          "col": 6,
+          "header": "Điểm TT (năm 2024)",
+          "text": "22,00"
+        },
+        {
+          "col": 8,
+          "header": "Chỉ tiêu (năm 2025)",
+          "text": "344"
+        },
+        {
+          "col": 9,
+          "header": "Số nhập học (năm 2025)",
+          "text": "352"
+        },
+        {
+          "col": 10,
+          "header": "Điểm TT (năm 2025)",
+          "text": "18,00"
+        }
+      ]
+    }
+  ]
+}

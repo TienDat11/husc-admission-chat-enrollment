@@ -1,0 +1,184 @@
+{
+  "qa_xet_hoc_ba_quy_trinh_2026": {
+    "question": "Trường có xét học bạ không và quy trình thế nào?",
+    "answer_canonical": "HUSC 2026 có 5 phương thức xét tuyển, trong đó phương thức HB (xét học bạ THPT) là một phương thức chính. Điều kiện: học lực lớp 12 từ Khá trở lên (điểm trung bình chung cả năm lớp 12 ≥ 6.5). Thời gian đăng ký: theo lịch chung của Bộ GDĐT (đợt 1 thường tháng 5-6, đợt 2 tháng 7-8). Hồ sơ cần chuẩn bị: học bạ THPT bản scan, CCCD, các minh chứng ưu tiên (nếu có). Đăng ký trên cổng thisinh.thitotnghiepthpt.edu.vn của Bộ GDĐT. Thí sinh có thể đăng ký tối đa 3 nguyện vọng (NV1, NV2, NV3) cho cùng một ngành hoặc khác ngành tại HUSC.",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026)",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "xet_hoc_ba"
+    }
+  },
+  "qa_xet_truc_tuyen_vs_giay_2026": {
+    "question": "Nộp hồ sơ trực tuyến hay bản giấy?",
+    "answer_canonical": "HUSC 2026 chỉ tiếp nhận hồ sơ xét tuyển qua KÊNH TRỰC TUYẾN. Tất cả thí sinh (bao gồm cả thí sinh diện xét tuyển thẳng) BẮT BUỘC đăng ký nguyện vọng xét tuyển (NVXT) trên Hệ thống hỗ trợ tuyển sinh chung của Bộ GD&ĐT tại địa chỉ https://thisinh.thitotnghiepthpt.edu.vn (hoặc qua Cổng dịch vụ công Quốc gia). Đây là nguyện vọng chính thức để xét tuyển; KHÔNG có kênh nộp hồ sơ bản giấy thay thế cho phương thức xét tuyển thông thường. Riêng phương thức xét tuyển thẳng (XTT): ngoài việc đăng ký NVXT trên hệ thống Bộ GD&ĐT, thí sinh còn phải gửi hồ sơ XTT trực tuyến qua hệ thống của Đại học Huế tại http://dkxt.hueuni.edu.vn (KHÔNG phải gửi giấy). Toàn bộ kết quả xét tuyển được công bố trên cổng Bộ GD&ĐT.",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026)",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "truc_tuyen_vs_giay",
+      "unit": "HUSC"
+    }
+  },
+  "qa_xet_tuyen_thang_2026": {
+    "question": "Điều kiện xét tuyển thẳng là gì?",
+    "answer_canonical": "HUSC 2026 có phương thức XTT (xét tuyển thẳng / ưu tiên) dành cho: (1) Học sinh đỗ thủ khoa hoặc học sinh có học lực loại giỏi 3 năm THPT tại trường chuyên; (2) Học sinh đạt giải HSG quốc gia/quốc tế; (3) Học sinh đạt giải HSG cấp tỉnh/thành phố; (4) Thí sinh khuyết tật nặng; (5) Thí sinh thuộc diện đối tượng ưu tiên theo quy chế Bộ GDĐT. Chỉ tiêu xét tuyển thẳng không quá 10% chỉ tiêu mỗi ngành. Đăng ký: thí sinh BẮT BUỘC đăng ký NVXT trên hệ thống Bộ GD&ĐT (https://thisinh.thitotnghiepthpt.edu.vn) chọn phương thức XTT, đồng thời gửi hồ sơ XTT TRỰC TUYẾN qua hệ thống của Đại học Huế tại http://dkxt.hueuni.edu.vn (KHÔNG phải nộp giấy về văn phòng), tải lên minh chứng (giấy chứng nhận giải thưởng, học bạ trường chuyên, CCCD, giấy tờ ưu tiên). Toàn bộ quy trình XTT thực hiện trực tuyến trên 2 hệ thống nói trên.",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026) + Quy chế tuyển sinh Bộ GDĐT",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "xet_tuyen_thang",
+      "unit": "HUSC"
+    }
+  },
+  "qa_dgnl_minh_chung_2026": {
+    "question": "Xét tuyển bằng điểm đánh giá năng lực có cần nộp học bạ không?",
+    "answer_canonical": "Phương thức NL (đánh giá năng lực) của HUSC 2026 sử dụng kết quả thi đánh giá năng lực do ĐH Quốc gia Hà Nội hoặc ĐH Quốc gia TP.HCM tổ chức. Khi đăng ký trên cổng Bộ GDĐT, thí sinh chỉ cần nhập điểm thi đánh giá năng lực — KHÔNG cần nộp học bạ THPT cho phương thức này. Tuy nhiên, thí sinh cần nộp minh chứng chứng nhận kết quả thi ĐGNL (scan bản chính). Nếu thí sinh đăng ký đồng thời phương thức NL + HB thì cần nộp cả học bạ cho phương thức HB. Lưu ý: điểm ĐGNL có hạn 2 năm kể từ ngày thi.",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026)",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "dgnl_minh_chung"
+    }
+  },
+  "qa_dang_ky_bo_vs_truong_2026": {
+    "question": "Đăng ký qua hệ thống của Bộ hay hệ thống của Đại học Huế?",
+    "answer_canonical": "HUSC 2026 sử dụng HỆ THỐNG CỦA BỘ GDĐT làm cổng đăng ký CHÍNH: thisinh.thitotnghiepthpt.edu.vn. Tất cả thí sinh đều đăng ký qua hệ thống này, kể cả khi chọn phương thức học bạ hay đánh giá năng lực. HUSC KHÔNG có cổng đăng ký riêng. Hệ thống Đại học Huế (daihoc.huế) chỉ dùng cho tra cứu thông tin, không dùng để nộp hồ sơ xét tuyển. Sau khi trúng tuyển, thí sinh xác nhận nhập học trên cổng Bộ GDĐT và liên hệ HUSC để hoàn tất thủ tục.",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026)",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "dang_ky_bo_vs_truong"
+    }
+  },
+  "qa_lich_tuyen_sinh_2026": {
+    "question": "Lịch tuyển sinh 2026 cụ thể như thế nào?",
+    "answer_canonical": "Lịch tuyển sinh HUSC 2026 theo kế hoạch của Bộ GDĐT (Thông tư 06/2026/TT-BGDĐT): Đợt 1 (xét tuyển thẳng + THPT): dự kiến đăng ký từ tháng 5-6/2026, công bố kết quả tháng 7. Đợt 2 (học bạ + đánh giá năng lực + kết hợp): đăng ký từ tháng 7-8/2026, công bố kết quả tháng 8-9. Hạn cuối nộp hồ sơ: theo quy định của Bộ GDĐT, dự kiến trước 17/8/2026 đối với đợt 2. Lịch chi tiết sẽ được HUSC công bố tại tuyensinh.husc.edu.vn khi có quyết định chính thức. [CẦN HUSC CUNG CẤP ngày cụ thể khi có quyết định]",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026) + Bộ GDĐT",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "lich_tuyen_sinh"
+    }
+  },
+  "qa_song_nganh_2_truong": {
+    "question": "Có học song ngành ở 2 trường được không?",
+    "answer_canonical": "Theo quy định hiện hành của Bộ GDĐT, sinh viên có thể học đồng thời 2 chương trình tại 2 trường đại học khác nhau (song bằng / song ngành), với điều kiện: (1) Được cả 2 trường chấp nhận; (2) Thời gian học không trùng nhau; (3) Hoàn thành thủ tục đăng ký theo quy định. Tuy nhiên, HUSC chưa có chương trình song ngành chính thức liên kết với trường khác. Thí sinh muốn học song ngành nên liên hệ phòng đào tạo HUSC (điện thoại 0234-3828427) để được tư vấn cụ thể. [CẦN HUSC CUNG CẤP chính sách song ngành chính thức nếu có]",
+    "source": "Quy chế đào tạo Bộ GDĐT + tuyensinh.husc.edu.vn",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "song_nganh"
+    }
+  },
+  "qa_link_cong_xet_tuyen_husc": {
+    "question": "Link cổng xét tuyển HUSC ở đâu?",
+    "answer_canonical": "Cổng xét tuyển CHÍNH dành cho thí sinh HUSC 2026 là cổng của Bộ GDĐT: https://thisinh.thitotnghiepthpt.edu.vn — đây là hệ thống duy nhất để đăng ký xét tuyển. HUSC không có cổng đăng ký riêng. Thông tin tuyển sinh HUSC: https://tuyensinh.husc.edu.vn — đây là trang thông tin, tra cứu, không dùng để nộp hồ sơ. Sau khi trúng tuyển, thí sinh xác nhận nhập học trên cổng Bộ GDĐT và làm thủ tục tại HUSC (77 Nguyễn Huệ, TP Huế). [CẦN HUSC CUNG CẤP link chính xác nếu có cổng riêng]",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026)",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "link_cong_xet_tuyen"
+    }
+  },
+  "qa_lien_he_tu_van_husc": {
+    "question": "Liên hệ tư vấn tuyển sinh HUSC ở đâu?",
+    "answer_canonical": "Thông tin liên hệ tư vấn tuyển sinh HUSC: Hotline: (0234) 3828427 / 0385887111. Email: tuyensinh@husc.edu.vn. Địa chỉ: 77 Nguyễn Huệ, TP Huế, Thừa Thiên Huế. Mã trường: DHT. Website: https://tuyensinh.husc.edu.vn. Giờ làm việc: hành chính (thứ 2-6). [CẦN HUSC CUNG CẤP link group Zalo / Facebook tư vấn nếu có]",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026)",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "lien_he_tu_van"
+    }
+  },
+  "qa_ktx_husc": {
+    "question": "Trường có ký túc xá không?",
+    "answer_canonical": "HUSC có hệ thống ký túc xá (KTX) thuộc Đại học Huế, phục vụ sinh viên các trường thành viên. KTX Đại học Huế nằm tại khu đô thị đại học, phường An Mỹ, TP Huế. Sinh viên năm nhất được ưu tiên đăng ký KTX. Chi phí: khoảng 300.000-600.000 VNĐ/tháng tùy loại phòng (phòng 4-8 người). Đăng ký KTX: sau khi trúng tuyển, sinh viên nộp đơn qua phòng công tác sinh viên HUSC. [CẦN HUSC CUNG CẤP học phí KTX 2026 chính xác + quy trình đăng ký chi tiết]",
+    "source": "Đại học Huế (ktx.huế) + tuyensinh.husc.edu.vn",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "ktx"
+    }
+  },
+  "qa_thpt_vs_gdtx": {
+    "question": "Học GDTX có bị bất lợi hơn THPT khi xét tuyển không?",
+    "answer_canonical": "Theo quy chế tuyển sinh của Bộ GDĐT, thí sinh tốt nghiệp chương trình Giáo dục thường xuyên (GDTX) có quyền đăng ký xét tuyển ngang hàng với thí sinh THPT. Không có sự phân biệt đối xử giữa THPT và GDTX khi xét tuyển vào HUSC. Điều kiện: thí sinh GDTX phải có bằng tốt nghiệp và đáp ứng điều kiện về điểm theo phương thức đăng ký (thi THPT, học bạ, hoặc ĐGNL). Điểm cộng ưu tiên khu vực/đối tượng áp dụng giống nhau cho cả THPT và GDTX. Lưu ý: một số phương thức như xét học bạ yêu cầu điểm TB lớp 12 — thí sinh GDTX cần đảm bảo điểm TB đạt mức quy định (≥ 6.5).",
+    "source": "Quy chế tuyển sinh Bộ GDĐT + tuyensinh.husc.edu.vn",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "thpt_vs_gdtx"
+    }
+  },
+  "qa_chi_tieu_co_thay_doi": {
+    "question": "Chỉ tiêu tuyển sinh có thể thay đổi không?",
+    "answer_canonical": "Chỉ tiêu tuyển sinh HUSC 2026 được công bố theo Quyết định của Bộ GDĐT. Trong quá trình tuyển sinh, chỉ tiêu có thể được điều chỉnh (tăng hoặc giảm) theo quy định: (1) Nếu số thí sinh trúng tuyển thấp hơn chỉ tiêu → có thể bổ sung chỉ tiêu cho đợt sau. (2) Nếu chỉ tiêu đã đủ nhưng có thí sinh bỏ nhập học → chỉ tiêu nhường được phân bổ lại. (3) Bộ GDĐT có quyền điều chỉnh chỉ tiêu dựa trên năng lực đào tạo của trường. Thí sinh nên theo dõi tuyensinh.husc.edu.vn để cập nhật chỉ tiêu mới nhất.",
+    "source": "Quy chế tuyển sinh Bộ GDĐT + tuyensinh.husc.edu.vn",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "chi_tieu_thay_doi"
+    }
+  },
+  "qa_thoi_gian_dao_tao_per_nganh": {
+    "question": "Thời gian đào tạo các ngành bao lâu?",
+    "answer_canonical": "Thời gian đào tạo tại HUSC 2026: Đa số các ngành đào tạo 4 năm (8 học kỳ), bao gồm: Hán Nôm, Triết học, Lịch sử, Văn học, QLVH, QLNN, XHH, ĐPH, Báo chí, Truyền thông số, CNSH, Vật lý, Hóa học, KHMT, KTPM, QTPADL, CNTT, CNTT-VN, CNKT ĐT-VT, CNKT Hóa, KT TĐ-BĐ, ĐKTXD, CTXH, QLTN&MT, QLATSK&MT. Riêng ngành Kiến trúc (mã 7580101) đào tạo 5 NĂM (10 học kỳ) do yêu cầu năng khiếu vẽ và thực tập chuyên môn. Riêng ngành Triết học được MIỄN học phí theo quy định hiện hành.",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026)",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "thoi_gian_dao_tao"
+    }
+  },
+  "qa_nghe_nghiep_van_hoc_lich_su": {
+    "question": "Học Văn học / Lịch sử ra trường làm gì?",
+    "answer_canonical": "Cơ hội nghề nghiệp sau tốt nghiệp ngành Văn học và Lịch sử tại HUSC: (1) Giảng dạy: có thể học thêm chứng chỉ sư phạm để giảng dạy tại trường THPT, THCS (Văn học → giáo viên Ngữ văn; Lịch sử → giáo viên Lịch sử). Chứng chỉ sư phạm đào tạo thêm 1-2 năm. (2) Nghiên cứu: làm nghiên cứu viên tại viện nghiên cứu, bảo tàng, trung tâm văn hóa. (3) Báo chí - truyền thông: biên tập viên, phóng viên, nhà báo. (4) Quản lý: công chức văn hóa, du lịch, quản lý di sản. (5) Xuất bản: biên tập sách, viết sách. Nhiều cựu sinh viên Văn/Lịch sử HUSC đang công tác tại các trường THPT Huế, Viện Nghiên cứu Hán Nôm, Báo Thừa Thiên Huế, Sở Văn hóa Thể thao Du lịch.",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026) + cựu sinh viên HUSC",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "nghe_nghiep_van_lich_su"
+    }
+  },
+  "qa_nang_khieu_kien_truc_thi_xa": {
+    "question": "Thi năng khiếu Kiến trúc ở tỉnh xa có sao không?",
+    "answer_canonical": "Ngành Kiến trúc (mã 7580101) tại HUSC sử dụng phương thức KH-5b (xét tuyển kết hợp): yêu cầu môn Vẽ mỹ thuật (năng khiếu) đạt ≥ 5.00 điểm. Thi năng khiếu vẽ do HUSC hoặc Đại học Huế tổ chức tại TP Huế. Thí sinh ở tỉnh xa cần đến Huế dự thi năng khiếu — hiện chưa có điểm thi vệ tinh ở tỉnh khác. Lịch thi năng khiếu: thường tổ chức cùng đợt với thi THPT hoặc đợt riêng (tháng 6-7). Thí sinh nên liên hệ hotline (0234) 3828427 để hỏi lịch thi cụ thể. [CẦN HUSC CUNG CẤP lịch thi năng khiếu 2026 cụ thể]",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026)",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "nang_khieu_kien_truc"
+    }
+  },
+  "qa_minh_chung_het_han_xu_ly": {
+    "question": "Minh chứng hết hạn thì sao?",
+    "answer_canonical": "Theo quy chế tuyển sinh Bộ GDĐT, minh chứng ưu tiên (chứng chỉ ngoại ngữ, giải HSG, giấy chứng nhận khu vực/đối tượng) phải còn hiệu lực tại thời điểm đăng ký xét tuyển. Hạn chứng chỉ ngoại ngữ: đến 03/8/2026. Nếu minh chứng hết hạn: (1) Chứng chỉ ngoại ngữ hết hạn → KHÔNG được cộng điểm. (2) Giải HSG cấp tỉnh/quốc gia: giá trị trọn đời, không hết hạn. (3) Giấy chứng nhận KV/ĐT: theo quy định tại thời điểm xét tuyển. Thí sinh nên kiểm tra hạn minh chứng trước khi đăng ký. Nếu không còn minh chứng hợp lệ → vẫn đăng ký được nhưng không được cộng điểm ưu tiên.",
+    "source": "Quy chế tuyển sinh Bộ GDĐT + tuyensinh.husc.edu.vn",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "minh_chung_het_han"
+    }
+  },
+  "qa_NV1_NV2_NV3_quy_che": {
+    "question": "Nguyện vọng 1, 2, 3 có ý nghĩa gì? NV3 có cơ hội trúng tuyển không?",
+    "answer_canonical": "Theo quy chế tuyển sinh Bộ GDĐT 2026: Thí sinh đăng ký tối đa 3 nguyện vọng (NV1, NV2, NV3) cho cùng một nhóm ngành tại một trường. Thứ tự ưu tiên: NV1 > NV2 > NV3. Khi xét tuyển: (1) Nếu điểm đủ trúng tuyển NV1 → trúng tuyển NV1. (2) Nếu NV1 không đủ điểm nhưng NV2 đủ → trúng tuyển NV2 (chỉ khi NV1 chưa đủ chỉ tiêu hoặc NV2 còn chỉ tiêu). (3) NV3 tương tự — có cơ hội trúng tuyển nếu NV1, NV2 chưa lấp đầy chỉ tiêu. Lưu ý: NV2 và NV3 CÓ cơ hội trúng tuyển, đặc biệt khi chỉ tiêu NV1 chưa hết. Thí sinh nên chọn ngành yêu thích nhất làm NV1, ngành an toàn (điểm chuẩn thấp hơn) làm NV2/NV3.",
+    "source": "Quy chế tuyển sinh Bộ GDĐT + tuyensinh.husc.edu.vn",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "nv1_nv2_nv3"
+    }
+  },
+  "qa_so_sanh_cntt_va_cntt_vj": {
+    "question": "CNTT (Cử nhân) và CNTT Việt-Nhật khác gì?",
+    "answer_canonical": "HUSC 2026 tuyển sinh 2 chương trình CNTT: (1) CNTT (Cử nhân, mã 7480201): chỉ tiêu 400, đào tạo 4 năm, học phí khối V = 600.000đ/TC, tổ hợp A00/A01/D01/X26, chương trình đào tạo chuẩn theo quy định Bộ GDĐT, tốt nghiệp nhận bằng Cử nhân CNTT. (2) CNTT Việt-Nhật (mã 7480201VJ): chỉ tiêu 30, đào tạo 4 năm, học phí khối V = 600.000đ/TC (chưa kể chi phí hợp tác quốc tế), tổ hợp A00/A01/D01/X26, chương trình liên kết với đại học Nhật Bản, sinh viên có cơ hội học tiếng Nhật và chuyển tiếp sang Nhật, tốt nghiệp nhận bằng Cử nhân CNTT + chứng nhận liên kết quốc tế. Điểm khác biệt chính: CNTT-VN có chương trình liên kết Nhật, lớp nhỏ (30 SV), cơ hội du học/también việc tại Nhật. CNTT chuẩn có chỉ tiêu lớn (400), lớp đông, chi phí thấp hơn.",
+    "source": "tuyensinh.husc.edu.vn (canonical 2026)",
+    "metadata": {
+      "data_year": 2026,
+      "info_type": "operational_qa",
+      "topic": "so_sanh_cntt_vj"
+    }
+  }
+}
