@@ -74,9 +74,51 @@ def test_question_ids_are_unique():
     assert not duplicates
 
 
-def test_legacy_to_coordinate_mapping_is_injective():
-    mapping = json.loads(MAPPING.read_text(encoding="utf-8"))["mapping"]
-    assert len(set(mapping.values())) == len(mapping)
+def _mapping() -> dict:
+    return json.loads(MAPPING.read_text(encoding="utf-8"))["mapping"]
+
+
+def _fact_of_legacy(legacy_id: str) -> tuple[str, str, str, str]:
+    record_type, scope, subject, year = legacy_id.split(":")[:4]
+    return record_type, scope, subject, year
+
+
+def test_one_key_identifies_one_fact_identity():
+    # Source copies of the same fact (different source tags) may share a key.
+    # Two different fact identities (e.g. two programs of one major code) must not.
+    key_to_facts: dict[str, set] = {}
+    for legacy, entry in _mapping().items():
+        key_to_facts.setdefault(entry["coordinate_key"], set()).add(_fact_of_legacy(legacy))
+    assert all(len(facts) == 1 for facts in key_to_facts.values())
+
+
+def test_admission_round_is_the_none_token_everywhere():
+    # admission_round is null in the source; the round slot is the fixed token "none".
+    for entry in _mapping().values():
+        assert entry["coordinate_key"].split(":")[4] == "none", entry
+
+
+def test_legacy_source_tag_is_kept_in_mapping_not_in_key():
+    for legacy, entry in _mapping().items():
+        assert entry["legacy_source_tag"] == ":".join(legacy.split(":")[4:]), legacy
+        assert entry["legacy_source_tag"] not in entry["coordinate_key"].split(":"), legacy
+
+
+def test_subject_starts_with_seven_digit_major_code():
+    for entry in _mapping().values():
+        subject = entry["coordinate_key"].split(":")[2]
+        assert re.match(r"^\d{7}", subject), entry
+
+
+def test_program_suffix_only_when_major_code_has_several_programs():
+    subjects_by_code: dict[str, set[str]] = {}
+    for legacy in _mapping():
+        subject = legacy.split(":")[2]
+        subjects_by_code.setdefault(subject[:7], set()).add(subject)
+    for entry in _mapping().values():
+        subject = entry["coordinate_key"].split(":")[2]
+        if subject != subject[:7]:
+            assert len(subjects_by_code[subject[:7]]) > 1, entry
 
 
 @pytest.mark.skipif(not SOURCE.exists(), reason="legacy golden file is gitignored; attach data/ to run")
