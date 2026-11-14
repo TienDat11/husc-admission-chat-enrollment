@@ -102,6 +102,11 @@ class AdminAction(str, Enum):
     # ``_TRANSITION_ACTIONS`` - it is not a lifecycle action, and the
     # transitions endpoint must keep rejecting it.
     ROLES_MANAGE = "roles.manage"
+    # Ingestion/parse job surface (plan §PL-7.1). Read: the job list and worker
+    # health. Manage: retry and cancel. Appended last so existing values keep
+    # their order.
+    JOBS_READ = "jobs.read"
+    JOBS_MANAGE = "jobs.manage"
 
 # The policy, as data. A role absent from this mapping grants nothing; an action
 # absent from a role's set is denied. Both directions fail closed.
@@ -122,6 +127,7 @@ ROLE_MATRIX: dict[Role, frozenset[AdminAction]] = {
             AdminAction.RECORDS_CREATE,
             AdminAction.RECORDS_EDIT,
             AdminAction.RECORDS_SUBMIT,
+            AdminAction.JOBS_READ,
         }
     ),
     Role.REVIEWER: frozenset(
@@ -129,6 +135,7 @@ ROLE_MATRIX: dict[Role, frozenset[AdminAction]] = {
             AdminAction.RECORDS_READ,
             AdminAction.RECORDS_APPROVE,
             AdminAction.RECORDS_REJECT,
+            AdminAction.JOBS_READ,
         }
     ),
     Role.PUBLISHER: frozenset(
@@ -139,6 +146,7 @@ ROLE_MATRIX: dict[Role, frozenset[AdminAction]] = {
             # A publisher may retract what it published, but un-doing someone
             # else's supersession decision is the admin's (ticket 36).
             AdminAction.RECORDS_WITHDRAW,
+            AdminAction.JOBS_READ,
         }
     ),
     Role.REVIEWER_PUBLISHER: frozenset(
@@ -149,6 +157,7 @@ ROLE_MATRIX: dict[Role, frozenset[AdminAction]] = {
             AdminAction.RECORDS_PUBLISH,
             AdminAction.RECORDS_SUPERSEDE,
             AdminAction.RECORDS_WITHDRAW,
+            AdminAction.JOBS_READ,
         }
     ),
     Role.ADMIN: frozenset(
@@ -169,6 +178,8 @@ ROLE_MATRIX: dict[Role, frozenset[AdminAction]] = {
             AdminAction.OPS_RELOAD_TABLE,
             AdminAction.GRAPH_UPDATE,
             AdminAction.ROLES_MANAGE,
+            AdminAction.JOBS_READ,
+            AdminAction.JOBS_MANAGE,
         }
     ),
     Role.OPS: frozenset(
@@ -176,6 +187,8 @@ ROLE_MATRIX: dict[Role, frozenset[AdminAction]] = {
             AdminAction.OPS_WARMUP,
             AdminAction.OPS_RELOAD_TABLE,
             AdminAction.GRAPH_UPDATE,
+            AdminAction.JOBS_READ,
+            AdminAction.JOBS_MANAGE,
         }
     ),
 }

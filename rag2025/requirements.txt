@@ -45,6 +45,11 @@ beautifulsoup4==4.15.0
 lancedb==0.30.2
 pyarrow==24.0.0
 
+# PostgreSQL foundation (U2): async engine, asyncpg driver, Alembic migrations.
+sqlalchemy[asyncio]==2.0.57
+asyncpg==0.32.0
+alembic==1.20.1
+
 # LLM gateway: ns24 (OpenAI-compatible) via the openai SDK pinned above.
 openai==2.34.0  # ns24 gateway client (services/llm_client.py)
 

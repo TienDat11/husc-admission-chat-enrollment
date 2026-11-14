@@ -1,0 +1,23 @@
+# Local PostgreSQL 16 for the rag2025 foundation (U2). Deliverable only:
+# Docker was not available on the build machine, so this file is not exercised
+# by the test suite. The suite runs against a local server via DATABASE_URL.
+services:
+  pg:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_DB: husc
+      # Dev only: trust auth on the compose network. Do not reuse in production.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5439:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d husc"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
