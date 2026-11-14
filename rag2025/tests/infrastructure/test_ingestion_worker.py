@@ -73,3 +73,28 @@ def test_handler_error_text_is_not_stored_verbatim(migrated_database_url: str) -
     assert "/srv/app" not in serialised
     assert last_error["code"] == "HANDLER_ERROR"
     assert "RuntimeError" in last_error["message"]
+
+
+def test_lost_lease_on_complete_is_reported_not_completed(migrated_database_url: str, monkeypatch) -> None:
+    # The lease expired and another worker took the job: this worker must not claim "completed".
+    async def ok(job):
+        return None
+
+    async def lost(engine, job_id, worker_id):
+        return False
+
+    monkeypatch.setattr("workers.ingestion_worker.complete_job", lost)
+    outcome, _ = asyncio.run(_run(migrated_database_url, ok))
+    assert outcome == "lease_lost"
+
+
+def test_lost_lease_on_fail_is_reported_not_retryable(migrated_database_url: str, monkeypatch) -> None:
+    async def boom(job):
+        raise RuntimeError("boom")
+
+    async def lost(engine, job_id, worker_id, error):
+        return None
+
+    monkeypatch.setattr("workers.ingestion_worker.fail_job", lost)
+    outcome, _ = asyncio.run(_run(migrated_database_url, boom))
+    assert outcome == "lease_lost"

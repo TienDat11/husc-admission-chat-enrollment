@@ -134,8 +134,9 @@ async def request_context_middleware(request: Request, call_next):
     request.state.request_id = request_id
 
     if _is_frozen_admin_write(request):
+        # Only the coarse reason goes out: the revision ids in WRITE_FREEZE.detail
+        # are schema internals that an unauthenticated caller must not see.
         detail = {"code": "WRITES_FROZEN", "message": "Ghi dữ liệu đang tạm dừng", "reason": WRITE_FREEZE.reason}
-        detail.update(WRITE_FREEZE.detail)
         response = JSONResponse(
             status_code=503,
             content=error_envelope("WRITES_FROZEN", detail["message"], request_id, detail=detail),

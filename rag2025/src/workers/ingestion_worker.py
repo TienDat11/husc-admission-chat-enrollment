@@ -35,8 +35,11 @@ async def run_worker_once(engine, worker_id: str, handler: Handler = _noop_handl
             worker_id,
             {"code": "HANDLER_ERROR", "message": f"handler raised {type(exc).__name__}"},
         )
-        return state or "failed_retryable"
-    await complete_job(engine, str(job["job_id"]), worker_id)
+        # None means this worker no longer owns the job (lease expired and was reaped).
+        return state or "lease_lost"
+    # False means the same: another worker may already have re-claimed and run it.
+    if not await complete_job(engine, str(job["job_id"]), worker_id):
+        return "lease_lost"
     return "completed"
 
 

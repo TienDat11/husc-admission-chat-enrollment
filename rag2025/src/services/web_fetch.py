@@ -248,6 +248,11 @@ def _read_bounded(
 
     watchdog: threading.Thread | None = None
     stop = threading.Event()
+    # Set by the watchdog when it fires. The watchdog waits on the Event clock,
+    # while time.monotonic() on Windows is coarse (~15.6 ms). After the watchdog
+    # wakes at the deadline, monotonic() can still read <= deadline, so the
+    # clock check alone would miss the timeout. The fired flag is authoritative.
+    timed_out = threading.Event()
     if deadline is not None:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -257,6 +262,7 @@ def _read_bounded(
             def _watchdog() -> None:
                 stop.wait(remaining)
                 if not stop.is_set():
+                    timed_out.set()
                     try:
                         sock_shutdown(socket.SHUT_RDWR)
                     except (OSError, ValueError):
@@ -277,7 +283,7 @@ def _read_bounded(
             if total > max_bytes:
                 raise WebFetchTooLarge(f"{url!r} exceeds the {max_bytes}-byte cap")
             chunks.append(chunk)
-        if deadline is not None and time.monotonic() > deadline:
+        if timed_out.is_set() or (deadline is not None and time.monotonic() > deadline):
             raise WebFetchTimeout(f"overall deadline ({_DEADLINE_S:.0f}s) expired on {url}")
         return b"".join(chunks)
     finally:

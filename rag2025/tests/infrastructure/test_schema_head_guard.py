@@ -44,7 +44,7 @@ def _load_main(monkeypatch):
 
 def test_engaged_freeze_returns_503_writes_frozen_for_admin_writes(monkeypatch) -> None:
     main = _load_main(monkeypatch)
-    WRITE_FREEZE.engage(SCHEMA_REVISION_REASON, {"expected": "x", "current": "y"})
+    WRITE_FREEZE.engage(SCHEMA_REVISION_REASON, {"expected": "rev_expected_zz", "current": "rev_current_zz"})
     client = TestClient(main.app)
 
     res = client.post("/admin/records", json={})
@@ -53,6 +53,9 @@ def test_engaged_freeze_returns_503_writes_frozen_for_admin_writes(monkeypatch) 
     assert body["code"] == "WRITES_FROZEN"
     assert body["detail"]["reason"] == "schema_revision"
     assert res.headers.get("Retry-After")
+    # Unauthenticated callers must not learn the schema revision ids.
+    assert "rev_expected_zz" not in res.text
+    assert "rev_current_zz" not in res.text
 
     # Public chat and health stay up; login is not a record write.
     assert client.get("/health").status_code == 200
