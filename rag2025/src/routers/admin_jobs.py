@@ -19,7 +19,7 @@ the ``WHERE`` clause so a concurrent worker claim cannot be overwritten.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from src.domain.admin_identity import AdminAction, Identity
+from src.domain.audit import AuditAction, AuditEvent, TargetKind
 from src.routers.admin_auth import require_action
 from src.routers.admin_rate_limit import admin_rate_limit
 
@@ -137,6 +138,28 @@ def _engine(request: Request):
     return engine
 
 
+def _ledger(request: Request):
+    # Fail closed: a job action is refused unless it can be recorded.
+    ledger = getattr(request.app.state, "audit_ledger", None)
+    if ledger is None:
+        raise HTTPException(status_code=503, detail="audit ledger is not configured")
+    return ledger
+
+
+def _record(ledger, action: AuditAction, job_id: uuid.UUID, identity: Identity, after: str) -> None:
+    ledger.append(
+        AuditEvent(
+            action=action,
+            actor_id=identity.actor_id,
+            role=getattr(identity.role, "value", identity.role),
+            target=str(job_id),
+            target_kind=TargetKind.JOB,
+            timestamp=datetime.now(timezone.utc),
+            reason=f"job moved to {after}",
+        )
+    )
+
+
 def _redact_last_error(value: Any) -> Optional[dict[str, str]]:
     """Keep only string ``code`` and ``message``; drop stack, path, traceback, anything else."""
     if not isinstance(value, dict):
@@ -184,6 +207,7 @@ async def retry_job(
     identity: Identity = Depends(require_action(AdminAction.JOBS_MANAGE)),
 ) -> JobTransition:
     engine = _engine(request)
+    ledger = _ledger(request)
     async with engine.begin() as conn:
         row = (await conn.execute(_RETRY_SQL, {"job": str(job_id)})).first()
         if row is None:
@@ -194,7 +218,9 @@ async def retry_job(
                 status_code=409,
                 detail=f"job is '{exists._mapping['state']}', only 'failed_terminal' can be retried",
             )
-    return JobTransition(job_id=job_id, state=row._mapping["state"], actor_id=identity.actor_id)
+    state = row._mapping["state"]
+    _record(ledger, AuditAction.JOB_RETRY, job_id, identity, state)
+    return JobTransition(job_id=job_id, state=state, actor_id=identity.actor_id)
 
 
 @router.post("/jobs/{job_id}/cancel", response_model=JobTransition)
@@ -204,6 +230,7 @@ async def cancel_job(
     identity: Identity = Depends(require_action(AdminAction.JOBS_MANAGE)),
 ) -> JobTransition:
     engine = _engine(request)
+    ledger = _ledger(request)
     async with engine.begin() as conn:
         row = (await conn.execute(_CANCEL_SQL, {"job": str(job_id)})).first()
         if row is None:
@@ -214,7 +241,9 @@ async def cancel_job(
                 status_code=409,
                 detail=f"job is '{exists._mapping['state']}' and cannot be cancelled",
             )
-    return JobTransition(job_id=job_id, state=row._mapping["state"], actor_id=identity.actor_id)
+    state = row._mapping["state"]
+    _record(ledger, AuditAction.JOB_CANCEL, job_id, identity, state)
+    return JobTransition(job_id=job_id, state=state, actor_id=identity.actor_id)
 
 
 @router.get("/ops/workers", response_model=list[WorkerStatus])

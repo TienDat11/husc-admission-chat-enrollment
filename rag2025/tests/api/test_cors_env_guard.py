@@ -49,3 +49,14 @@ def test_unknown_env_refuses_to_start(env):
 def test_wildcard_origin_is_refused_in_every_env(env):
     with pytest.raises(RuntimeError, match="\\*"):
         resolve_cors_settings(env, "https://a.example,*")
+
+
+def test_unset_env_is_logged_as_dev_fallback(caplog) -> None:
+    # An unset ENV is treated as dev; that must be visible in logs so a deploy that forgot it is noticed.
+    import logging
+
+    from src.api.cors import resolve_cors_settings
+
+    with caplog.at_level(logging.WARNING, logger="src.api.cors"):
+        resolve_cors_settings("", "")
+    assert any("ENV is unset" in r.getMessage() for r in caplog.records)

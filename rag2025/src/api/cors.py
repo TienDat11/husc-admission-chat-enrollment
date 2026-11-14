@@ -6,6 +6,10 @@ origins and localhost regex, or raises. ``main.py`` calls this once at import.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 DEV_ENVS = frozenset({"", "dev", "development", "local", "test"})
 STRICT_ENVS = frozenset({"prod", "production", "staging"})
 
@@ -30,6 +34,9 @@ def resolve_cors_settings(env: str, raw_origins: str) -> tuple[list[str], str | 
         raise RuntimeError(
             f"unknown ENV={env!r}; expected one of dev, development, local, test, prod, production, staging"
         )
+
+    if env_name == "":
+        logger.warning("ENV is unset; running with the dev CORS policy. Set ENV=prod|staging for deployed environments.")
 
     origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
     if "*" in origins:

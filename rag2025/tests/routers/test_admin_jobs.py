@@ -131,12 +131,14 @@ needs_pg = pytest.mark.skipif(not DATABASE_URL, reason="DATABASE_URL not set (ne
 
 
 @pytest.fixture
-def pg_client(app: FastAPI):
+def pg_client(app: FastAPI, tmp_path):
     # The app's engine lives on the TestClient's event loop.
     app.state.db_engine = create_db_engine(DATABASE_URL)
+    app.state.audit_ledger = AuditLedger(tmp_path / "audit" / "ledger.jsonl")
     with TestClient(app) as test_client:
         yield test_client
     app.state.db_engine = None
+    app.state.audit_ledger = None
 
 
 def _run(coro):
@@ -243,3 +245,41 @@ def test_cancel_refuses_a_completed_job(pg_client):
 def test_get_unknown_job_is_404(pg_client):
     response = pg_client.get(f"/admin/jobs/{uuid.uuid4()}", headers=_headers(TOKENS["editor"]))
     assert response.status_code == 404
+
+
+# --- audit ledger: operator job actions are recorded, and refused without a sink ---
+
+from src.domain.audit import AuditAction, TargetKind  # noqa: E402
+from src.infrastructure.audit_ledger import AuditLedger  # noqa: E402
+
+
+@needs_pg
+def test_retry_is_recorded_in_the_audit_ledger(pg_client, app):
+    job = _run(_insert_job("failed_terminal"))
+    try:
+        response = pg_client.post(f"/admin/jobs/{job}/retry", headers=_headers(TOKENS["admin"]))
+        assert response.status_code == 200, response.text
+        events = app.state.audit_ledger.find(action=AuditAction.JOB_RETRY)
+        assert len(events) == 1
+        assert events[0].event.actor_id == "cb.admin"
+        assert events[0].event.target == job
+        assert events[0].event.target_kind is TargetKind.JOB
+    finally:
+        _run(_delete_job(job))
+
+
+@needs_pg
+def test_job_action_is_refused_without_an_audit_ledger(pg_client, app):
+    job = _run(_insert_job("failed_terminal"))
+    try:
+        ledger = app.state.audit_ledger
+        app.state.audit_ledger = None
+        refused = pg_client.post(f"/admin/jobs/{job}/retry", headers=_headers(TOKENS["admin"]))
+        assert refused.status_code == 503, refused.text
+        # Refused before any write: the job is still failed_terminal, so a retry with a sink succeeds.
+        app.state.audit_ledger = ledger
+        allowed = pg_client.post(f"/admin/jobs/{job}/retry", headers=_headers(TOKENS["admin"]))
+        assert allowed.status_code == 200, allowed.text
+        assert allowed.json()["state"] == "queued"
+    finally:
+        _run(_delete_job(job))
