@@ -175,3 +175,40 @@ async def health_check(request: Request) -> HealthResponse:
         response.ready = False
 
     return response
+
+
+@router.get("/health/ready")
+async def health_ready(request: Request):
+    """Write-readiness for the load balancer. 503 while WRITE_FREEZE is engaged
+    (e.g. schema_revision mismatch), when the shared DB engine is not wired, or
+    when the release lookup fails or exceeds 2s. Reports the served release id."""
+    import asyncio
+
+    from fastapi.responses import JSONResponse
+
+    from infrastructure.db import WRITE_FREEZE, active_release_id
+
+    engine = getattr(request.app.state, "db_engine", None)
+    served_release_id = None
+    db_ok = False
+    db_reason = "db_engine_unavailable"
+    if engine is not None:
+        try:
+            served_release_id = await asyncio.wait_for(
+                active_release_id(engine, strict=True), timeout=2.0
+            )
+            db_ok = True
+        except Exception:
+            db_reason = "release_lookup_failed"
+    frozen = WRITE_FREEZE.active
+    ready = not frozen and db_ok
+    if frozen:
+        reason = WRITE_FREEZE.reason
+    else:
+        reason = None if db_ok else db_reason
+    body = {
+        "ready": ready,
+        "reason": reason,
+        "served_release_id": served_release_id,
+    }
+    return JSONResponse(status_code=200 if ready else 503, content=body)

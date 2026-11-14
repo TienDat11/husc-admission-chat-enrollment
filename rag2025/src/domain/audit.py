@@ -123,6 +123,9 @@ class AuditAction(str, Enum):
     # -- T15: claiming an unclaimed draft (the seed's ``authored_by = null``
     #    is the version a claim attaches an author to)
     CLAIM = "claim"
+    # -- ingestion job operator actions (U2): who retried or cancelled a job
+    JOB_RETRY = "job_retry"
+    JOB_CANCEL = "job_cancel"
 
 
 class TargetKind(str, Enum):
@@ -131,6 +134,7 @@ class TargetKind(str, Enum):
     RECORD = "record"
     RELEASE = "release"
     SUBJECT = "subject"
+    JOB = "job"
 
 
 # Actions whose legitimacy rests on a recorded justification. Reject discards a

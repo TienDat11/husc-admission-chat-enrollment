@@ -1,0 +1,6 @@
+# Test tooling. Install on top of requirements.txt: pip install -r requirements-dev.txt
+# pytest-asyncio is required: tests/domain/test_pagerank_view_cache.py uses
+# `async def` tests marked with pytest.mark.asyncio. Without the plugin pytest
+# reports "async def functions are not natively supported" and the tests fail.
+pytest>=8,<10
+pytest-asyncio==0.24.0
