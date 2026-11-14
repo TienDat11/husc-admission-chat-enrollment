@@ -38,6 +38,9 @@ A test that wants conflicts registers its own source and restores it, as
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
 import pytest
 
 
@@ -49,3 +52,23 @@ def _reset_abstention_conflict_source() -> None:
     abstention_policy.configure_conflict_source(None)
     yield
     abstention_policy.configure_conflict_source(None)
+
+
+@pytest.fixture
+def source_pdf() -> Callable[[str], Path]:
+    """Path to an official source PDF; skips (with the file name) when absent.
+
+    Directory: ``HUSC_SOURCE_PDF_DIR`` env var, default ``<repo>/new_data``.
+    The PDFs are gitignored, so a clean clone skips rather than fails.
+    """
+    import os
+
+    base = Path(os.environ.get("HUSC_SOURCE_PDF_DIR") or Path(__file__).resolve().parents[2] / "new_data")
+
+    def _resolve(name: str) -> Path:
+        path = base / name
+        if not path.is_file():
+            pytest.skip(f"source PDF not found: {path}")
+        return path
+
+    return _resolve
