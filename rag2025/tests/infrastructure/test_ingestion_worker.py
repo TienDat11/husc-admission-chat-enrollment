@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -98,3 +100,56 @@ def test_lost_lease_on_fail_is_reported_not_retryable(migrated_database_url: str
     monkeypatch.setattr("workers.ingestion_worker.fail_job", lost)
     outcome, _ = asyncio.run(_run(migrated_database_url, boom))
     assert outcome == "lease_lost"
+
+
+def test_lease_is_heartbeated_while_the_handler_runs(monkeypatch) -> None:
+    # A handler that outlives the lease must keep renewing it, or the reaper re-runs the job.
+    import workers.ingestion_worker as worker
+
+    beats: list[str] = []
+
+    async def claim(engine, worker_id):
+        return {"job_id": "j-long"}
+
+    async def beat(engine, job_id, worker_id, *a, **k):
+        beats.append(job_id)
+        return True
+
+    async def complete(engine, job_id, worker_id):
+        return True
+
+    async def slow(job):
+        await asyncio.sleep(0.05)
+
+    monkeypatch.setattr(worker, "claim_job", claim)
+    monkeypatch.setattr(worker, "heartbeat", beat)
+    monkeypatch.setattr(worker, "complete_job", complete)
+    outcome = asyncio.run(worker.run_worker_once(None, "w-hb", slow, heartbeat_seconds=0.01))
+    assert outcome == "completed"
+    assert len(beats) >= 2
+
+
+def test_run_forever_survives_a_transient_database_error(monkeypatch) -> None:
+    # A transient error in the reaper must not kill the worker loop.
+    import workers.ingestion_worker as worker
+
+    calls = {"reap": 0}
+
+    async def flaky_reap(engine):
+        calls["reap"] += 1
+        if calls["reap"] == 1:
+            raise OSError("connection reset")
+        raise asyncio.CancelledError  # stop the loop after the recovery iteration
+
+    async def no_job(engine, worker_id):
+        return None
+
+    async def no_sleep(seconds):
+        return None
+
+    monkeypatch.setattr(worker, "reap_expired_leases", flaky_reap)
+    monkeypatch.setattr(worker, "claim_job", no_job)
+    monkeypatch.setattr(worker.asyncio, "sleep", no_sleep)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(worker.run_forever(None, "w-loop", poll_seconds=0))
+    assert calls["reap"] == 2
