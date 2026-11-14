@@ -1,0 +1,25 @@
+{
+  "recall_at_5": "not_computed: seed has no ground truth mapping to LanceDB chunk ids (expected_pages null)",
+  "recall_at_10": "not_computed: seed has no ground truth mapping to LanceDB chunk ids (expected_pages null)",
+  "citation_precision": "not_computed: seed has no ground truth mapping to LanceDB chunk ids (expected_pages null)",
+  "abstention_rate": "not_computed: seed has no ground truth mapping to LanceDB chunk ids (expected_pages null)",
+  "chunk_stats": {
+    "tt06": "not_computed: no reproducible entry point for production chunks of a PDF without canonical store",
+    "tts": "not_computed: no reproducible entry point for production chunks of a PDF without canonical store"
+  },
+  "token_drift": {
+    "definition": "ratio = qwen_tokens / cl100k_tokens per chunk",
+    "sample_size": 200,
+    "cl100k_vs_qwen": 0.7521,
+    "p50": 0.705,
+    "p95": 1.124,
+    "max": 1.3333
+  },
+  "git_sha": "b24c5856894c9fc01278a313e2440b850a9deacc",
+  "measured_at": "2026-11-14T19:01:14+00:00",
+  "embedder": {
+    "provider": "qwen",
+    "model": "Qwen/Qwen3-Embedding-0.6B",
+    "offline": true
+  }
+}

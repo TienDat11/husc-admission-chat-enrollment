@@ -27,6 +27,7 @@ Design notes
 from __future__ import annotations
 
 import json
+import unicodedata
 from datetime import date, datetime
 from enum import Enum
 from typing import Literal
@@ -111,6 +112,16 @@ _AUTHORITY_RANK: dict[AuthorityLevel, int] = {
 }
 
 
+def _nfc_deep(value: object) -> object:
+    if isinstance(value, str):
+        return unicodedata.normalize("NFC", value)
+    if isinstance(value, dict):
+        return {k: _nfc_deep(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_nfc_deep(v) for v in value]
+    return value
+
+
 class CanonicalRecord(BaseModel):
     """One versioned admissions fact: effective window + provenance + text.
 
@@ -152,6 +163,16 @@ class CanonicalRecord(BaseModel):
     admission_round: str | None = None
     major_codes: list[str] = Field(default_factory=list)
     admission_methods: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _nfc_inputs(cls, data: object) -> object:
+        """PL-6.4 #2: every string in the input is NFC before validation.
+
+        Walks nested dicts/lists so ``structured_payload`` is covered too.
+        Only the string values change; keys and the schema are untouched.
+        """
+        return _nfc_deep(data)
 
     @model_validator(mode="after")
     def _enforce_domain_invariants(self) -> "CanonicalRecord":

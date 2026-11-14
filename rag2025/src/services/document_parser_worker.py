@@ -17,6 +17,7 @@ import zlib
 import io
 import json
 import sys
+import unicodedata
 import zipfile
 from pathlib import Path
 
@@ -82,7 +83,7 @@ def _parse_pdf(document: Path, cap_mb: int) -> dict:
                 f"decompressed content exceeds {cap_mb} MB cap at page "
                 f"{index + 1} (decompression bomb refused)"
             )
-        text = (page.extract_text() or "").strip()
+        text = unicodedata.normalize("NFC", (page.extract_text() or "").strip())
         pages_text.append(text)
         if len(text) < SCAN_PAGE_CHAR_THRESHOLD:
             scan_pages.append(index + 1)
