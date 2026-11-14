@@ -199,11 +199,16 @@ def test_vietnamese_text_reads_back_byte_identical(store, form):
         "Học phí ngành Kỹ thuật phần mềm năm 2026: 18.000.000 đồng/năm, "
         "ưu đãi cho thí sinh đạt giải học sinh giỏi.",
     )
-    raw = text.encode("utf-8")
-    other_form = "NFD" if form == "NFC" else "NFC"
-    # Guard the test itself: the two forms must be different bytes, otherwise
-    # a store that normalized Unicode would still pass.
-    assert unicodedata.normalize(other_form, text).encode("utf-8") != raw
+    # PL-6.4 #2: the validator normalizes input to NFC, so the store holds NFC
+    # bytes whatever form was written. Guard the test itself: the two forms
+    # must be different bytes, otherwise the normalization would not be seen.
+    nfc = unicodedata.normalize("NFC", text)
+    raw = nfc.encode("utf-8")
+    # The written input must differ from the stored bytes when it is NFD, so a
+    # store that did nothing would fail the NFD case.
+    assert unicodedata.normalize(form, text).encode("utf-8") == raw if form == "NFC" else (
+        unicodedata.normalize(form, text).encode("utf-8") != raw
+    )
 
     record_id = "HOC_PHI:NGANH:ktpm:2026"
     store.write_record(

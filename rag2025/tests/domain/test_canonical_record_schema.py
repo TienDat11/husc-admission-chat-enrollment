@@ -167,18 +167,19 @@ def test_record_id_and_version_are_stable_across_repeated_roundtrip():
 
 @pytest.mark.parametrize("form", ["NFC", "NFD"])
 def test_vietnamese_text_roundtrips_byte_faithful(form):
+    # PL-6.4 #2: every input string is normalized to NFC by the validator, so
+    # NFD input is stored and read back as NFC bytes.
     text = "Học phí ngành Kỹ thuật phần mềm năm 2026: 18.000.000 đồng/năm."
-    text = unicodedata.normalize(form, text)
-    raw = text.encode("utf-8")
+    written = unicodedata.normalize(form, text)
+    expected = unicodedata.normalize("NFC", text).encode("utf-8")
 
-    payload = to_canonical_json(_record(text=text))
+    payload = to_canonical_json(_record(text=written))
 
     # Stored as raw UTF-8, never \uXXXX escapes.
-    assert raw in payload
-    # Never rewritten to the other normalization form.
-    other = "NFD" if form == "NFC" else "NFC"
-    assert unicodedata.normalize(other, text).encode("utf-8") != raw
-    assert from_canonical_json(payload).text.encode("utf-8") == raw
+    assert expected in payload
+    # Never stored in NFD.
+    assert unicodedata.normalize("NFD", text).encode("utf-8") not in payload
+    assert from_canonical_json(payload).text.encode("utf-8") == expected
 
 
 def test_record_written_by_an_older_schema_still_reads():
