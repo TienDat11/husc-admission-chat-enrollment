@@ -49,3 +49,27 @@ def test_failing_handler_schedules_retry(migrated_database_url: str) -> None:
     outcome, state = asyncio.run(_run(migrated_database_url, boom))
     assert outcome == "failed_retryable"
     assert state == "failed_retryable"
+
+
+async def _run_and_read_last_error(url: str, handler):
+    engine = create_async_engine(url)
+    try:
+        await _seed_one(engine)
+        await run_worker_once(engine, "w-test", handler)
+        async with engine.connect() as conn:
+            return (await conn.execute(text("SELECT last_error FROM ingestion_jobs"))).scalar_one()
+    finally:
+        await engine.dispose()
+
+
+def test_handler_error_text_is_not_stored_verbatim(migrated_database_url: str) -> None:
+    # Exception text can carry secrets and paths; only the class name is persisted.
+    async def leaky(job):
+        raise RuntimeError("upstream token=sk-secret-123 failed at /srv/app/internal.py")
+
+    last_error = asyncio.run(_run_and_read_last_error(migrated_database_url, leaky))
+    serialised = str(last_error)
+    assert "sk-secret-123" not in serialised
+    assert "/srv/app" not in serialised
+    assert last_error["code"] == "HANDLER_ERROR"
+    assert "RuntimeError" in last_error["message"]

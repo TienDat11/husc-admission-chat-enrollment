@@ -29,7 +29,11 @@ async def run_worker_once(engine, worker_id: str, handler: Handler = _noop_handl
         await handler(job)
     except Exception as exc:  # noqa: BLE001 - any handler failure is a retryable job failure
         state = await fail_job(
-            engine, str(job["job_id"]), worker_id, {"code": "HANDLER_ERROR", "message": str(exc)[:500]}
+            # Persist the exception class only: its text can carry secrets or paths.
+            engine,
+            str(job["job_id"]),
+            worker_id,
+            {"code": "HANDLER_ERROR", "message": f"handler raised {type(exc).__name__}"},
         )
         return state or "failed_retryable"
     await complete_job(engine, str(job["job_id"]), worker_id)
