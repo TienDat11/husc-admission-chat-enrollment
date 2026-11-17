@@ -1,13 +1,336 @@
-"""Sync PostgreSQL audit ledger over ``audit_events`` (same surface as AuditLedger).
+"""Sync PostgreSQL audit ledger over ``audit_events``, with the AuditLedger surface.
 
-Interoperates with ``sql_audit_log.append_audit_event`` (async writer) and with
-the migrator's legacy rows: rows migrated from the file ledger carry
-``request_id == LEGACY_REQUEST_ID`` and are checked by linkage only.
+Same public methods as :class:`src.infrastructure.audit_ledger.AuditLedger`:
+``append``, ``record_permission_change``, ``entries``, ``get``, ``find`` and
+``verify``. Writes use the chain format of ``sql_audit_log.append_audit_event``,
+so rows from the async writer and from this class interleave in one chain.
+
+Column mapping (AuditEvent -> audit_events)
+-------------------------------------------
+- ``target_kind`` -> ``aggregate_type``, ``target`` -> ``aggregate_id``,
+  ``timestamp`` -> ``created_at`` (naive is taken as UTC), ``action`` -> ``action``,
+  ``event_id`` -> ``event_id`` (uuid), ``release_id``, ``reason``.
+- ``role`` None -> ``'unknown'`` (the column is NOT NULL).
+- ``before_version`` / ``after_version``: digit-only strings (no leading zero, int4
+  range) become the int columns; any other version string stays NULL in the column
+  and is kept in ``after`` as ``{"audit_extras": {...}}``.
+- Fields with no column (``entity``, ``source_ip``, ``review_id``,
+  ``schema_version``, non-numeric versions) are kept in that same ``audit_extras``
+  object, only when they differ from the default. The object is in ``after``, so
+  the entry hash covers it.
+- ``before`` and ``after`` are stored as JSON (``null`` when empty), exactly as
+  ``append_audit_event`` hashes them.
+
+Rows migrated from the file ledger carry ``request_id == LEGACY_REQUEST_ID``. Their
+hash format differs and some event fields were lost in migration, so :meth:`verify`
+checks only their linkage and ordering. Legacy rows must form a leading run.
 """
 
 from __future__ import annotations
 
+import json
+import os
+import re
+import uuid
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from typing import Any
+
+import psycopg
+from psycopg.rows import dict_row
+
+from src.domain.audit import SCHEMA_VERSION, AuditAction, AuditEvent
+from src.domain.canonical.lifecycle import ENTITY_NAME
+from src.infrastructure.audit_ledger import (
+    GENESIS_HASH,
+    AuditEntry,
+    AuditLedger,
+    AuditLedgerError,
+    ChainVerification,
+)
+from src.infrastructure.sql_audit_log import canonical_payload, compute_entry_hash
+from src.infrastructure.sql_record_store import _conninfo
+
 # Marker the migrator writes on every row it loads from the file ledger.
-# The file-ledger hash format differs from the SQL chain and migrated event
-# fields were partly lost, so verify() checks only linkage for these rows.
 LEGACY_REQUEST_ID = "legacy:file-ledger"
+
+_INT4_MAX = 2_147_483_647
+_INT_VERSION = re.compile(r"0|[1-9][0-9]*")
+
+_LOCK_SQL = "SELECT pg_advisory_xact_lock(hashtext('audit_chain'))"
+_TAIL_SQL = "SELECT entry_hash FROM audit_events ORDER BY seq DESC LIMIT 1"
+_INSERT_SQL = """
+INSERT INTO audit_events (event_id, aggregate_type, aggregate_id, actor_id, role, action, before, after,
+    reason, before_version, after_version, release_id, request_id, created_at, prev_hash, entry_hash)
+VALUES (%(event_id)s, %(aggregate_type)s, %(aggregate_id)s, %(actor_id)s, %(role)s, %(action)s,
+    CAST(%(before)s AS jsonb), CAST(%(after)s AS jsonb), %(reason)s, %(before_version)s, %(after_version)s,
+    %(release_id)s, %(request_id)s, %(created_at)s, %(prev_hash)s, %(entry_hash)s)
+RETURNING seq
+"""
+_SELECT_SQL = (
+    "SELECT seq, event_id, aggregate_type, aggregate_id, actor_id, role, action, before, after, "
+    "reason, before_version, after_version, release_id, request_id, created_at, prev_hash, entry_hash "
+    "FROM audit_events ORDER BY seq"
+)
+
+
+def _int_version(value: str | None) -> int | None:
+    if value is None or not _INT_VERSION.fullmatch(value):
+        return None
+    number = int(value)
+    return number if number <= _INT4_MAX else None
+
+
+def _extras(event: AuditEvent) -> dict[str, Any]:
+    extras: dict[str, Any] = {}
+    if event.entity != ENTITY_NAME:
+        extras["entity"] = event.entity
+    if event.source_ip is not None:
+        extras["source_ip"] = event.source_ip
+    if event.review_id is not None:
+        extras["review_id"] = event.review_id
+    if event.schema_version != SCHEMA_VERSION:
+        extras["schema_version"] = event.schema_version
+    if event.before_version is not None and _int_version(event.before_version) is None:
+        extras["before_version"] = event.before_version
+    if event.after_version is not None and _int_version(event.after_version) is None:
+        extras["after_version"] = event.after_version
+    return extras
+
+
+def _columns(event: AuditEvent) -> dict[str, Any]:
+    """The audit_events column values for ``event``, before hashing or insert."""
+    timestamp = event.timestamp
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    extras = _extras(event)
+    return {
+        "event_id": uuid.UUID(event.event_id),
+        "aggregate_type": event.target_kind.value,
+        "aggregate_id": event.target,
+        "actor_id": event.actor_id,
+        "role": event.role or "unknown",
+        "action": event.action.value,
+        "before": None,
+        "after": {"audit_extras": extras} if extras else None,
+        "reason": event.reason,
+        "before_version": _int_version(event.before_version),
+        "after_version": _int_version(event.after_version),
+        "release_id": event.release_id,
+        "request_id": None,
+        "created_at": timestamp,
+    }
+
+
+def _version(column: int | None, blob: Any, extras: dict[str, Any], side: str) -> str | None:
+    """Invert the version split: int column, then extras, then a migrated ``legacy_version``."""
+    if column is not None:
+        return str(column)
+    if f"{side}_version" in extras:
+        return str(extras[f"{side}_version"])
+    if isinstance(blob, dict) and "legacy_version" in blob:
+        return str(blob["legacy_version"])
+    return None
+
+
+def _event_from_row(row: dict[str, Any]) -> AuditEvent:
+    after = row["after"]
+    extras = after.get("audit_extras") if isinstance(after, dict) else None
+    if not isinstance(extras, dict):
+        extras = {}
+    return AuditEvent(
+        action=row["action"],
+        actor_id=row["actor_id"],
+        target=row["aggregate_id"],
+        timestamp=row["created_at"].astimezone(timezone.utc),
+        before_version=_version(row["before_version"], row["before"], extras, "before"),
+        after_version=_version(row["after_version"], after, extras, "after"),
+        reason=row["reason"],
+        role=row["role"],
+        target_kind=row["aggregate_type"],
+        entity=extras.get("entity", ENTITY_NAME),
+        source_ip=extras.get("source_ip"),
+        review_id=extras.get("review_id"),
+        release_id=row["release_id"],
+        event_id=row["event_id"].hex,
+        schema_version=extras.get("schema_version", SCHEMA_VERSION),
+    )
+
+
+def _entry_from_row(row: dict[str, Any]) -> AuditEntry:
+    try:
+        event = _event_from_row(row)
+    except (ValueError, TypeError):
+        raise AuditLedgerError(f"audit row {row['seq']} holds an invalid event") from None
+    prev = row["prev_hash"]
+    return AuditEntry(
+        seq=int(row["seq"]),
+        prev_hash=GENESIS_HASH if prev is None else bytes(prev).hex(),
+        entry_hash=bytes(row["entry_hash"]).hex(),
+        event=event,
+    )
+
+
+def _broken(index: int, checked: int, legacy_checked: int, reason: str, last_hash: str | None) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "checked": checked,
+        "legacy_checked": legacy_checked,
+        "broken_index": index,
+        "reason": reason,
+        "last_hash": last_hash,
+    }
+
+
+class SqlAuditLedger:
+    """Audit ledger over the ``audit_events`` table. The constructor never connects."""
+
+    def __init__(self, database_url: str | None = None) -> None:
+        url = (database_url or os.getenv("DATABASE_URL") or "").strip()
+        if not url:
+            raise ValueError("SqlAuditLedger needs a database_url or DATABASE_URL")
+        self._conninfo = _conninfo(url)
+
+    @contextmanager
+    def _connect(self):
+        # Errors carry no host, user, password or SQL text: the caller never sees the URL.
+        try:
+            conn = psycopg.connect(self._conninfo, row_factory=dict_row, connect_timeout=10)
+        except psycopg.OperationalError:
+            raise AuditLedgerError("audit ledger database unavailable") from None
+        with conn:
+            yield conn
+
+    # -- writing -------------------------------------------------------------
+
+    def append(self, event: AuditEvent) -> AuditEntry:
+        """Extend the chain with ``event`` in one transaction under the ``audit_chain`` lock."""
+        cols = _columns(event)
+        with self._connect() as conn:
+            conn.execute(_LOCK_SQL)
+            tail = conn.execute(_TAIL_SQL).fetchone()
+            prev_hash = bytes(tail["entry_hash"]) if tail is not None else None
+            entry_hash = compute_entry_hash(prev_hash, canonical_payload(cols))
+            params = dict(
+                cols,
+                before=json.dumps(cols["before"]),
+                after=json.dumps(cols["after"]),
+                prev_hash=prev_hash,
+                entry_hash=entry_hash,
+            )
+            seq = conn.execute(_INSERT_SQL, params).fetchone()["seq"]
+        return AuditEntry(
+            seq=int(seq),
+            prev_hash=GENESIS_HASH if prev_hash is None else prev_hash.hex(),
+            entry_hash=entry_hash.hex(),
+            event=event,
+        )
+
+    # Same emitter as the file ledger: it touches only ``self.append``.
+    record_permission_change = AuditLedger.record_permission_change
+
+    # -- reading -------------------------------------------------------------
+
+    def _fetch(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            return conn.execute(_SELECT_SQL).fetchall()
+
+    def entries(self) -> tuple[AuditEntry, ...]:
+        """Every entry, oldest first, in seq order."""
+        return tuple(_entry_from_row(row) for row in self._fetch())
+
+    def get(self, event_id: str) -> AuditEntry | None:
+        """The entry whose event has ``event_id``, or ``None``."""
+        for entry in self.entries():
+            if entry.event.event_id == event_id:
+                return entry
+        return None
+
+    def find(
+        self,
+        *,
+        target: str | None = None,
+        actor_id: str | None = None,
+        action: AuditAction | str | None = None,
+    ) -> tuple[AuditEntry, ...]:
+        """Entries matching every supplied filter, oldest first. An unknown action matches nothing."""
+        wanted = None
+        if action is not None:
+            try:
+                wanted = AuditAction(action)
+            except (ValueError, TypeError):
+                return ()
+        found: list[AuditEntry] = []
+        for entry in self.entries():
+            event = entry.event
+            if target is not None and event.target != target:
+                continue
+            if actor_id is not None and event.actor_id != actor_id:
+                continue
+            if wanted is not None and event.action is not wanted:
+                continue
+            found.append(entry)
+        return tuple(found)
+
+    # -- verification --------------------------------------------------------
+
+    def verify_detailed(self) -> dict[str, Any]:
+        """Walk the chain in seq order and report the first break.
+
+        Returns ``ok``, ``checked``, ``legacy_checked``, ``broken_index``
+        (0-based, in seq order), ``reason`` and ``last_hash``. Never builds an
+        :class:`AuditEvent`, so a row with an unknown enum value is a break, not a crash.
+        """
+        checked = 0
+        legacy_checked = 0
+        prev: bytes | None = None
+        prev_seq: int | None = None
+        seen_sql_row = False
+        last_hash: str | None = None
+
+        for index, row in enumerate(self._fetch()):
+            legacy = row["request_id"] == LEGACY_REQUEST_ID
+            if legacy and seen_sql_row:
+                return _broken(index, checked, legacy_checked, "legacy row after a non-legacy row", last_hash)
+            if not legacy:
+                seen_sql_row = True
+            seq = int(row["seq"])
+            if prev_seq is not None and seq <= prev_seq:
+                return _broken(index, checked, legacy_checked, "seq is not strictly increasing", last_hash)
+            stored_prev = bytes(row["prev_hash"]) if row["prev_hash"] is not None else None
+            if (stored_prev or b"") != (prev or b""):
+                return _broken(index, checked, legacy_checked, "prev_hash does not match the preceding entry", last_hash)
+            entry_hash = bytes(row["entry_hash"])
+            if legacy:
+                legacy_checked += 1
+            else:
+                try:
+                    expected = compute_entry_hash(prev, canonical_payload(dict(row)))
+                except (KeyError, TypeError, ValueError, AttributeError):
+                    return _broken(index, checked, legacy_checked, "row content cannot be hashed", last_hash)
+                if entry_hash != expected:
+                    return _broken(index, checked, legacy_checked, "entry_hash does not match row content", last_hash)
+            checked += 1
+            prev = entry_hash
+            prev_seq = seq
+            last_hash = entry_hash.hex()
+
+        return {
+            "ok": True,
+            "checked": checked,
+            "legacy_checked": legacy_checked,
+            "broken_index": None,
+            "reason": None,
+            "last_hash": last_hash,
+        }
+
+    def verify(self) -> ChainVerification:
+        """The :class:`ChainVerification` subset of :meth:`verify_detailed`."""
+        result = self.verify_detailed()
+        return ChainVerification(
+            ok=result["ok"],
+            checked=result["checked"],
+            broken_index=result["broken_index"],
+            reason=result["reason"],
+            last_hash=result["last_hash"],
+        )
