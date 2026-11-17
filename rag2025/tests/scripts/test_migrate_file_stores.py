@@ -313,6 +313,15 @@ def test_versions_with_different_round_use_the_lowest_version_key(tmp_path):
     key = "CHI_TIEU:nganh:7220104:2026:all:all"
     assert [r["record_id"] for r in out.rows] == [key, key]
     assert [r["coordinate_key"] for r in out.rows] == [key, key]
+    # Key columns of every row agree with the emitted coordinate_key, not with
+    # the version's own payload.
+    for row in out.rows:
+        assert row["record_type"] == "CHI_TIEU"
+        assert row["scope"] == "nganh"
+        assert row["subject"] == "7220104"
+        assert row["admission_year"] == 2026
+        assert row["admission_round"] == "all"
+        assert row["methods_hash"] == "all"
     assert out.id_map == {legacy: key}
     assert out.quarantined_rows == 0
 
@@ -364,8 +373,17 @@ def test_load_records_twice_gives_identical_output(tmp_path):
         lambda p: p.update(version=None),
         lambda p: p.update(version="1"),
         lambda p: p.update(admission_methods=[1, "a"]),
+        lambda p: p.update(status="published", source_document_id=5),
+        lambda p: p.update(status="published", source_document_id=["x"]),
     ],
-    ids=["record_id-int", "version-None", "version-str", "methods-mixed-types"],
+    ids=[
+        "record_id-int",
+        "version-None",
+        "version-str",
+        "methods-mixed-types",
+        "source_document_id-int",
+        "source_document_id-list",
+    ],
 )
 def test_malformed_record_payload_raises_migration_error_naming_path(tmp_path, mutate):
     store, root = _store(tmp_path)

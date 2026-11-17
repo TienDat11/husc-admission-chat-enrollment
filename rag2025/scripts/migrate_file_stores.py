@@ -151,6 +151,9 @@ def _record_versions(records_dir: Path) -> list[_Version]:
             published_at = payload.get("published_at")
             if published_at is not None and not isinstance(published_at, str):
                 raise MigrationError(f"malformed legacy record: {path} (published_at)")
+            source_document_id = payload.get("source_document_id")
+            if source_document_id is not None and not isinstance(source_document_id, str):
+                raise MigrationError(f"malformed legacy record: {path} (source_document_id)")
             identity = (legacy, version)
             if identity in found:
                 raise MigrationError(
@@ -240,22 +243,29 @@ def load_records(root: str | Path) -> RecordsLoad:
                 status = "draft"
                 _add_blocker(structured, UNANCHORED_BLOCKER)
                 methods_hash = "all"
+                column_type = payload.get("record_type")
+                column_year = payload.get("admission_year")
+                column_round = payload.get("admission_round") or "all"
                 out.quarantined_rows += 1
             else:
+                # Key columns come from the emitted key, so every version of this
+                # legacy id agrees with the coordinate it sits on.
                 record_id = key
                 status = payload.get("status")
-                methods_hash = key.rsplit(":", 1)[1]
+                head, _, methods_hash = key.rpartition(":")
+                record_type, scope, subject, year, round_ = head.split(":", 4)
+                column_type, column_year, column_round = record_type, int(year), round_
             out.id_map[legacy] = record_id
             out.rows.append(
                 {
                     "record_id": record_id,
                     "version": version.version,
                     "coordinate_key": record_id,
-                    "record_type": payload.get("record_type"),
+                    "record_type": column_type,
                     "scope": scope,
                     "subject": subject,
-                    "admission_year": payload.get("admission_year"),
-                    "admission_round": payload.get("admission_round") or "all",
+                    "admission_year": column_year,
+                    "admission_round": column_round,
                     "methods_hash": methods_hash,
                     "status": status,
                     "authority_level": payload.get("authority_level"),
