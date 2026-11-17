@@ -63,7 +63,9 @@ Migrator defaults that are not invertible are not restored either:
 from __future__ import annotations
 
 import os
+import re
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 import psycopg
@@ -120,7 +122,7 @@ INSERT INTO supersession_retractions (
 
 def _conninfo(url: str) -> str:
     """SQLAlchemy-style URL (``postgresql+asyncpg://`` / ``+psycopg``) -> libpq conninfo."""
-    return url.replace("+asyncpg", "", 1).replace("+psycopg", "", 1)
+    return re.sub(r"^(postgresql)\+\w+://", lambda m: m.group(1) + "://", url)
 
 
 def _version_numbers(conn, record_id: str) -> tuple[int, ...]:
@@ -245,8 +247,15 @@ class SqlRecordStore:
             raise ValueError("SqlRecordStore needs a database_url or DATABASE_URL")
         self._conninfo = _conninfo(url)
 
+    @contextmanager
     def _connect(self):
-        return psycopg.connect(self._conninfo, row_factory=dict_row)
+        # Errors carry no host, user, password or SQL text: the caller never sees the URL.
+        try:
+            conn = psycopg.connect(self._conninfo, row_factory=dict_row, connect_timeout=10)
+        except psycopg.OperationalError:
+            raise RecordStoreError("record store database unavailable") from None
+        with conn:
+            yield conn
 
     def write_record(self, record: CanonicalRecord) -> CanonicalRecord:
         """Append ``record`` as the next version of its ``record_id``; returns it.
@@ -282,6 +291,8 @@ class SqlRecordStore:
                     f"cannot write {record.record_id}@{record.version}: "
                     f"unique constraint {exc.diag.constraint_name or '-'} (sqlstate {exc.diag.sqlstate or '-'})"
                 ) from None
+            except psycopg.OperationalError:
+                raise RecordStoreError("record store database unavailable") from None
             except psycopg.Error as exc:
                 raise RecordStoreError(
                     f"cannot write {record.record_id}@{record.version}: rejected by PostgreSQL "

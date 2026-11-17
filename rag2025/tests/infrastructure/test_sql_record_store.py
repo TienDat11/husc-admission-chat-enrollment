@@ -26,6 +26,7 @@ from src.infrastructure.canonical_record_store import (
     RecordStoreError,
     RecordVersionConflictError,
 )
+import src.infrastructure.sql_record_store as sql_module
 from src.infrastructure.sql_record_store import SqlRecordStore, _conninfo
 from tests.scripts.test_migrate_apply import _apply, _write_json, fresh_db  # noqa: F401  (fixture)
 
@@ -149,6 +150,35 @@ def test_constructor_needs_a_url_from_argument_or_environment(monkeypatch):
 def test_url_conversion_drops_the_driver_suffix():
     assert _conninfo("postgresql+asyncpg://rag@localhost:5439/husc") == "postgresql://rag@localhost:5439/husc"
     assert _conninfo("postgresql+psycopg://rag@localhost:5439/husc") == "postgresql://rag@localhost:5439/husc"
+
+
+def test_url_conversion_touches_only_the_scheme_not_the_password():
+    url = "postgresql+asyncpg://rag:pw+asyncpg+psycopg@localhost:5439/husc"
+    assert _conninfo(url) == "postgresql://rag:pw+asyncpg+psycopg@localhost:5439/husc"
+
+
+def test_unreachable_database_is_a_store_error_without_secrets():
+    store = SqlRecordStore("postgresql+psycopg://rag:hunter2secret@127.0.0.1:1/husc")
+    with pytest.raises(RecordStoreError) as info:
+        store.versions("x")
+    text = str(info.value)
+    assert "unavailable" in text
+    for secret in ("hunter2secret", "127.0.0.1", "rag"):
+        assert secret not in text
+
+
+def test_connections_carry_a_connect_timeout(monkeypatch):
+    seen: dict = {}
+    real_connect = psycopg.connect
+
+    def spy(*args, **kwargs):
+        seen.update(kwargs)
+        return real_connect(*args, **kwargs)
+
+    monkeypatch.setattr(psycopg, "connect", spy)
+    with pytest.raises(RecordStoreError):
+        SqlRecordStore("postgresql+psycopg://rag@127.0.0.1:1/husc").versions("x")
+    assert seen.get("connect_timeout") == 10
 
 
 # ── PostgreSQL checks ────────────────────────────────────────────────────
@@ -297,3 +327,26 @@ def test_retract_rejects_a_short_reason_and_a_bare_claim(fresh_db):  # noqa: F81
         sql.retract_supersession(A, f"{B}@1", reason="short", retracted_by="alice", at="2026-03-01T00:00:00+00:00")
     with pytest.raises(ValueError):
         sql.retract_supersession(A, B, reason=RETRACT_REASON, retracted_by="alice", at="2026-03-01T00:00:00+00:00")
+
+
+def test_failed_insert_rolls_back_the_archive_of_the_previous_version(fresh_db):  # noqa: F811
+    _register(fresh_db)
+    sql = SqlRecordStore(fresh_db)
+    sql.write_record(_published(A, 1))
+    # A NUL byte is rejected while the INSERT is being sent, after the archive UPDATE ran.
+    with pytest.raises(RecordStoreError):
+        sql.write_record(_published(A, 2, text="bad\x00text"))
+    assert sql.get_version(A, 1).status is RecordStatus.PUBLISHED
+    assert sql.versions(A) == (1,)
+
+
+def test_unique_violation_on_insert_maps_to_conflict(fresh_db, monkeypatch):  # noqa: F811
+    sql = SqlRecordStore(fresh_db)
+    sql.write_record(_base(A, 1, text="first"))
+    # Simulate losing the race: the pre-check sees no stored versions, so the INSERT hits the primary key.
+    monkeypatch.setattr(sql_module, "_version_numbers", lambda conn, record_id: ())
+    with pytest.raises(RecordVersionConflictError):
+        sql.write_record(_base(A, 1, text="second"))
+    monkeypatch.undo()
+    assert sql.versions(A) == (1,)
+    assert sql.get_version(A, 1).text == "first"
