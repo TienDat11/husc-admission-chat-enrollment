@@ -1214,7 +1214,7 @@ def test_audit_non_string_or_invalid_event_id_raises_migration_error(tmp_path, b
 def test_audit_reason_with_unicode_line_separators_round_trips(tmp_path):
     # The real writer keeps U+2028 and U+0085 raw (ensure_ascii=False); they must
     # not split the ledger line.
-    reason = "a b \x85c"
+    reason = "a\u2028b \x85c"
     entry = AuditLedger(_ledger_path(tmp_path)).append(_event(1, reason=reason))
     result = load_audit(tmp_path)
     assert len(result.rows) == 1
@@ -1227,7 +1227,7 @@ def test_unanswered_question_with_line_separators_loads_as_one_row(tmp_path):
 
     queue_path = tmp_path / "unanswered" / "queue.jsonl"
     UnansweredQueueService(queue_path=queue_path).push(
-        "hoc phi  bao nhieu \x85 vay", "trace-sep", "route", "OUT_OF_SCOPE"
+        "hoc phi\u2028 bao nhieu \x85 vay", "trace-sep", "route", "OUT_OF_SCOPE"
     )
     stored = json.loads(queue_path.read_text(encoding="utf-8").split("\n")[0])
     result = load_unanswered(tmp_path)
