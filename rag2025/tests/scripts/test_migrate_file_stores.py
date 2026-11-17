@@ -524,3 +524,237 @@ def test_malformed_retraction_payload_raises_migration_error_naming_path(tmp_pat
         load_retractions(root)
 
     assert str(bad) in str(info.value)
+
+
+# ---- Task 2b-1 (U3): releases, outbox, conflicts, idempotency, unanswered, feedback ----
+# Fixtures write the on-disk shapes the real writers produce. Loaders are looked
+# up on the module at call time so the 2a tests above are unaffected.
+import scripts.migrate_file_stores as migrate_mod  # noqa: E402
+
+CCCD = "012345678901"
+EMAIL = "student@example.com"
+
+
+def _write(path: Path, text: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _jsonl(rows) -> str:
+    return "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
+
+
+def _manifest(release_id: str) -> dict:
+    return {
+        "release_id": release_id,
+        "parent_release_id": None,
+        "lancedb_table": "chunks",
+        "lancedb_version": 3,
+        "lancedb_tag": "tag",
+        "graph_path": "graph/graph.graphml",
+        "corpus_sha256": "a" * 64,
+        "created_at": "2026-11-01T00:00:00+00:00",
+        "chunk_count": 10,
+        "document_count": 2,
+    }
+
+
+def _assert_error_names(fn, path, line=None):
+    with pytest.raises(MigrationError) as excinfo:
+        fn()
+    msg = str(excinfo.value)
+    assert str(path) in msg
+    if line is not None:
+        assert f"line {line}" in msg
+
+
+def _outbox_row(n: int) -> dict:
+    return {
+        "entry_id": f"e{n}",
+        "record_id": f"rec{n}",
+        "version": n,
+        "record_version_key": f"rec{n}:{n}",
+        "affected_record_ids": [f"rec{n}"],
+        "stamp": {"n": n},
+        "appended_at": "2026-11-01T00:00:00+00:00",
+        "release_id": None,
+        "action": "publish",
+    }
+
+
+def _conflict_item(cid: str) -> dict:
+    return {
+        "conflict_id": cid,
+        "record_type": "program",
+        "ma_nganh": "7310",
+        "admission_year": 2026,
+        "field": "tuition",
+        "statements": {},
+        "origin": "seed_report",
+        "status": "open",
+        "resolution": None,
+    }
+
+
+def _idem_complete() -> dict:
+    return {
+        "state": "complete",
+        "actor_id": "a1",
+        "operation": "chat",
+        "request_fingerprint": "f" * 64,
+        "status_code": 200,
+        "response": {"ok": True},
+        "created_at": "2026-11-01T00:00:00+00:00",
+        "completed_at": "2026-11-01T00:00:01+00:00",
+    }
+
+
+def _unanswered_row(n: int, question: str = "q") -> dict:
+    return {
+        "trace_id": f"t{n}",
+        "question": question,
+        "asked_at": "2026-11-01T00:00:00+00:00",
+        "route": "rag",
+        "status_code": "NO_ANSWER",
+        "resolved_at": None,
+        "resolved_by_record_id": None,
+        "out_of_scope": False,
+    }
+
+
+def test_load_releases_reads_each_release_manifest(tmp_path):
+    _write(tmp_path / "releases" / "REL1" / "release_manifest.json", json.dumps(_manifest("REL1")))
+    _write(tmp_path / "releases" / "REL2" / "release_manifest.json", json.dumps(_manifest("REL2")))
+    out = migrate_mod.load_releases(tmp_path)
+    assert out.source_rows == 2
+    assert len(out.rows) == 2
+    assert [r["release_id"] for r in out.rows] == ["REL1", "REL2"]
+    assert out.rows[0]["lancedb_table"] == "chunks"
+    assert out.rows[0]["manifest"]["release_id"] == "REL1"
+
+
+def test_load_releases_missing_dir_is_empty(tmp_path):
+    out = migrate_mod.load_releases(tmp_path)
+    assert (out.rows, out.source_rows, out.unfillable) == ([], 0, [])
+
+
+def test_load_releases_corrupt_manifest_names_path(tmp_path):
+    path = _write(tmp_path / "releases" / "REL1" / "release_manifest.json", "{not json")
+    _assert_error_names(lambda: migrate_mod.load_releases(tmp_path), path)
+
+
+def test_load_releases_not_null_gap_is_unfillable(tmp_path):
+    _write(tmp_path / "releases" / "REL1" / "release_manifest.json", json.dumps(_manifest("REL1")))
+    out = migrate_mod.load_releases(tmp_path)
+    assert out.rows[0]["status"] is None
+    assert {"legacy_id": "REL1", "column": "status"} in out.unfillable
+
+
+def test_load_outbox_maps_entries_to_rows(tmp_path):
+    _write(tmp_path / "reindex_outbox.jsonl", _jsonl([_outbox_row(1), _outbox_row(2)]))
+    out = migrate_mod.load_outbox(tmp_path)
+    assert out.source_rows == 2
+    assert len(out.rows) == 2
+    assert out.rows[1]["event_id"] == "e2"
+    assert out.rows[1]["record_version"] == 2
+
+
+def test_load_outbox_corrupt_line_names_path_and_line(tmp_path):
+    path = _write(tmp_path / "reindex_outbox.jsonl", _jsonl([_outbox_row(1)]) + "{bad\n")
+    _assert_error_names(lambda: migrate_mod.load_outbox(tmp_path), path, line=2)
+
+
+def test_load_outbox_missing_file_is_empty(tmp_path):
+    out = migrate_mod.load_outbox(tmp_path)
+    assert (out.rows, out.source_rows) == ([], 0)
+
+
+def test_load_conflicts_maps_items(tmp_path):
+    payload = {"schema_version": 1, "items": [_conflict_item("c1"), _conflict_item("c2")]}
+    _write(tmp_path / "conflicts" / "queue.json", json.dumps(payload))
+    out = migrate_mod.load_conflicts(tmp_path)
+    assert out.source_rows == 2
+    assert [r["conflict_id"] for r in out.rows] == ["c1", "c2"]
+    assert out.rows[0]["status"] == "open"
+
+
+def test_load_conflicts_wrong_top_level_type_names_path(tmp_path):
+    path = _write(tmp_path / "conflicts" / "queue.json", json.dumps([1, 2]))
+    _assert_error_names(lambda: migrate_mod.load_conflicts(tmp_path), path)
+
+
+def test_load_conflicts_not_null_gap_is_unfillable(tmp_path):
+    payload = {"schema_version": 1, "items": [_conflict_item("c1")]}
+    _write(tmp_path / "conflicts" / "queue.json", json.dumps(payload))
+    out = migrate_mod.load_conflicts(tmp_path)
+    assert out.rows[0]["coordinate_key"] is None
+    assert {"legacy_id": "c1", "column": "coordinate_key"} in out.unfillable
+
+
+def test_load_idempotency_maps_complete_and_in_progress(tmp_path):
+    _write(tmp_path / "idempotency" / "aaa.json", json.dumps(_idem_complete()))
+    in_progress = {
+        "state": "in_progress",
+        "actor_id": "a1",
+        "operation": "chat",
+        "request_fingerprint": "f" * 64,
+        "created_at": "2026-11-01T00:00:00+00:00",
+    }
+    _write(tmp_path / "idempotency" / "bbb.json", json.dumps(in_progress))
+    out = migrate_mod.load_idempotency(tmp_path)
+    assert out.source_rows == 2
+    assert len(out.rows) == 2
+    assert {"legacy_id": "bbb", "column": "status_code"} in out.unfillable
+
+
+def test_load_idempotency_corrupt_file_names_path(tmp_path):
+    path = _write(tmp_path / "idempotency" / "bad.json", "{oops")
+    _assert_error_names(lambda: migrate_mod.load_idempotency(tmp_path), path)
+
+
+def test_load_unanswered_maps_lines(tmp_path):
+    _write(tmp_path / "unanswered" / "queue.jsonl", _jsonl([_unanswered_row(1), _unanswered_row(2)]))
+    out = migrate_mod.load_unanswered(tmp_path)
+    assert out.source_rows == 2
+    assert len(out.rows) == 2
+    assert out.rows[0]["trace_id"] == "t1"
+    assert out.rows[0]["route"] == "rag"
+
+
+def test_load_unanswered_redacts_cccd_and_email(tmp_path):
+    question = f"my cccd {CCCD} and mail {EMAIL}"
+    _write(tmp_path / "unanswered" / "queue.jsonl", _jsonl([_unanswered_row(1, question)]))
+    out = migrate_mod.load_unanswered(tmp_path)
+    assert out.redacted_rows >= 1
+    dumped = json.dumps(out.rows, ensure_ascii=False)
+    assert CCCD not in dumped
+    assert EMAIL not in dumped
+
+
+def test_load_unanswered_corrupt_line_names_path_and_line(tmp_path):
+    path = _write(tmp_path / "unanswered" / "queue.jsonl", _jsonl([_unanswered_row(1)]) + "{x\n")
+    _assert_error_names(lambda: migrate_mod.load_unanswered(tmp_path), path, line=2)
+
+
+def test_load_unanswered_is_deterministic(tmp_path):
+    _write(tmp_path / "unanswered" / "queue.jsonl", _jsonl([_unanswered_row(1), _unanswered_row(2)]))
+    assert migrate_mod.load_unanswered(tmp_path).rows == migrate_mod.load_unanswered(tmp_path).rows
+
+
+def test_load_feedback_redacts_reason_and_flags_missing_pk(tmp_path):
+    row = {
+        "trace_id": "t1",
+        "helpful": False,
+        "reason": f"contact {EMAIL} cccd {CCCD}",
+        "answered_at": "2026-11-01T00:00:00+00:00",
+        "linked_item": True,
+    }
+    _write(tmp_path / "unanswered" / "feedback.jsonl", _jsonl([row]))
+    out = migrate_mod.load_feedback(tmp_path)
+    assert out.redacted_rows >= 1
+    dumped = json.dumps(out.rows, ensure_ascii=False)
+    assert CCCD not in dumped
+    assert EMAIL not in dumped
+    assert out.rows[0]["feedback_id"] is None
+    assert any(u["column"] == "feedback_id" for u in out.unfillable)

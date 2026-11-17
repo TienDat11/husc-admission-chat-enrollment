@@ -10,6 +10,7 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from src.services.log_redaction import redact_pii
 
 from src.infrastructure.canonical_record_store import (
     _RECORD_DIR_PREFIX,
@@ -332,3 +333,242 @@ def load_retractions(root: str | Path) -> list[dict]:
         except _MALFORMED as exc:
             raise MigrationError(f"malformed retraction file: {path} ({exc})") from exc
     return rows
+
+
+# ---- Task 2b-1 (U3): releases, outbox, conflicts, idempotency, unanswered, feedback ----
+# Pure loaders: root -> rows shaped for the target table columns in
+# alembic/versions/0001_baseline.py. Nothing is written. Every row is kept
+# (len(rows) == source_rows); NOT NULL gaps are None plus an unfillable entry.
+
+
+@dataclass
+class RowsLoad:
+    rows: list[dict]
+    source_rows: int
+    redacted_rows: int = 0
+    unfillable: list[dict] = field(default_factory=list)
+
+
+def _json_object(path: Path) -> dict:
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise MigrationError(f"{path}: unreadable JSON ({exc})") from exc
+    if not isinstance(obj, dict):
+        raise MigrationError(f"{path}: expected a JSON object at top level")
+    return obj
+
+
+def _jsonl_objects(path: Path) -> list[dict]:
+    if not path.is_file():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, ValueError) as exc:
+        raise MigrationError(f"{path}: unreadable ({exc})") from exc
+    out: list[dict] = []
+    for lineno, raw in enumerate(lines, start=1):
+        if not raw.strip():
+            continue
+        try:
+            obj = json.loads(raw)
+        except ValueError as exc:
+            raise MigrationError(f"{path}: line {lineno}: invalid JSON ({exc})") from exc
+        if not isinstance(obj, dict):
+            raise MigrationError(f"{path}: line {lineno}: expected a JSON object")
+        out.append(obj)
+    return out
+
+
+def _not_null_gaps(legacy_id, row: dict, columns: list[str]) -> list[dict]:
+    return [{"legacy_id": legacy_id, "column": c} for c in columns if row.get(c) is None]
+
+
+def _redact_text_fields(row: dict, names: tuple[str, ...]) -> bool:
+    changed = False
+    for name in names:
+        value = row.get(name)
+        if isinstance(value, str):
+            clean = redact_pii(value)
+            if clean != value:
+                changed = True
+            row[name] = clean
+    return changed
+
+
+def load_releases(root: str | Path) -> RowsLoad:
+    base = Path(root) / "releases"
+    if not base.is_dir():
+        return RowsLoad(rows=[], source_rows=0)
+    rows: list[dict] = []
+    unfill: list[dict] = []
+    manifests = sorted(p for p in base.glob("*/release_manifest.json") if p.is_file())
+    for path in manifests:
+        m = _json_object(path)
+        legacy_id = path.parent.name
+        row = {
+            "release_id": m.get("release_id"),
+            "parent_release_id": m.get("parent_release_id"),
+            "corpus_stamp": None,
+            "lancedb_table": m.get("lancedb_table"),
+            "lancedb_version": m.get("lancedb_version"),
+            "graphml_uri": m.get("graph_path"),
+            "manifest": m,
+            "golden_report": None,
+            "status": None,
+            "created_by": None,
+            "activated_by": None,
+            "created_at": m.get("created_at"),
+            "activated_at": None,
+        }
+        unfill += _not_null_gaps(
+            legacy_id, row, ["release_id", "corpus_stamp", "lancedb_table", "status", "created_by"]
+        )
+        rows.append(row)
+    return RowsLoad(rows=rows, source_rows=len(manifests), unfillable=unfill)
+
+
+def load_outbox(root: str | Path) -> RowsLoad:
+    entries = _jsonl_objects(Path(root) / "reindex_outbox.jsonl")
+    rows: list[dict] = []
+    unfill: list[dict] = []
+    for e in entries:
+        row = {
+            "event_id": e.get("entry_id"),
+            "record_id": e.get("record_id"),
+            "record_version": e.get("version"),
+            # Legacy action ("publish") is not a reindex_outbox event_type; Task 3 maps it.
+            "event_type": None,
+            "payload": e,
+            "release_id": e.get("release_id"),
+            "available_at": e.get("appended_at"),
+            "processed_at": None,
+        }
+        unfill += _not_null_gaps(
+            e.get("entry_id"), row, ["event_id", "record_id", "record_version", "event_type"]
+        )
+        rows.append(row)
+    return RowsLoad(rows=rows, source_rows=len(entries), unfillable=unfill)
+
+
+def load_conflicts(root: str | Path) -> RowsLoad:
+    path = Path(root) / "conflicts" / "queue.json"
+    if not path.is_file():
+        return RowsLoad(rows=[], source_rows=0)
+    doc = _json_object(path)
+    items = doc.get("items")
+    if not isinstance(items, list):
+        raise MigrationError(f"{path}: 'items' must be a list")
+    rows: list[dict] = []
+    unfill: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise MigrationError(f"{path}: conflict item is not a JSON object")
+        resolution = item.get("resolution")
+        row = {
+            "conflict_id": item.get("conflict_id"),
+            "coordinate_key": None,
+            "record_ids": None,
+            "old_record_id": None,
+            "new_record_id": None,
+            "conflict_type": None,
+            "status": item.get("status"),
+            "resolution": (
+                json.dumps(resolution, ensure_ascii=False, sort_keys=True)
+                if resolution is not None
+                else None
+            ),
+            "override_reason": None,
+            "resolved_by": None,
+            "resolved_at": None,
+        }
+        unfill += _not_null_gaps(
+            item.get("conflict_id"),
+            row,
+            ["conflict_id", "coordinate_key", "record_ids", "conflict_type", "status"],
+        )
+        rows.append(row)
+    return RowsLoad(rows=rows, source_rows=len(items), unfillable=unfill)
+
+
+def load_idempotency(root: str | Path) -> RowsLoad:
+    base = Path(root) / "idempotency"
+    if not base.is_dir():
+        return RowsLoad(rows=[], source_rows=0)
+    rows: list[dict] = []
+    unfill: list[dict] = []
+    files = sorted(p for p in base.glob("*.json") if p.is_file())
+    for path in files:
+        rec = _json_object(path)
+        legacy_id = path.stem
+        row = {
+            # The on-disk file is named by the key digest; the digest is the key.
+            "key": legacy_id,
+            "scope": rec.get("operation"),
+            "request_hash": rec.get("request_fingerprint"),
+            "status_code": rec.get("status_code"),
+            "response_body": rec.get("response"),
+            "created_at": rec.get("created_at"),
+            "expires_at": None,
+        }
+        unfill += _not_null_gaps(
+            legacy_id,
+            row,
+            ["key", "scope", "request_hash", "status_code", "response_body", "expires_at"],
+        )
+        rows.append(row)
+    return RowsLoad(rows=rows, source_rows=len(files), unfillable=unfill)
+
+
+def load_unanswered(root: str | Path) -> RowsLoad:
+    entries = _jsonl_objects(Path(root) / "unanswered" / "queue.jsonl")
+    rows: list[dict] = []
+    unfill: list[dict] = []
+    redacted = 0
+    for q in entries:
+        row = {
+            "trace_id": q.get("trace_id"),
+            "question": q.get("question"),
+            "normalized_hash": None,
+            "asked_at": q.get("asked_at"),
+            "route": q.get("route"),
+            "status_code": q.get("status_code"),
+            "resolved_at": q.get("resolved_at"),
+            "resolved_by_record_id": q.get("resolved_by_record_id"),
+            "out_of_scope": bool(q.get("out_of_scope", False)),
+            "sla_due_at": None,
+        }
+        if _redact_text_fields(row, ("question",)):
+            redacted += 1
+        unfill += _not_null_gaps(
+            q.get("trace_id"),
+            row,
+            ["trace_id", "question", "normalized_hash", "asked_at", "route", "status_code", "sla_due_at"],
+        )
+        rows.append(row)
+    return RowsLoad(rows=rows, source_rows=len(entries), redacted_rows=redacted, unfillable=unfill)
+
+
+def load_feedback(root: str | Path) -> RowsLoad:
+    entries = _jsonl_objects(Path(root) / "unanswered" / "feedback.jsonl")
+    rows: list[dict] = []
+    unfill: list[dict] = []
+    redacted = 0
+    for f in entries:
+        row = {
+            # Legacy feedback rows carry no feedback id; Task 3 assigns one.
+            "feedback_id": None,
+            "trace_id": f.get("trace_id"),
+            "helpful": f.get("helpful"),
+            "reason": f.get("reason"),
+            "answered_at": f.get("answered_at"),
+            "linked_item": bool(f.get("linked_item", False)),
+            "release_id": None,
+        }
+        if _redact_text_fields(row, ("reason",)):
+            redacted += 1
+        unfill += _not_null_gaps(
+            f.get("trace_id"), row, ["feedback_id", "trace_id", "helpful", "answered_at"]
+        )
+        rows.append(row)
+    return RowsLoad(rows=rows, source_rows=len(entries), redacted_rows=redacted, unfillable=unfill)
