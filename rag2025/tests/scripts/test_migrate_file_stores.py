@@ -23,6 +23,7 @@ from scripts.migrate_file_stores import (
     load_records,
     load_retractions,
     load_source_documents,
+    load_unanswered,
     split_version_key,
 )
 from src.domain.admin_identity import Role
@@ -1191,3 +1192,53 @@ def test_audit_blank_line_raises_with_line_number(tmp_path):
 def test_audit_missing_ledger_is_empty(tmp_path):
     result = load_audit(tmp_path)
     assert result.rows == [] and result.source_rows == 0
+
+
+# -- Fix round 1: event_id type check; newline-only splitting -----------------
+
+
+@pytest.mark.parametrize("bad_id", [5, ["x"], None, "zz"])
+def test_audit_non_string_or_invalid_event_id_raises_migration_error(tmp_path, bad_id):
+    _ledger_fixture(tmp_path)
+
+    def mutate(lines):
+        doc = json.loads(lines[0])
+        doc["event"]["event_id"] = bad_id
+        lines[0] = json.dumps(doc)
+
+    _rewrite_ledger(tmp_path, mutate)
+    with pytest.raises(MigrationError, match=r"ledger\.jsonl: line 1:"):
+        load_audit(tmp_path)
+
+
+def test_audit_reason_with_unicode_line_separators_round_trips(tmp_path):
+    # The real writer keeps U+2028 and U+0085 raw (ensure_ascii=False); they must
+    # not split the ledger line.
+    reason = "a b \x85c"
+    entry = AuditLedger(_ledger_path(tmp_path)).append(_event(1, reason=reason))
+    result = load_audit(tmp_path)
+    assert len(result.rows) == 1
+    assert result.rows[0]["reason"] == reason
+    assert result.rows[0]["entry_hash"] == bytes.fromhex(entry.entry_hash)
+
+
+def test_unanswered_question_with_line_separators_loads_as_one_row(tmp_path):
+    from src.services.unanswered_queue import UnansweredQueueService
+
+    queue_path = tmp_path / "unanswered" / "queue.jsonl"
+    UnansweredQueueService(queue_path=queue_path).push(
+        "hoc phi  bao nhieu \x85 vay", "trace-sep", "route", "OUT_OF_SCOPE"
+    )
+    stored = json.loads(queue_path.read_text(encoding="utf-8").split("\n")[0])
+    result = load_unanswered(tmp_path)
+    assert len(result.rows) == 1
+    assert result.rows[0]["question"] == stored["question"]
+
+
+def test_audit_crlf_terminated_ledger_still_loads(tmp_path):
+    entries = _ledger_fixture(tmp_path)
+    path = _ledger_path(tmp_path)
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    result = load_audit(tmp_path)
+    assert len(result.rows) == 3
+    assert [r["entry_hash"] for r in result.rows] == [bytes.fromhex(e.entry_hash) for e in entries]

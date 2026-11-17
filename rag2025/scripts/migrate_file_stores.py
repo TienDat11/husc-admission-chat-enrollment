@@ -362,11 +362,20 @@ def _json_object(path: Path) -> dict:
     return obj
 
 
+def _split_lines(text: str) -> list[str]:
+    # Newline-only split: str.splitlines() also breaks on U+2028, U+0085, \x0b,
+    # \x0c and \x1c-\x1e, which the real writers emit raw inside JSON strings.
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return [line[:-1] if line.endswith("\r") else line for line in lines]
+
+
 def _jsonl_objects(path: Path) -> list[tuple[int, dict]]:
     if not path.is_file():
         return []
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        lines = _split_lines(path.read_bytes().decode("utf-8"))
     except (OSError, ValueError) as exc:
         raise MigrationError(f"{path}: unreadable ({exc})") from exc
     out: list[tuple[int, dict]] = []
@@ -753,7 +762,7 @@ def load_audit(root: str | Path) -> RowsLoad:
     if not path.is_file():
         return RowsLoad(rows=[], source_rows=0)
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        lines = _split_lines(path.read_bytes().decode("utf-8"))
     except (OSError, ValueError) as exc:
         raise MigrationError(f"{path}: unreadable ({exc})") from exc
     rows: list[dict] = []
@@ -786,9 +795,12 @@ def load_audit(root: str | Path) -> RowsLoad:
             raise MigrationError(f"{where} prev_hash does not match previous entry_hash")
         if prev_seq is not None and seq <= prev_seq:
             raise MigrationError(f"{where} seq must be strictly increasing")
+        raw_event_id = event.get("event_id")
+        if not isinstance(raw_event_id, str):
+            raise MigrationError(f"{where} event_id must be a uuid hex string")
         try:
-            event_id = str(uuid.UUID(hex=event.get("event_id")))
-        except (TypeError, ValueError) as exc:
+            event_id = str(uuid.UUID(hex=raw_event_id))
+        except ValueError as exc:
             raise MigrationError(f"{where} event_id must be a uuid hex ({exc})") from exc
         before_version, before = _legacy_version(event.get("before_version"))
         after_version, after = _legacy_version(event.get("after_version"))
