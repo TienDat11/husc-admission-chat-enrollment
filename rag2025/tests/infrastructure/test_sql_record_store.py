@@ -28,7 +28,8 @@ from src.infrastructure.canonical_record_store import (
 )
 import src.infrastructure.sql_record_store as sql_module
 from src.infrastructure.sql_record_store import SqlRecordStore, _conninfo
-from tests.scripts.test_migrate_apply import _apply, _write_json, fresh_db  # noqa: F401  (fixture)
+from tests.scripts.test_migrate_apply import _apply, _write_json
+from tests.pg_fixtures import fresh_db  # noqa: F401  (fixture)
 
 DOC = "doc-a"
 DAY = date(2026, 1, 1)

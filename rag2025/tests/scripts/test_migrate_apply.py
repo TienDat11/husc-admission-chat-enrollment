@@ -19,13 +19,13 @@ from pathlib import Path
 
 import psycopg
 import pytest
-from sqlalchemy.engine import make_url
 
 import scripts.migrate_file_stores as migrate
 from scripts.migrate_file_stores import MigrationError
 from src.domain.canonical.record import RecordStatus
 from src.infrastructure.canonical_record_store import CanonicalRecordStore
 from tests.infrastructure.conftest import run_alembic
+from tests.pg_fixtures import fresh_db  # noqa: F401  (re-exported fixture)
 from tests.scripts.test_migrate_cli import (
     _PLAIN_ALICE,
     _PLAIN_BOB,
@@ -107,29 +107,6 @@ def _apply(root: Path, url: str) -> dict:
 
 def _stores(report: dict) -> dict[str, dict]:
     return {s["name"]: s for s in report["stores"]}
-
-
-@pytest.fixture
-def fresh_db():
-    """Yields a psycopg-form sync URL of a brand-new migrated database."""
-    base = os.getenv("DATABASE_URL", "").strip()
-    if not base:
-        pytest.skip("DATABASE_URL not set; PostgreSQL apply tests skipped")
-    admin_url = _conninfo(make_url(migrate.sync_database_url(base)).set(database="postgres").render_as_string(hide_password=False))
-    try:
-        admin = psycopg.connect(admin_url, autocommit=True)
-    except psycopg.OperationalError as exc:
-        pytest.skip(f"PostgreSQL not reachable at DATABASE_URL: {exc}")
-    name = "a3apply_" + uuid.uuid4().hex[:12]
-    with admin:
-        admin.execute(f'CREATE DATABASE "{name}"')
-    target = make_url(base).set(database=name)
-    run_alembic(target.render_as_string(hide_password=False), "upgrade", "head")
-    try:
-        yield migrate.sync_database_url(target.render_as_string(hide_password=False))
-    finally:
-        with psycopg.connect(admin_url, autocommit=True) as c:
-            c.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
 
 # ── CLI and pure checks (no PostgreSQL) ──────────────────────────────────

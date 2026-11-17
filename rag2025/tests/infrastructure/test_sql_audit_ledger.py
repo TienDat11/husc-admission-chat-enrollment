@@ -24,7 +24,8 @@ from src.infrastructure.audit_ledger import GENESIS_HASH, AuditLedger, AuditLedg
 from src.infrastructure.sql_audit_ledger import LEGACY_REQUEST_ID, SqlAuditLedger, _columns
 from src.infrastructure.sql_audit_log import append_audit_event
 from src.infrastructure.sql_record_store import _conninfo
-from tests.scripts.test_migrate_apply import _apply, fresh_db  # noqa: F401  (fixture)
+from tests.scripts.test_migrate_apply import _apply
+from tests.pg_fixtures import fresh_db  # noqa: F401  (fixture)
 
 T0 = datetime(2026, 11, 17, 9, 30, tzinfo=timezone.utc)
 
