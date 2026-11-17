@@ -5,12 +5,20 @@ connects to a database or writes to the legacy store.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
+import os
+import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
 
 from src.infrastructure.canonical_record_store import (
     _RECORD_DIR_PREFIX,
@@ -405,6 +413,10 @@ def _not_null_gaps(legacy_id, row: dict, columns: list[str]) -> list[dict]:
 
 def _redact(text: str) -> str:
     # Lazy import: records/retractions loaders must stay importable without src on sys.path.
+    # guardrail.py imports the top-level 'services' package, so src must be on sys.path here.
+    src = str(ROOT / "src")
+    if src not in sys.path:
+        sys.path.append(src)
     from src.services.log_redaction import redact_pii
 
     return redact_pii(text)
@@ -832,3 +844,119 @@ def load_audit(root: str | Path) -> RowsLoad:
         prev_entry = entry_digest
         prev_seq = seq
     return RowsLoad(rows=rows, source_rows=len(lines), unfillable=unfill)
+
+
+# ---- Task 2b-3 (U3): dry-run report and CLI ----
+# Read-only. The report carries counts, hashes and id maps; it never carries row contents.
+
+_DEFAULT_ROOT = Path(__file__).resolve().parents[1] / "data" / "canonical_store"
+
+
+def _serialize(value: object) -> str:
+    if isinstance(value, bytes):
+        return "hex:" + value.hex()
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    raise TypeError(f"not canonically serializable: {type(value).__name__}")
+
+
+def _canonical_json(obj: object) -> str:
+    return json.dumps(
+        obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=_serialize
+    )
+
+
+def _canonical_hash(rows: object) -> str:
+    return hashlib.sha256(_canonical_json(rows).encode("utf-8")).hexdigest()
+
+
+def _loaders() -> list[tuple[str, Callable]]:
+    # Resolved by global name at call time so tests can monkeypatch a loader.
+    return [
+        ("records", load_records),
+        ("retractions", load_retractions),
+        ("releases", load_releases),
+        ("outbox", load_outbox),
+        ("conflicts", load_conflicts),
+        ("idempotency", load_idempotency),
+        ("unanswered", load_unanswered),
+        ("feedback", load_feedback),
+        ("source_documents", load_source_documents),
+        ("identities", load_identities),
+        ("audit", load_audit),
+    ]
+
+
+def _parts(load: object) -> tuple[list, int]:
+    if isinstance(load, list):
+        return load, len(load)
+    return load.rows, load.source_rows
+
+
+def build_report(root: str | Path) -> dict:
+    stores: list[dict] = []
+    id_map: dict[str, dict] = {}
+    unfillable: dict[str, int] = {}
+    redacted_rows = 0
+    quarantined_rows = 0
+    for name, loader in _loaders():
+        first = loader(root)
+        rows, source_rows = _parts(first)
+        digest = _canonical_hash(rows)
+        second_rows, _ = _parts(loader(root))
+        drift = 0 if _canonical_hash(second_rows) == digest else 1
+        stores.append({
+            "name": name,
+            "source_rows": source_rows,
+            "target_rows": len(rows),
+            "mismatch": abs(source_rows - len(rows)) + drift,
+            "hash": digest,
+        })
+        redacted_rows += getattr(first, "redacted_rows", 0)
+        quarantined_rows += getattr(first, "quarantined_rows", 0)
+        mapping = getattr(first, "id_map", None)
+        if mapping:
+            id_map[name] = dict(mapping)
+        gaps = len(getattr(first, "unfillable", []))
+        if gaps:
+            unfillable[name] = gaps
+    report = {
+        "stores": stores,
+        "redacted_rows": redacted_rows,
+        "quarantined_rows": quarantined_rows,
+        "id_map": id_map,
+        "unfillable": unfillable,
+        "dry_run": True,
+    }
+    report["report_hash"] = hashlib.sha256(_canonical_json(report).encode("utf-8")).hexdigest()
+    return report
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Migrate legacy file stores (U3). Dry run only.")
+    parser.add_argument("--dry-run", action="store_true", help="read-only report")
+    parser.add_argument("--report", required=True, metavar="PATH", help="where to write the JSON report")
+    parser.add_argument("--root", default=str(_DEFAULT_ROOT), metavar="DIR", help="legacy canonical_store root")
+    args = parser.parse_args(argv)
+    if not args.dry_run:
+        print("real run not implemented", file=sys.stderr)
+        return 2
+    try:
+        report = build_report(args.root)
+    except MigrationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    target = Path(args.report)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(str(target) + ".tmp")
+    tmp.write_text(json.dumps(report, sort_keys=True, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, target)
+    mismatch_total = sum(s["mismatch"] for s in report["stores"])
+    print(f"wrote {args.report}: {len(report['stores'])} stores, mismatch total {mismatch_total}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
