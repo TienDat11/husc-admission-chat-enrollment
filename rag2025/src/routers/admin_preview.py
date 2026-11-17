@@ -25,10 +25,7 @@ from pydantic import BaseModel, Field
 
 from config.settings import settings
 from src.domain.admin_identity import AdminAction
-from src.infrastructure.canonical_record_store import (
-    CanonicalRecordStore,
-    RecordNotFoundError,
-)
+from src.infrastructure.canonical_record_store import RecordNotFoundError
 from src.routers.admin_auth import require_action
 from src.routers.admin_rate_limit import admin_rate_limit
 from src.services.review_preview import ReviewPreviewService
@@ -43,6 +40,9 @@ router = APIRouter(
     # it here is the case the rate-limit guard test exists to catch.
     dependencies=[Depends(admin_rate_limit)],
 )
+
+
+_PREVIEW_STORE_METHODS = ("get_record", "get_version", "versions")
 
 
 class PreviewRequest(BaseModel):
@@ -61,7 +61,9 @@ def _service(request: Request) -> ReviewPreviewService:
             status_code=503,
             detail="canonical record store is not configured",
         )
-    if not isinstance(store, CanonicalRecordStore):
+    # Duck-typed on the methods ReviewPreviewService calls, so SqlRecordStore
+    # (postgres) and CanonicalRecordStore (file) are both accepted.
+    if not all(callable(getattr(store, name, None)) for name in _PREVIEW_STORE_METHODS):
         raise HTTPException(
             status_code=503,
             detail="canonical record store has an unexpected type",

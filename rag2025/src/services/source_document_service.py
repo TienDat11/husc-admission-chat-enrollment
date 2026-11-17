@@ -633,7 +633,7 @@ class SourceDocumentService:
             # two concurrent parses of different contents never unlink each
             # other's file; identical contents are already serialized by the
             # lock above.
-            probe_dir = self._store.root / SOURCE_DOCUMENTS_DIRNAME
+            probe_dir = self._registry.root / SOURCE_DOCUMENTS_DIRNAME
             probe_dir.mkdir(parents=True, exist_ok=True)
             probe_path = probe_dir / f".probe-{digest}-{uuid.uuid4().hex}"
             try:
