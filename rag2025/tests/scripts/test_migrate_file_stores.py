@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
@@ -17,17 +18,25 @@ import pytest
 from scripts.migrate_file_stores import (
     MigrationError,
     derive_coordinate_key,
+    load_audit,
+    load_identities,
     load_records,
     load_retractions,
+    load_source_documents,
     split_version_key,
 )
+from src.domain.admin_identity import Role
+from src.domain.audit import AuditAction, AuditEvent, TargetKind
 from src.domain.canonical.record import (
     AuthorityLevel,
     CanonicalRecord,
     RecordStatus,
     RecordType,
 )
+from src.infrastructure.audit_ledger import AuditLedger
 from src.infrastructure.canonical_record_store import CanonicalRecordStore
+from src.infrastructure.identity_store import IdentityEntry, IdentityStore
+from src.infrastructure.source_document_registry import SourceDocumentRegistry
 
 
 def _sha12(text: str) -> str:
@@ -850,3 +859,335 @@ def test_migrate_module_loads_without_src_on_sys_path():
         cwd=str(rag_root),
     )
     assert proc.returncode == 0, proc.stderr
+
+
+# ---------------------------------------------------------------------------
+# Task 2b-2 (U3): source documents, identities, audit ledger loaders.
+# Fixtures use the real writers (SourceDocumentRegistry, IdentityStore,
+# AuditLedger); only the corruption cases edit bytes by hand.
+# ---------------------------------------------------------------------------
+
+_DOC_COLUMNS = {
+    "document_id", "sha256", "kind", "storage_uri", "original_name", "page_count",
+    "admission_year", "status", "uploaded_by", "created_at", "updated_at",
+}
+# admin_identities: created_at/updated_at are DB-defaulted (now()), so the loader
+# leaves them out and lets the insert take the default.
+_IDENTITY_COLUMNS = {
+    "subject_id", "actor_id", "role", "password_hash", "header_token_hash",
+    "disabled", "created_by",
+}
+_AUDIT_COLUMNS = {
+    "event_id", "seq", "aggregate_type", "aggregate_id", "actor_id", "role",
+    "action", "before", "after", "reason", "before_version", "after_version",
+    "release_id", "request_id", "created_at", "prev_hash", "entry_hash",
+}
+_SHA_A = hashlib.sha256(b"doc-a").hexdigest()
+_SHA_B = hashlib.sha256(b"doc-b").hexdigest()
+_NOW = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+
+
+def _doc_fixture(root: Path) -> SourceDocumentRegistry:
+    # The real registry only registers PDF ids, so the .docx and .jsonl#slug
+    # entries are real-shaped copies of a stored entry with the id swapped.
+    reg = SourceDocumentRegistry(root, root / "repo")
+    reg.create("new_data/a.pdf", sha256=_SHA_A, file_present=True, actor_id="ops-1", now=_NOW)
+    reg.create("new_data/d.pdf", sha256=None, file_present=False, actor_id="ops-1", now=_NOW)
+    reg.create("new_data/r.pdf", sha256=_SHA_A, file_present=True, actor_id="ops-2", now=_NOW)
+    reg.retire("new_data/r.pdf", actor_id="ops-2", now=_NOW)
+    for new_id, name in (("new_data/b.docx", "legacy-b"), ("rag2025/data/c.jsonl#slug", "legacy-c")):
+        payload = json.loads(reg.get("new_data/a.pdf").to_json())
+        payload.update(document_id=new_id, path=new_id)
+        (root / "documents" / f"doc-{name}_d.json").write_text(json.dumps(payload), encoding="utf-8")
+    return reg
+
+
+def test_source_documents_one_row_per_entry_in_document_id_order(tmp_path):
+    _doc_fixture(tmp_path)
+    result = load_source_documents(tmp_path)
+    assert result.source_rows == 5
+    assert [r["document_id"] for r in result.rows] == [
+        "new_data/a.pdf", "new_data/b.docx", "new_data/d.pdf", "new_data/r.pdf",
+        "rag2025/data/c.jsonl#slug",
+    ]
+    assert all(set(r) == _DOC_COLUMNS for r in result.rows)
+
+
+def test_source_documents_field_mapping(tmp_path):
+    reg = _doc_fixture(tmp_path)
+    by_id = {r["document_id"]: r for r in load_source_documents(tmp_path).rows}
+    a = by_id["new_data/a.pdf"]
+    assert a["sha256"] == bytes.fromhex(_SHA_A)
+    assert a["kind"] == "pdf"
+    assert a["original_name"] == "a.pdf"
+    assert a["storage_uri"] == reg.get("new_data/a.pdf").path
+    assert a["status"] == "uploaded"
+    assert a["uploaded_by"] == "ops-1"
+    assert a["created_at"] == _NOW
+    assert a["page_count"] is None and a["admission_year"] is None
+    assert by_id["new_data/b.docx"]["kind"] == "docx"
+
+
+def test_source_documents_retired_maps_to_archived(tmp_path):
+    _doc_fixture(tmp_path)
+    row = {r["document_id"]: r for r in load_source_documents(tmp_path).rows}["new_data/r.pdf"]
+    assert row["status"] == "archived"
+    assert row["kind"] == "pdf"
+    assert row["uploaded_by"] == "ops-2"
+    assert {r["status"] for r in load_source_documents(tmp_path).rows} == {"uploaded", "archived"}
+
+
+def test_source_documents_unknown_kind_and_missing_sha_are_unfillable(tmp_path):
+    _doc_fixture(tmp_path)
+    result = load_source_documents(tmp_path)
+    by_id = {r["document_id"]: r for r in result.rows}
+    assert by_id["new_data/b.docx"]["kind"] == "docx"
+    assert by_id["rag2025/data/c.jsonl#slug"]["kind"] is None
+    assert by_id["rag2025/data/c.jsonl#slug"]["original_name"] == "c.jsonl"
+    assert {"legacy_id": "rag2025/data/c.jsonl#slug", "column": "kind"} in result.unfillable
+    assert by_id["new_data/d.pdf"]["sha256"] is None
+    assert {"legacy_id": "new_data/d.pdf", "column": "sha256"} in result.unfillable
+
+
+def test_source_documents_missing_store_is_empty(tmp_path):
+    result = load_source_documents(tmp_path / "nothing-here")
+    assert result.rows == [] and result.source_rows == 0
+
+
+_PLAIN_ALICE = "alice-plaintext-credential-XYZ"
+_PLAIN_BOB = "bob-plaintext-credential-QRS"
+_ALICE_SUBJECT = "6f1c2a4e-9d3b-4c1a-8e2f-1a2b3c4d5e6f"
+_PWHASH = "scrypt$16384$8$1$c2FsdA==$aGFzaA=="
+
+
+def _identity_fixture(root: Path) -> None:
+    IdentityStore(root).seed([
+        IdentityEntry(
+            subject_id=_ALICE_SUBJECT, actor_id="alice", role=Role.EDITOR,
+            credential=_PLAIN_ALICE, password_hash=_PWHASH,
+        ),
+        IdentityEntry(
+            subject_id="bob-legacy", actor_id="bob", role=Role.ADMIN,
+            credential=_PLAIN_BOB, disabled=True,
+        ),
+    ])
+
+
+def test_identities_field_mapping_and_digest(tmp_path):
+    _identity_fixture(tmp_path)
+    result = load_identities(tmp_path)
+    assert result.source_rows == 2
+    assert [r["actor_id"] for r in result.rows] == ["alice", "bob"]
+    assert all(set(r) == _IDENTITY_COLUMNS for r in result.rows)
+    alice, bob = result.rows
+    assert alice["subject_id"] == _ALICE_SUBJECT
+    assert alice["role"] == "editor"
+    assert alice["password_hash"] == _PWHASH
+    assert alice["header_token_hash"] == hashlib.sha256(_PLAIN_ALICE.encode("utf-8")).digest()
+    assert alice["disabled"] is False
+    assert bob["disabled"] is True
+    assert bob["password_hash"] is None
+    assert alice["created_by"] is None
+    assert {"legacy_id": "alice", "column": "created_by"} in result.unfillable
+
+
+def test_identities_never_carry_plaintext_credential(tmp_path):
+    _identity_fixture(tmp_path)
+    result = load_identities(tmp_path)
+    assert _PLAIN_ALICE not in str(result.rows)
+    assert _PLAIN_BOB not in str(result.rows)
+    assert _PLAIN_ALICE not in repr(result) and _PLAIN_BOB not in repr(result)
+    for row in result.rows:
+        for value in row.values():
+            assert _PLAIN_ALICE not in repr(value)
+            assert _PLAIN_BOB not in repr(value)
+
+
+def test_identities_non_uuid_subject_remapped_deterministically(tmp_path):
+    _identity_fixture(tmp_path)
+    first = load_identities(tmp_path)
+    second = load_identities(tmp_path)
+    expected = str(uuid.uuid5(uuid.NAMESPACE_URL, "husc-identity:bob-legacy"))
+    bob = next(r for r in first.rows if r["actor_id"] == "bob")
+    assert bob["subject_id"] == expected
+    assert uuid.UUID(bob["subject_id"]) is not None
+    assert first.id_map["bob-legacy"] == expected
+    assert [r["subject_id"] for r in second.rows] == [r["subject_id"] for r in first.rows]
+
+
+def test_identities_missing_or_empty_store_is_empty(tmp_path):
+    assert load_identities(tmp_path).rows == []
+    path = IdentityStore(tmp_path).path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+    result = load_identities(tmp_path)
+    assert result.rows == [] and result.source_rows == 0
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        {"schema_version": "2.0", "entries": []},
+        {"schema_version": "1.0", "entries": "not-a-list"},
+        {"schema_version": "1.0", "entries": ["not-a-dict"]},
+    ],
+)
+def test_identities_malformed_document_raises_naming_path(tmp_path, doc):
+    path = IdentityStore(tmp_path).path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(MigrationError, match="identities.json"):
+        load_identities(tmp_path)
+
+
+def _event(n: int, **overrides: object) -> AuditEvent:
+    values = dict(
+        action=AuditAction.PUBLISH,
+        actor_id="alice",
+        role="editor",
+        target=f"rec-{n}",
+        target_kind=TargetKind.RELEASE,
+        timestamp=datetime(2026, 1, n, tzinfo=timezone.utc),
+        before_version=str(n),
+        after_version=str(n + 1),
+        reason=f"reason {n}",
+        release_id="rel-1",
+    )
+    values.update(overrides)
+    return AuditEvent(**values)
+
+
+def _ledger_path(root: Path) -> Path:
+    return root / "audit" / "ledger.jsonl"
+
+
+def _ledger_fixture(root: Path) -> list:
+    ledger = AuditLedger(_ledger_path(root))
+    return [ledger.append(_event(n)) for n in (1, 2, 3)]
+
+
+def _rewrite_ledger(root: Path, mutate) -> None:
+    path = _ledger_path(root)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    mutate(lines)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_audit_round_trip_keeps_hash_bytes(tmp_path):
+    entries = _ledger_fixture(tmp_path)
+    lines = [json.loads(x) for x in _ledger_path(tmp_path).read_text(encoding="utf-8").splitlines()]
+    result = load_audit(tmp_path)
+    assert result.source_rows == 3
+    assert all(set(r) == _AUDIT_COLUMNS for r in result.rows)
+    assert [r["seq"] for r in result.rows] == [1, 2, 3]
+    assert lines[0]["prev_hash"] == "0" * 64
+    assert result.rows[0]["prev_hash"] is None
+    for row, line, entry in zip(result.rows, lines, entries):
+        assert row["entry_hash"] == bytes.fromhex(line["entry_hash"])
+        assert row["entry_hash"] == bytes.fromhex(entry.entry_hash)
+        assert row["event_id"] == str(uuid.UUID(hex=line["event"]["event_id"]))
+    assert result.rows[1]["prev_hash"] == bytes.fromhex(lines[0]["entry_hash"])
+    assert result.rows[2]["prev_hash"] == bytes.fromhex(lines[1]["entry_hash"])
+
+
+def test_audit_row_field_mapping(tmp_path):
+    _ledger_fixture(tmp_path)
+    row = load_audit(tmp_path).rows[0]
+    assert row["aggregate_type"] == "release"
+    assert row["aggregate_id"] == "rec-1"
+    assert row["actor_id"] == "alice"
+    assert row["role"] == "editor"
+    assert row["action"] == "publish"
+    assert row["before"] is None and row["after"] is None
+    assert row["before_version"] == 1 and row["after_version"] == 2
+    assert row["reason"] == "reason 1"
+    assert row["release_id"] == "rel-1"
+    assert row["request_id"] is None
+    assert row["created_at"] == datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def test_audit_non_digit_versions_kept_as_legacy(tmp_path):
+    ledger = AuditLedger(_ledger_path(tmp_path))
+    ledger.append(_event(1, before_version="v1", after_version="7"))
+    ledger.append(_event(2, before_version=None, after_version="v9"))
+    row1, row2 = load_audit(tmp_path).rows
+    assert row1["before_version"] is None
+    assert row1["before"] == {"legacy_version": "v1"}
+    assert row1["after_version"] == 7 and row1["after"] is None
+    assert row2["before_version"] is None and row2["before"] is None
+    assert row2["after_version"] is None
+    assert row2["after"] == {"legacy_version": "v9"}
+
+
+def test_audit_missing_role_is_unfillable(tmp_path):
+    AuditLedger(_ledger_path(tmp_path)).append(_event(1, role=None))
+    result = load_audit(tmp_path)
+    event_id = result.rows[0]["event_id"]
+    assert result.rows[0]["role"] is None
+    assert {"legacy_id": event_id, "column": "role"} in result.unfillable
+
+
+@pytest.mark.parametrize("bad", ["a" * 63, "g" * 64, "a" * 66])
+def test_audit_malformed_entry_hash_names_file_and_line(tmp_path, bad):
+    _ledger_fixture(tmp_path)
+
+    def mutate(lines):
+        doc = json.loads(lines[1])
+        doc["entry_hash"] = bad
+        lines[1] = json.dumps(doc)
+
+    _rewrite_ledger(tmp_path, mutate)
+    with pytest.raises(MigrationError, match=r"ledger\.jsonl: line 2:"):
+        load_audit(tmp_path)
+
+
+@pytest.mark.parametrize(("index", "line_no"), [(0, 1), (2, 3)])
+def test_audit_broken_prev_hash_linkage_raises(tmp_path, index, line_no):
+    _ledger_fixture(tmp_path)
+
+    def mutate(lines):
+        doc = json.loads(lines[index])
+        doc["prev_hash"] = "ab" * 32
+        lines[index] = json.dumps(doc)
+
+    _rewrite_ledger(tmp_path, mutate)
+    with pytest.raises(MigrationError, match=rf"ledger\.jsonl: line {line_no}:"):
+        load_audit(tmp_path)
+
+
+def test_audit_non_increasing_seq_raises(tmp_path):
+    _ledger_fixture(tmp_path)
+
+    def mutate(lines):
+        doc = json.loads(lines[2])
+        doc["seq"] = 2
+        lines[2] = json.dumps(doc)
+
+    _rewrite_ledger(tmp_path, mutate)
+    with pytest.raises(MigrationError, match=r"ledger\.jsonl: line 3:"):
+        load_audit(tmp_path)
+
+
+def test_audit_invalid_event_id_raises(tmp_path):
+    _ledger_fixture(tmp_path)
+
+    def mutate(lines):
+        doc = json.loads(lines[0])
+        doc["event"]["event_id"] = "not-a-uuid"
+        lines[0] = json.dumps(doc)
+
+    _rewrite_ledger(tmp_path, mutate)
+    with pytest.raises(MigrationError, match=r"ledger\.jsonl: line 1:"):
+        load_audit(tmp_path)
+
+
+def test_audit_blank_line_raises_with_line_number(tmp_path):
+    _ledger_fixture(tmp_path)
+    _rewrite_ledger(tmp_path, lambda lines: lines.insert(1, ""))
+    with pytest.raises(MigrationError, match=r"ledger\.jsonl: line 2:"):
+        load_audit(tmp_path)
+
+
+def test_audit_missing_ledger_is_empty(tmp_path):
+    result = load_audit(tmp_path)
+    assert result.rows == [] and result.source_rows == 0

@@ -9,6 +9,7 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from src.infrastructure.canonical_record_store import (
@@ -615,3 +616,207 @@ def load_feedback(root: str | Path) -> RowsLoad:
         )
         rows.append(row)
     return RowsLoad(rows=rows, source_rows=len(entries), redacted_rows=redacted, unfillable=unfill)
+
+
+# -- Task 2b-2 (U3): source documents, identities, audit ledger ---------------
+
+_HEX_CHARS = frozenset("0123456789abcdefABCDEF")
+_ZERO_DIGEST = bytes(32)
+_KIND_BY_EXT = {".pdf": "pdf", ".xlsx": "xlsx", ".docx": "docx"}
+_DOC_STATUS = {"registered": "uploaded", "retired": "archived"}
+_IDENTITY_SCHEMA = "1.0"
+_IDENTITY_NAMESPACE = "husc-identity:"
+
+
+def _digest_bytes(value: object, where: str) -> bytes:
+    if not isinstance(value, str) or len(value) != 64 or not set(value) <= _HEX_CHARS:
+        raise MigrationError(f"{where} must be 64 hex characters")
+    return bytes.fromhex(value)
+
+
+def _parse_iso(where: str, value: object) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError as exc:
+        raise MigrationError(f"{where} is not an ISO-8601 timestamp ({exc})") from exc
+
+
+def _legacy_version(value: object) -> tuple[int | None, dict | None]:
+    # Digit-only versions become ints; anything else is kept verbatim as legacy.
+    if value is None:
+        return None, None
+    text = str(value)
+    if text.isascii() and text.isdigit():
+        return int(text), None
+    return None, {"legacy_version": text}
+
+
+def load_source_documents(root: str | Path) -> RowsLoad:
+    docs_dir = Path(root) / "documents"
+    paths = sorted(p for p in docs_dir.glob("doc-*_d.json") if p.is_file()) if docs_dir.is_dir() else []
+    rows: list[dict] = []
+    unfill: list[dict] = []
+    for path in paths:
+        e = _json_object(path)
+        doc_id = e.get("document_id")
+        if not isinstance(doc_id, str) or not doc_id:
+            raise MigrationError(f"{path}: document_id must be a non-empty string")
+        location = doc_id.partition("#")[0]
+        original_name = location.rsplit("/", 1)[-1]
+        kind = _KIND_BY_EXT.get(Path(original_name).suffix.lower())
+        sha = e.get("sha256")
+        row = {
+            "document_id": doc_id,
+            "sha256": None if sha is None else _digest_bytes(sha, f"{path}: sha256"),
+            "kind": kind,
+            "storage_uri": e.get("path"),
+            "original_name": original_name,
+            "page_count": None,
+            "admission_year": None,
+            "status": _DOC_STATUS.get(e.get("state")),
+            "uploaded_by": e.get("registered_by"),
+            "created_at": _parse_iso(f"{path}: registered_at", e.get("registered_at")),
+            "updated_at": _parse_iso(f"{path}: updated_at", e.get("updated_at")),
+        }
+        unfill += _not_null_gaps(
+            doc_id,
+            row,
+            ["document_id", "sha256", "kind", "storage_uri", "original_name", "status",
+             "uploaded_by", "created_at", "updated_at"],
+        )
+        rows.append(row)
+    rows.sort(key=lambda r: r["document_id"])
+    return RowsLoad(rows=rows, source_rows=len(paths), unfillable=unfill)
+
+
+def load_identities(root: str | Path) -> RowsLoad:
+    path = Path(root) / "identity" / "identities.json"
+    if not path.is_file():
+        return RowsLoad(rows=[], source_rows=0)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        raise MigrationError(f"{path}: unreadable ({exc})") from exc
+    if not text.strip():
+        return RowsLoad(rows=[], source_rows=0)
+    try:
+        doc = json.loads(text)
+    except ValueError as exc:
+        raise MigrationError(f"{path}: unreadable JSON ({exc})") from exc
+    if not isinstance(doc, dict):
+        raise MigrationError(f"{path}: expected a JSON object at top level")
+    if doc.get("schema_version") != _IDENTITY_SCHEMA:
+        raise MigrationError(
+            f"{path}: unsupported schema_version {doc.get('schema_version')!r}"
+        )
+    entries = doc.get("entries")
+    if not isinstance(entries, list):
+        raise MigrationError(f"{path}: 'entries' must be a list")
+    rows: list[dict] = []
+    unfill: list[dict] = []
+    id_map: dict = {}
+    for raw in entries:
+        if not isinstance(raw, dict):
+            raise MigrationError(f"{path}: every entry must be a JSON object")
+        legacy_subject = raw.get("subject_id")
+        if not isinstance(legacy_subject, str) or not legacy_subject:
+            raise MigrationError(f"{path}: entry subject_id must be a non-empty string")
+        try:
+            subject = str(uuid.UUID(legacy_subject))
+        except ValueError:
+            subject = str(uuid.uuid5(uuid.NAMESPACE_URL, _IDENTITY_NAMESPACE + legacy_subject))
+        id_map[legacy_subject] = subject
+        credential = raw.get("credential")
+        if not isinstance(credential, str) or not credential:
+            raise MigrationError(f"{path}: entry credential must be a non-empty string")
+        actor = raw.get("actor_id")
+        row = {
+            "subject_id": subject,
+            "actor_id": actor,
+            "role": raw.get("role"),
+            "password_hash": raw.get("password_hash"),
+            # Only the digest is stored; the plaintext credential never leaves this loop.
+            "header_token_hash": hashlib.sha256(credential.encode("utf-8")).digest(),
+            "disabled": bool(raw.get("disabled", False)),
+            "created_by": None,
+        }
+        unfill += _not_null_gaps(actor, row, ["subject_id", "actor_id", "role", "created_by"])
+        rows.append(row)
+    rows.sort(key=lambda r: r["actor_id"] or "")
+    return RowsLoad(rows=rows, source_rows=len(entries), unfillable=unfill, id_map=id_map)
+
+
+def load_audit(root: str | Path) -> RowsLoad:
+    path = Path(root) / "audit" / "ledger.jsonl"
+    if not path.is_file():
+        return RowsLoad(rows=[], source_rows=0)
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, ValueError) as exc:
+        raise MigrationError(f"{path}: unreadable ({exc})") from exc
+    rows: list[dict] = []
+    unfill: list[dict] = []
+    prev_entry: bytes | None = None
+    prev_seq: int | None = None
+    for lineno, raw in enumerate(lines, start=1):
+        where = f"{path}: line {lineno}:"
+        if not raw.strip():
+            raise MigrationError(f"{where} blank line in audit ledger")
+        try:
+            entry = json.loads(raw)
+        except ValueError as exc:
+            raise MigrationError(f"{where} invalid JSON ({exc})") from exc
+        if not isinstance(entry, dict):
+            raise MigrationError(f"{where} expected a JSON object")
+        event = entry.get("event")
+        if not isinstance(event, dict):
+            raise MigrationError(f"{where} 'event' must be a JSON object")
+        seq = entry.get("seq")
+        if not isinstance(seq, int) or isinstance(seq, bool):
+            raise MigrationError(f"{where} 'seq' must be an integer")
+        # Hashes are recorded exactly as written; they are checked, never recomputed.
+        prev_digest = _digest_bytes(entry.get("prev_hash"), f"{where} prev_hash")
+        entry_digest = _digest_bytes(entry.get("entry_hash"), f"{where} entry_hash")
+        if prev_entry is None:
+            if prev_digest != _ZERO_DIGEST:
+                raise MigrationError(f"{where} first entry must have the genesis prev_hash")
+        elif prev_digest != prev_entry:
+            raise MigrationError(f"{where} prev_hash does not match previous entry_hash")
+        if prev_seq is not None and seq <= prev_seq:
+            raise MigrationError(f"{where} seq must be strictly increasing")
+        try:
+            event_id = str(uuid.UUID(hex=event.get("event_id")))
+        except (TypeError, ValueError) as exc:
+            raise MigrationError(f"{where} event_id must be a uuid hex ({exc})") from exc
+        before_version, before = _legacy_version(event.get("before_version"))
+        after_version, after = _legacy_version(event.get("after_version"))
+        row = {
+            "event_id": event_id,
+            "seq": seq,
+            "aggregate_type": event.get("target_kind"),
+            "aggregate_id": event.get("target"),
+            "actor_id": event.get("actor_id"),
+            "role": event.get("role"),
+            "action": event.get("action"),
+            "before": before,
+            "after": after,
+            "reason": event.get("reason"),
+            "before_version": before_version,
+            "after_version": after_version,
+            "release_id": event.get("release_id"),
+            "request_id": None,
+            "created_at": _parse_iso(f"{where} timestamp", event.get("timestamp")),
+            "prev_hash": None if prev_digest == _ZERO_DIGEST else prev_digest,
+            "entry_hash": entry_digest,
+        }
+        unfill += _not_null_gaps(
+            event_id,
+            row,
+            ["aggregate_type", "aggregate_id", "actor_id", "role", "action", "created_at"],
+        )
+        rows.append(row)
+        prev_entry = entry_digest
+        prev_seq = seq
+    return RowsLoad(rows=rows, source_rows=len(lines), unfillable=unfill)
