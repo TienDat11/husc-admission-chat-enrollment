@@ -6,6 +6,8 @@ from functools import partial
 from pathlib import Path
 from typing import Optional
 
+from loguru import logger
+
 # Ticket 12 wiring lives in this module, and under the launch convention
 # uvicorn actually uses (cwd=rag2025, sys.path=['src','.']) the package-root
 # form below does not resolve: there is no `rag2025` on the path, so
@@ -76,6 +78,37 @@ async def shutdown(services: AppServices) -> None:
     pass
 
 
+def _build_record_store(settings: RAGSettings, root: Path, file_store_cls):
+    """Pick the canonical record store named by ``settings.STORE_BACKEND``.
+
+    ``file`` (the default) is ``file_store_cls(root)``, unchanged. ``postgres``
+    is ``SqlRecordStore`` over DATABASE_URL; its constructor does not connect.
+    A missing DATABASE_URL raises here, at startup, and the message names the
+    settings but never a URL or password.
+    """
+    if settings.STORE_BACKEND == "postgres":
+        try:
+            from src.infrastructure.db import database_url
+            from src.infrastructure.sql_record_store import SqlRecordStore
+        except ModuleNotFoundError:
+            from rag2025.src.infrastructure.db import (  # type: ignore
+                database_url,
+            )
+            from rag2025.src.infrastructure.sql_record_store import (  # type: ignore
+                SqlRecordStore,
+            )
+        try:
+            url = database_url()
+        except RuntimeError:
+            raise RuntimeError(
+                "STORE_BACKEND=postgres requires DATABASE_URL to be set"
+            ) from None
+        logger.info("canonical record store backend: postgres")
+        return SqlRecordStore(url)
+    logger.info("canonical record store backend: file")
+    return file_store_cls(root)
+
+
 def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None):
     """Attach the versioned canonical admissions store to ``app.state``.
 
@@ -116,7 +149,11 @@ def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None
             RetrievalUnavailableError,
         )
         from src.services.abstention_policy import configure_conflict_source
-        from src.services.conflict_queue import ConflictQueueService
+        from src.services.conflict_queue import (
+            QUEUE_DIRNAME,
+            QUEUE_FILENAME,
+            ConflictQueueService,
+        )
         from src.services.idempotency import IdempotencyStore
         from src.services.reindex_outbox import OUTBOX_FILENAME, ReindexOutbox
         from src.services.reindex_runner import ReindexRunner
@@ -150,6 +187,8 @@ def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None
             configure_conflict_source,
         )
         from rag2025.src.services.conflict_queue import (  # type: ignore
+            QUEUE_DIRNAME,
+            QUEUE_FILENAME,
             ConflictQueueService,
         )
         from rag2025.src.services.idempotency import (  # type: ignore
@@ -181,7 +220,7 @@ def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None
     registry = SourceDocumentRegistry(root, REPO_ROOT)
     app.state.source_document_registry = registry
 
-    store = CanonicalRecordStore(root)
+    store = _build_record_store(resolved, root, CanonicalRecordStore)
     app.state.canonical_record_store = store
 
     # Ticket 14: the append-only audit ledger. It lives beside the records
@@ -314,7 +353,19 @@ def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None
     # abstains on nothing rather than failing.
     from services.abstention_policy import configure_conflict_source
 
-    conflict_queue_service = ConflictQueueService(store, ledger)
+    if resolved.STORE_BACKEND == "postgres":
+        # SqlRecordStore has no ``root``, so the file-based queue and seed report
+        # are named explicitly, beside the records as in the file backend. The
+        # admin conflicts router reads these same app.state names per request.
+        seed_report_path = root / "seed_report.json"
+        queue_path = root / QUEUE_DIRNAME / QUEUE_FILENAME
+        app.state.conflict_seed_report_path = seed_report_path
+        app.state.conflict_queue_path = queue_path
+        conflict_queue_service = ConflictQueueService(
+            store, ledger, seed_report_path=seed_report_path, queue_path=queue_path,
+        )
+    else:
+        conflict_queue_service = ConflictQueueService(store, ledger)
     app.state.conflict_queue_service = conflict_queue_service
     configure_conflict_source(conflict_queue_service.items)
 
