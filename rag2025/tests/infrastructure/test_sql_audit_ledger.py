@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -374,3 +375,69 @@ def test_migrated_chain_breaks_on_tampered_first_sql_row(tmp_path, fresh_db):
     assert detailed["broken_index"] == 3
     assert detailed["legacy_checked"] == 3
     assert detailed["checked"] == 3
+
+
+def test_driver_error_during_append_is_a_ledger_error_without_row_content(fresh_db):
+    ledger = SqlAuditLedger(fresh_db)
+    with pytest.raises(AuditLedgerError) as info:
+        ledger.append(_event(0, reason="lý do bí mật\x00"))
+    message = str(info.value)
+    for leak in ("bí mật", "localhost", "rag", "a3apply_", "5439"):
+        assert leak not in message
+    assert info.value.__cause__ is None
+    assert ledger.verify().checked == 0
+
+
+def test_duplicate_event_id_is_a_ledger_error_naming_the_sqlstate(fresh_db):
+    ledger = SqlAuditLedger(fresh_db)
+    event = _event(0)
+    ledger.append(event)
+    with pytest.raises(AuditLedgerError) as info:
+        ledger.append(event)
+    assert "23505" in str(info.value)
+    assert "bí mật" not in str(info.value)
+    assert ledger.verify().checked == 1
+
+
+def test_held_advisory_lock_is_busy_within_the_lock_timeout(fresh_db):
+    holder = psycopg.connect(_conninfo(fresh_db), autocommit=True)
+    try:
+        holder.execute("SELECT pg_advisory_lock(hashtext('audit_chain'))")
+        ledger = SqlAuditLedger(fresh_db, lock_timeout_ms=300)
+        started = time.monotonic()
+        with pytest.raises(AuditLedgerError) as info:
+            ledger.append(_event(0))
+        assert "busy" in str(info.value)
+        assert time.monotonic() - started < 5
+    finally:
+        holder.close()
+    assert SqlAuditLedger(fresh_db).verify().checked == 0
+
+
+def test_placeholder_filled_legacy_row_is_skipped_not_fatal(tmp_path, fresh_db):
+    events = _file_ledger(tmp_path)
+    _apply(tmp_path, fresh_db)
+    ledger = SqlAuditLedger(fresh_db)
+    ledger.append(_event(10))
+    _tamper(
+        fresh_db,
+        "UPDATE audit_events SET action = 'legacy-migration', aggregate_type = 'legacy-migration' WHERE seq = 1",
+    )
+
+    assert [entry.seq for entry in ledger.entries()] == [2, 3, 4]
+    assert ledger.skipped_legacy_rows() == 1
+    assert ledger.get(events[0].event_id) is None
+    assert [entry.seq for entry in ledger.find(target="rec-1")] == [2]
+    detailed = ledger.verify_detailed()
+    assert detailed["ok"] is True
+    assert detailed["legacy_checked"] == 3
+
+
+def test_invalid_enum_in_a_sql_row_raises_from_entries(fresh_db):
+    ledger = SqlAuditLedger(fresh_db)
+    ledger.append(_event(0))
+    _tamper(fresh_db, "UPDATE audit_events SET action = 'bogus' WHERE seq = 1")
+
+    with pytest.raises(AuditLedgerError):
+        ledger.entries()
+    assert ledger.verify().ok is False

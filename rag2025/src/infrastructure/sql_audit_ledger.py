@@ -182,14 +182,34 @@ def _broken(index: int, checked: int, legacy_checked: int, reason: str, last_has
     }
 
 
-class SqlAuditLedger:
-    """Audit ledger over the ``audit_events`` table. The constructor never connects."""
+def _driver_error(exc: psycopg.Error) -> AuditLedgerError:
+    """A driver error as an AuditLedgerError: SQLSTATE and constraint name only, never row content."""
+    if isinstance(exc, psycopg.errors.LockNotAvailable):
+        return AuditLedgerError("audit ledger busy")
+    if isinstance(exc, psycopg.OperationalError):
+        return AuditLedgerError("audit ledger database unavailable")
+    state = exc.sqlstate or "none"
+    if isinstance(exc, psycopg.errors.UniqueViolation):
+        constraint = exc.diag.constraint_name or "unknown"
+        return AuditLedgerError(f"audit row rejected by constraint {constraint} (sqlstate {state})")
+    return AuditLedgerError(f"audit ledger database error (sqlstate {state})")
 
-    def __init__(self, database_url: str | None = None) -> None:
+
+class SqlAuditLedger:
+    """Audit ledger over the ``audit_events`` table. The constructor never connects.
+
+    ``lock_timeout_ms`` bounds how long an append waits for the ``audit_chain``
+    advisory lock; a longer wait raises :class:`AuditLedgerError` ("audit ledger busy").
+    """
+
+    def __init__(self, database_url: str | None = None, *, lock_timeout_ms: int = 10_000) -> None:
         url = (database_url or os.getenv("DATABASE_URL") or "").strip()
         if not url:
             raise ValueError("SqlAuditLedger needs a database_url or DATABASE_URL")
+        if int(lock_timeout_ms) <= 0:
+            raise ValueError("lock_timeout_ms must be a positive number of milliseconds")
         self._conninfo = _conninfo(url)
+        self._lock_timeout_ms = int(lock_timeout_ms)
 
     @contextmanager
     def _connect(self):
@@ -198,8 +218,11 @@ class SqlAuditLedger:
             conn = psycopg.connect(self._conninfo, row_factory=dict_row, connect_timeout=10)
         except psycopg.OperationalError:
             raise AuditLedgerError("audit ledger database unavailable") from None
-        with conn:
-            yield conn
+        try:
+            with conn:
+                yield conn
+        except psycopg.Error as exc:
+            raise _driver_error(exc) from None
 
     # -- writing -------------------------------------------------------------
 
@@ -207,6 +230,7 @@ class SqlAuditLedger:
         """Extend the chain with ``event`` in one transaction under the ``audit_chain`` lock."""
         cols = _columns(event)
         with self._connect() as conn:
+            conn.execute(f"SET LOCAL lock_timeout = '{self._lock_timeout_ms}ms'")
             conn.execute(_LOCK_SQL)
             tail = conn.execute(_TAIL_SQL).fetchone()
             prev_hash = bytes(tail["entry_hash"]) if tail is not None else None
@@ -235,9 +259,32 @@ class SqlAuditLedger:
         with self._connect() as conn:
             return conn.execute(_SELECT_SQL).fetchall()
 
+    def _entries_and_skips(self) -> tuple[list[AuditEntry], int]:
+        entries: list[AuditEntry] = []
+        skipped = 0
+        for row in self._fetch():
+            try:
+                entries.append(_entry_from_row(row))
+            except AuditLedgerError:
+                if row["request_id"] != LEGACY_REQUEST_ID:
+                    raise
+                skipped += 1
+        return entries, skipped
+
     def entries(self) -> tuple[AuditEntry, ...]:
-        """Every entry, oldest first, in seq order."""
-        return tuple(_entry_from_row(row) for row in self._fetch())
+        """Every entry, oldest first, in seq order.
+
+        A migrated legacy row whose action or target kind is a migrator placeholder
+        (``'legacy-migration'``) cannot be rebuilt as an :class:`AuditEvent`. It is
+        skipped here, and in :meth:`get` and :meth:`find`, and counted by
+        :meth:`skipped_legacy_rows`. It is not replaced with a guessed enum value.
+        Non-legacy rows with an invalid enum raise :class:`AuditLedgerError`.
+        """
+        return tuple(self._entries_and_skips()[0])
+
+    def skipped_legacy_rows(self) -> int:
+        """How many legacy rows :meth:`entries` skips because they cannot be rebuilt."""
+        return self._entries_and_skips()[1]
 
     def get(self, event_id: str) -> AuditEntry | None:
         """The entry whose event has ``event_id``, or ``None``."""
