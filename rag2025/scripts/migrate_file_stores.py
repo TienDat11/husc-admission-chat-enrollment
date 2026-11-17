@@ -21,6 +21,35 @@ from src.infrastructure.canonical_record_store import (
 UNANCHORED_PREFIX = "unanchored:"
 UNANCHORED_BLOCKER = "UNANCHORED_DRAFT"
 
+# Top-level legacy keys that map to a canonical_records column or to
+# structured_payload['values']. Every other top-level key is kept verbatim
+# under structured_payload['legacy_extra'].
+MAPPED_KEYS = frozenset(
+    {
+        "record_id",
+        "version",
+        "record_type",
+        "admission_year",
+        "admission_round",
+        "status",
+        "authority_level",
+        "effective_from",
+        "effective_to",
+        "text",
+        "values",
+        "major_codes",
+        "admission_methods",
+        "source_document_id",
+        "source_url",
+        "source_page",
+        "supersedes",
+        "authored_by",
+        "published_at",
+    }
+)
+
+_MALFORMED = (KeyError, ValueError, TypeError, AttributeError)
+
 
 class MigrationError(Exception):
     """A legacy file could not be read; the whole run must abort."""
@@ -32,6 +61,14 @@ class RecordsLoad:
     id_map: dict[str, str] = field(default_factory=dict)
     quarantined_rows: int = 0
     source_rows: int = 0
+
+
+@dataclass(frozen=True)
+class _Version:
+    legacy: str
+    version: int
+    path: Path
+    payload: dict
 
 
 def _parse_legacy_id(record_id: str) -> tuple[str, str, int, str | None] | None:
@@ -81,10 +118,19 @@ def _read_json(path: Path) -> object:
         raise MigrationError(f"unreadable legacy file: {path} ({exc})") from exc
 
 
-def _record_files(records_dir: Path) -> list[tuple[str, int, Path, dict]]:
-    entries = []
+def _checked_key(version: _Version) -> str | None:
+    """derive_coordinate_key, with malformed payload values raised as MigrationError."""
+    try:
+        return derive_coordinate_key(version.payload)
+    except _MALFORMED as exc:
+        raise MigrationError(f"malformed legacy record: {version.path} ({exc})") from exc
+
+
+def _record_versions(records_dir: Path) -> list[_Version]:
+    """Every record version under ``records_dir``, validated, sorted by (legacy_id, version)."""
+    found: dict[tuple[str, int], _Version] = {}
     if not records_dir.is_dir():
-        return entries
+        return []
     for directory in sorted(records_dir.iterdir()):
         if not (
             directory.is_dir()
@@ -94,93 +140,141 @@ def _record_files(records_dir: Path) -> list[tuple[str, int, Path, dict]]:
             continue
         for path in sorted(directory.glob("v*.json")):
             payload = _read_json(path)
-            if not isinstance(payload, dict) or not payload.get("record_id"):
-                raise MigrationError(f"malformed legacy record: {path}")
-            entries.append((payload["record_id"], int(payload.get("version", 1)), path, payload))
-    entries.sort(key=lambda e: (e[0], e[1]))
-    return entries
+            if not isinstance(payload, dict):
+                raise MigrationError(f"malformed legacy record: {path} (not a JSON object)")
+            legacy = payload.get("record_id")
+            version = payload.get("version")
+            if not isinstance(legacy, str) or not legacy:
+                raise MigrationError(f"malformed legacy record: {path} (record_id)")
+            if type(version) is not int or version < 1:
+                raise MigrationError(f"malformed legacy record: {path} (version)")
+            published_at = payload.get("published_at")
+            if published_at is not None and not isinstance(published_at, str):
+                raise MigrationError(f"malformed legacy record: {path} (published_at)")
+            identity = (legacy, version)
+            if identity in found:
+                raise MigrationError(
+                    f"duplicate legacy version {legacy}@{version}: "
+                    f"{found[identity].path} and {path}"
+                )
+            found[identity] = _Version(legacy, version, path, payload)
+    return [found[identity] for identity in sorted(found)]
 
 
-def _anchor_problem(payload: dict, key: str | None) -> str | None:
-    if key is None:
-        return "coordinate"
-    if payload.get("status") == "published" and not (payload.get("source_document_id") or "").strip():
-        return "no_source"
-    return None
+def _add_blocker(structured: dict, name: str) -> None:
+    """Append a blocker to any existing list rather than overwriting it."""
+    blockers = list(structured.get("blockers") or [])
+    if name not in blockers:
+        blockers.append(name)
+    structured["blockers"] = blockers
 
 
 def load_records(root: str | Path) -> RecordsLoad:
-    """Read every legacy record version under ``root/records`` into canonical_records rows."""
-    entries = _record_files(Path(root) / RECORDS_DIRNAME)
-    keys = [derive_coordinate_key(payload) for _, _, _, payload in entries]
-    problems = [_anchor_problem(p, k) for (_, _, _, p), k in zip(entries, keys)]
+    """Read every legacy record version under ``root/records`` into canonical_records rows.
+
+    The decision is per legacy record_id: if any of its versions has a problem,
+    every version of it is quarantined under ``unanchored:<legacy_id>``.
+    """
+    versions = _record_versions(Path(root) / RECORDS_DIRNAME)
+    by_legacy: dict[str, list[_Version]] = {}
+    for version in versions:
+        by_legacy.setdefault(version.legacy, []).append(version)
+
+    # The key of a legacy record comes from its lowest version, so every
+    # version of that record lands on one coordinate.
+    legacy_key: dict[str, str | None] = {}
+    problem: dict[str, str] = {}
+    for legacy, group in by_legacy.items():
+        legacy_key[legacy] = _checked_key(group[0])
+        for version in group:
+            if _checked_key(version) is None:
+                problem[legacy] = "coordinate"
+            elif version.payload.get("status") == "published" and not (
+                version.payload.get("source_document_id") or ""
+            ).strip():
+                problem[legacy] = "no_source"
 
     # Coordinate duplicates between different legacy records: one winner keeps it.
-    groups: dict[str, list[int]] = {}
-    for index, (key, problem) in enumerate(zip(keys, problems)):
-        if key is not None and problem is None:
-            groups.setdefault(key, []).append(index)
-    for key, indexes in groups.items():
-        legacy_ids = {entries[i][0] for i in indexes}
-        if len(legacy_ids) < 2:
+    groups: dict[str, list[str]] = {}
+    for legacy in sorted(by_legacy):
+        key = legacy_key[legacy]
+        if legacy in problem or key is None:
             continue
-        published = [i for i in indexes if entries[i][3].get("status") == "published"]
+        groups.setdefault(key, []).append(legacy)
+    for key, legacies in groups.items():
+        if len(legacies) < 2:
+            continue
+        published = [
+            (legacy, max(
+                (v.payload.get("published_at") or "")
+                for v in by_legacy[legacy]
+                if v.payload.get("status") == "published"
+            ))
+            for legacy in legacies
+            if any(v.payload.get("status") == "published" for v in by_legacy[legacy])
+        ]
         if published:
-            winner_index = max(
-                published,
-                key=lambda i: entries[i][3].get("published_at") or "",
-            )
-            winner = entries[winner_index][0]
+            # max() keeps the first maximal item, so ties go to the sorted-first legacy id.
+            winner = max(published, key=lambda item: item[1])[0]
         else:
-            winner = entries[indexes[0]][0]
-        for i in indexes:
-            if entries[i][0] != winner:
-                problems[i] = "duplicate"
+            winner = legacies[0]
+        for legacy in legacies:
+            if legacy != winner:
+                problem[legacy] = "duplicate"
 
-    out = RecordsLoad(source_rows=len(entries))
-    for (legacy, version, _, payload), key, problem in zip(entries, keys, problems):
+    out = RecordsLoad(source_rows=len(versions))
+    for version in versions:
+        legacy = version.legacy
+        payload = version.payload
+        key = legacy_key[legacy]
         parsed = _parse_legacy_id(legacy)
         scope, subject = (parsed[0], parsed[1]) if parsed else ("", "")
-        structured = dict(payload.get("values") or {})
-        structured["legacy_record_id"] = legacy
-        if problem is None:
-            record_id = key
-            status = payload.get("status")
-            methods_hash = key.rsplit(":", 1)[1]
-        else:
-            record_id = f"{UNANCHORED_PREFIX}{legacy}"
-            status = "draft"
-            structured["blockers"] = [UNANCHORED_BLOCKER]
-            methods_hash = "all"
-            out.quarantined_rows += 1
-        out.id_map[legacy] = record_id
-        out.rows.append(
-            {
-                "record_id": record_id,
-                "version": version,
-                "coordinate_key": record_id,
-                "record_type": payload.get("record_type"),
-                "scope": scope,
-                "subject": subject,
-                "admission_year": payload.get("admission_year"),
-                "admission_round": payload.get("admission_round") or "all",
-                "methods_hash": methods_hash,
-                "status": status,
-                "authority_level": payload.get("authority_level"),
-                "effective_from": payload.get("effective_from"),
-                "effective_to": payload.get("effective_to"),
-                "text": payload.get("text"),
-                "structured_payload": structured,
-                "major_codes": list(payload.get("major_codes") or []),
-                "admission_methods": list(payload.get("admission_methods") or []),
-                "source_document_id": payload.get("source_document_id"),
-                "source_url": payload.get("source_url"),
-                "source_page": payload.get("source_page"),
-                "supersedes": payload.get("supersedes"),
-                "authored_by": payload.get("authored_by"),
-                "published_at": payload.get("published_at"),
-            }
-        )
+        structured: dict = {
+            "legacy_record_id": legacy,
+            "values": payload.get("values") or {},
+            "legacy_extra": {k: v for k, v in payload.items() if k not in MAPPED_KEYS},
+        }
+        try:
+            if legacy in problem or key is None:
+                record_id = f"{UNANCHORED_PREFIX}{legacy}"
+                status = "draft"
+                _add_blocker(structured, UNANCHORED_BLOCKER)
+                methods_hash = "all"
+                out.quarantined_rows += 1
+            else:
+                record_id = key
+                status = payload.get("status")
+                methods_hash = key.rsplit(":", 1)[1]
+            out.id_map[legacy] = record_id
+            out.rows.append(
+                {
+                    "record_id": record_id,
+                    "version": version.version,
+                    "coordinate_key": record_id,
+                    "record_type": payload.get("record_type"),
+                    "scope": scope,
+                    "subject": subject,
+                    "admission_year": payload.get("admission_year"),
+                    "admission_round": payload.get("admission_round") or "all",
+                    "methods_hash": methods_hash,
+                    "status": status,
+                    "authority_level": payload.get("authority_level"),
+                    "effective_from": payload.get("effective_from"),
+                    "effective_to": payload.get("effective_to"),
+                    "text": payload.get("text"),
+                    "structured_payload": structured,
+                    "major_codes": list(payload.get("major_codes") or []),
+                    "admission_methods": list(payload.get("admission_methods") or []),
+                    "source_document_id": payload.get("source_document_id"),
+                    "source_url": payload.get("source_url"),
+                    "source_page": payload.get("source_page"),
+                    "supersedes": payload.get("supersedes"),
+                    "authored_by": payload.get("authored_by"),
+                    "published_at": payload.get("published_at"),
+                }
+            )
+        except _MALFORMED as exc:
+            raise MigrationError(f"malformed legacy record: {version.path} ({exc})") from exc
     return out
 
 
@@ -204,20 +298,27 @@ def load_retractions(root: str | Path) -> list[dict]:
     for path in sorted(base.glob("*/*.json")):
         payload = _read_json(path)
         if not isinstance(payload, dict):
-            raise MigrationError(f"malformed retraction file: {path}")
-        target = payload["target_record_id"]
-        claim = payload["superseding_version_key"]
-        superseding_id, superseding_version = split_version_key(claim)
-        rows.append(
-            {
-                "retraction_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"{target}|{claim}")),
-                "target_record_id": target,
-                "superseded_version": None,
-                "superseding_record_id": superseding_id,
-                "superseding_version": superseding_version,
-                "revoked_by": payload.get("retracted_by"),
-                "revoked_at": payload.get("at"),
-                "reason": payload.get("reason"),
-            }
-        )
+            raise MigrationError(f"malformed retraction file: {path} (not a JSON object)")
+        target = payload.get("target_record_id")
+        claim = payload.get("superseding_version_key")
+        if not isinstance(target, str) or not target or not isinstance(claim, str) or not claim:
+            raise MigrationError(
+                f"malformed retraction file: {path} (target_record_id / superseding_version_key)"
+            )
+        try:
+            superseding_id, superseding_version = split_version_key(claim)
+            rows.append(
+                {
+                    "retraction_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"{target}|{claim}")),
+                    "target_record_id": target,
+                    "superseded_version": None,
+                    "superseding_record_id": superseding_id,
+                    "superseding_version": superseding_version,
+                    "revoked_by": payload.get("retracted_by"),
+                    "revoked_at": payload.get("at"),
+                    "reason": payload.get("reason"),
+                }
+            )
+        except _MALFORMED as exc:
+            raise MigrationError(f"malformed retraction file: {path} ({exc})") from exc
     return rows
