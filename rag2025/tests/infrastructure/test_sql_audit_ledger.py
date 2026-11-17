@@ -133,6 +133,27 @@ def test_unreachable_database_is_a_ledger_error_without_secrets():
         assert secret not in message
 
 
+@pytest.mark.parametrize("bad", [True, False, 1.5, "300", None])
+def test_lock_timeout_must_be_a_real_positive_int(bad):
+    with pytest.raises(ValueError):
+        SqlAuditLedger("postgresql+psycopg://rag@localhost:5439/husc", lock_timeout_ms=bad)
+
+
+def test_non_operational_driver_error_on_connect_is_a_ledger_error(monkeypatch):
+    def refuse(*args, **kwargs):
+        raise psycopg.ProgrammingError("rag secret-detail")
+
+    monkeypatch.setattr(psycopg, "connect", refuse)
+    ledger = SqlAuditLedger("postgresql+psycopg://rag:hunter2secret@localhost:5439/husc")
+    with pytest.raises(AuditLedgerError) as info:
+        ledger.verify()
+    message = str(info.value)
+    assert "unavailable" in message
+    for secret in ("hunter2secret", "secret-detail", "localhost", "rag"):
+        assert secret not in message
+    assert info.value.__cause__ is None
+
+
 # -- PostgreSQL ----------------------------------------------------------------
 
 
@@ -441,3 +462,33 @@ def test_invalid_enum_in_a_sql_row_raises_from_entries(fresh_db):
     with pytest.raises(AuditLedgerError):
         ledger.entries()
     assert ledger.verify().ok is False
+
+
+def test_verify_detailed_reports_last_legacy_hash_and_skipped_rows(tmp_path, fresh_db):
+    _file_ledger(tmp_path)
+    _apply(tmp_path, fresh_db)
+    ledger = SqlAuditLedger(fresh_db)
+    ledger.append(_event(10))
+
+    detailed = ledger.verify_detailed()
+    legacy_entries = [entry for entry in ledger.entries() if entry.seq <= 3]
+    assert detailed["legacy_last_hash"] == legacy_entries[-1].entry_hash
+    assert detailed["skipped_legacy_rows"] == 0
+
+    _tamper(
+        fresh_db,
+        "UPDATE audit_events SET action = 'legacy-migration', aggregate_type = 'legacy-migration' WHERE seq = 1",
+    )
+    detailed = ledger.verify_detailed()
+    assert detailed["skipped_legacy_rows"] == 1
+    assert detailed["legacy_last_hash"] == legacy_entries[-1].entry_hash
+
+
+def test_verify_detailed_without_legacy_rows_has_no_legacy_hash(fresh_db):
+    ledger = SqlAuditLedger(fresh_db)
+    assert ledger.verify_detailed()["legacy_last_hash"] is None
+    ledger.append(_event(0))
+    detailed = ledger.verify_detailed()
+    assert detailed["legacy_last_hash"] is None
+    assert detailed["legacy_checked"] == 0
+    assert detailed["skipped_legacy_rows"] == 0

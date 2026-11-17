@@ -171,7 +171,14 @@ def _entry_from_row(row: dict[str, Any]) -> AuditEntry:
     )
 
 
-def _broken(index: int, checked: int, legacy_checked: int, reason: str, last_hash: str | None) -> dict[str, Any]:
+def _broken(
+    index: int,
+    checked: int,
+    legacy_checked: int,
+    reason: str,
+    last_hash: str | None,
+    legacy_last_hash: str | None,
+) -> dict[str, Any]:
     return {
         "ok": False,
         "checked": checked,
@@ -179,7 +186,19 @@ def _broken(index: int, checked: int, legacy_checked: int, reason: str, last_has
         "broken_index": index,
         "reason": reason,
         "last_hash": last_hash,
+        "legacy_last_hash": legacy_last_hash,
     }
+
+
+def _is_skipped(row: dict[str, Any]) -> bool:
+    """A legacy row :meth:`SqlAuditLedger.entries` cannot rebuild as an event."""
+    if row["request_id"] != LEGACY_REQUEST_ID:
+        return False
+    try:
+        _entry_from_row(row)
+    except AuditLedgerError:
+        return True
+    return False
 
 
 def _driver_error(exc: psycopg.Error) -> AuditLedgerError:
@@ -206,17 +225,17 @@ class SqlAuditLedger:
         url = (database_url or os.getenv("DATABASE_URL") or "").strip()
         if not url:
             raise ValueError("SqlAuditLedger needs a database_url or DATABASE_URL")
-        if int(lock_timeout_ms) <= 0:
-            raise ValueError("lock_timeout_ms must be a positive number of milliseconds")
+        if not isinstance(lock_timeout_ms, int) or isinstance(lock_timeout_ms, bool) or lock_timeout_ms <= 0:
+            raise ValueError("lock_timeout_ms must be a positive int number of milliseconds")
         self._conninfo = _conninfo(url)
-        self._lock_timeout_ms = int(lock_timeout_ms)
+        self._lock_timeout_ms = lock_timeout_ms
 
     @contextmanager
     def _connect(self):
         # Errors carry no host, user, password or SQL text: the caller never sees the URL.
         try:
             conn = psycopg.connect(self._conninfo, row_factory=dict_row, connect_timeout=10)
-        except psycopg.OperationalError:
+        except psycopg.Error:
             raise AuditLedgerError("audit ledger database unavailable") from None
         try:
             with conn:
@@ -325,38 +344,48 @@ class SqlAuditLedger:
         """Walk the chain in seq order and report the first break.
 
         Returns ``ok``, ``checked``, ``legacy_checked``, ``broken_index``
-        (0-based, in seq order), ``reason`` and ``last_hash``. Never builds an
-        :class:`AuditEvent`, so a row with an unknown enum value is a break, not a crash.
+        (0-based, in seq order), ``reason``, ``last_hash``, ``legacy_last_hash``
+        (the entry hash of the last legacy row walked, or ``None``) and
+        ``skipped_legacy_rows``. Never builds an :class:`AuditEvent`, so a row
+        with an unknown enum value is a break, not a crash.
         """
+        rows = self._fetch()
+        result = self._walk(rows)
+        result["skipped_legacy_rows"] = sum(1 for row in rows if _is_skipped(row))
+        return result
+
+    def _walk(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
         checked = 0
         legacy_checked = 0
         prev: bytes | None = None
         prev_seq: int | None = None
         seen_sql_row = False
         last_hash: str | None = None
+        legacy_last_hash: str | None = None
 
-        for index, row in enumerate(self._fetch()):
+        for index, row in enumerate(rows):
             legacy = row["request_id"] == LEGACY_REQUEST_ID
             if legacy and seen_sql_row:
-                return _broken(index, checked, legacy_checked, "legacy row after a non-legacy row", last_hash)
+                return _broken(index, checked, legacy_checked, "legacy row after a non-legacy row", last_hash, legacy_last_hash)
             if not legacy:
                 seen_sql_row = True
             seq = int(row["seq"])
             if prev_seq is not None and seq <= prev_seq:
-                return _broken(index, checked, legacy_checked, "seq is not strictly increasing", last_hash)
+                return _broken(index, checked, legacy_checked, "seq is not strictly increasing", last_hash, legacy_last_hash)
             stored_prev = bytes(row["prev_hash"]) if row["prev_hash"] is not None else None
             if (stored_prev or b"") != (prev or b""):
-                return _broken(index, checked, legacy_checked, "prev_hash does not match the preceding entry", last_hash)
+                return _broken(index, checked, legacy_checked, "prev_hash does not match the preceding entry", last_hash, legacy_last_hash)
             entry_hash = bytes(row["entry_hash"])
             if legacy:
                 legacy_checked += 1
+                legacy_last_hash = entry_hash.hex()
             else:
                 try:
                     expected = compute_entry_hash(prev, canonical_payload(dict(row)))
                 except (KeyError, TypeError, ValueError, AttributeError):
-                    return _broken(index, checked, legacy_checked, "row content cannot be hashed", last_hash)
+                    return _broken(index, checked, legacy_checked, "row content cannot be hashed", last_hash, legacy_last_hash)
                 if entry_hash != expected:
-                    return _broken(index, checked, legacy_checked, "entry_hash does not match row content", last_hash)
+                    return _broken(index, checked, legacy_checked, "entry_hash does not match row content", last_hash, legacy_last_hash)
             checked += 1
             prev = entry_hash
             prev_seq = seq
@@ -369,6 +398,7 @@ class SqlAuditLedger:
             "broken_index": None,
             "reason": None,
             "last_hash": last_hash,
+            "legacy_last_hash": legacy_last_hash,
         }
 
     def verify(self) -> ChainVerification:
