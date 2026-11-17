@@ -1457,6 +1457,7 @@ def _write_audit(cur, t: _Tally, rows: list[dict]) -> None:
             "before_version": r["before_version"],
             "after_version": r["after_version"],
             "release_id": r["release_id"],
+            "request_id": r["request_id"],
             "created_at": _ts(t, store, "created_at", r["created_at"]),
             "prev_hash": r["prev_hash"],
             "entry_hash": r["entry_hash"],
