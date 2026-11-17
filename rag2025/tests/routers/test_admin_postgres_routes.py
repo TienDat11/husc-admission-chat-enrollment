@@ -135,3 +135,35 @@ def test_postgres_lifecycle_writes_never_create_the_file_stores(pg_client, pg_ro
     assert created.status_code in (200, 201), created.text
     assert not (pg_root / "records").exists()
     assert not (pg_root / "audit" / "ledger.jsonl").exists()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "SqlRecordStore keeps a predecessor draft open (uq_one_open_draft allows one open "
+        "draft/review/approved version; only a published predecessor is archived), so "
+        "submit after create raises a version conflict under postgres. Blocker for the "
+        "workflow; tracked as a concern, not fixed in 4c."
+    ),
+)
+def test_create_submit_approve_publish_under_postgres_leaves_file_stores_alone(pg_client, pg_app, pg_root):
+    record_id = _record()["record_id"]
+    created = pg_client.post("/admin/records", json={"record": _record()}, headers=_headers("editor"))
+    assert created.status_code in (200, 201), created.text
+
+    for action, expected_version, role in (
+        ("submit", 1, "editor"),
+        ("approve", 2, "reviewer"),
+        ("publish", 3, "publisher"),
+    ):
+        response = pg_client.post(
+            f"/admin/records/{record_id}/transitions",
+            json={"action": action, "expected_version": expected_version},
+            headers=_headers(role),
+        )
+        assert response.status_code == 200, (action, response.text)
+
+    assert len(pg_app.state.audit_ledger.entries()) >= 4
+    assert pg_client.get("/admin/audit/verify", headers=_headers("viewer")).json()["ok"] is True
+    assert not (pg_root / "records").exists()
+    assert not (pg_root / "audit" / "ledger.jsonl").exists()
