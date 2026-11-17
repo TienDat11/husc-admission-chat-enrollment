@@ -78,6 +78,22 @@ async def shutdown(services: AppServices) -> None:
     pass
 
 
+def _postgres_database_url() -> str:
+    """DATABASE_URL for the postgres backend, or a RuntimeError naming only the setting."""
+    try:
+        from src.infrastructure.db import database_url
+    except ModuleNotFoundError:
+        from rag2025.src.infrastructure.db import (  # type: ignore
+            database_url,
+        )
+    try:
+        return database_url()
+    except RuntimeError:
+        raise RuntimeError(
+            "STORE_BACKEND=postgres requires DATABASE_URL to be set"
+        ) from None
+
+
 def _build_record_store(settings: RAGSettings, root: Path, file_store_cls):
     """Pick the canonical record store named by ``settings.STORE_BACKEND``.
 
@@ -88,25 +104,58 @@ def _build_record_store(settings: RAGSettings, root: Path, file_store_cls):
     """
     if settings.STORE_BACKEND == "postgres":
         try:
-            from src.infrastructure.db import database_url
             from src.infrastructure.sql_record_store import SqlRecordStore
         except ModuleNotFoundError:
-            from rag2025.src.infrastructure.db import (  # type: ignore
-                database_url,
-            )
             from rag2025.src.infrastructure.sql_record_store import (  # type: ignore
                 SqlRecordStore,
             )
-        try:
-            url = database_url()
-        except RuntimeError:
-            raise RuntimeError(
-                "STORE_BACKEND=postgres requires DATABASE_URL to be set"
-            ) from None
+        url = _postgres_database_url()
         logger.info("canonical record store backend: postgres")
         return SqlRecordStore(url)
     logger.info("canonical record store backend: file")
     return file_store_cls(root)
+
+
+def _build_audit_ledger(settings: RAGSettings, root: Path, file_ledger_cls):
+    """The audit ledger for ``settings.STORE_BACKEND``.
+
+    ``file`` is ``file_ledger_cls(root/"audit"/"ledger.jsonl")``, unchanged.
+    ``postgres`` is ``SqlAuditLedger`` over DATABASE_URL, the same URL and the
+    same startup error as the record store; its constructor does not connect.
+    """
+    if settings.STORE_BACKEND == "postgres":
+        try:
+            from src.infrastructure.sql_audit_ledger import SqlAuditLedger
+        except ModuleNotFoundError:
+            from rag2025.src.infrastructure.sql_audit_ledger import (  # type: ignore
+                SqlAuditLedger,
+            )
+        return SqlAuditLedger(_postgres_database_url())
+    return file_ledger_cls(root / "audit" / "ledger.jsonl")
+
+
+def _attach_postgres_file_state(app, root: Path) -> None:
+    """Under postgres: the identity store stays file-backed, and stale file stores are reported.
+
+    Identities are file-backed until their own unit (Ruling W), so the store is
+    attached explicitly here and the lazy ``identity_store_for`` path never reads
+    ``.root`` of a SqlRecordStore. Pre-cutover ``records/`` and ``audit/ledger.jsonl``
+    under the root are left alone, but the operator is told they are no longer
+    the source of truth: nothing under postgres writes to them.
+    """
+    try:
+        from src.infrastructure.identity_store import IdentityStore
+    except ModuleNotFoundError:
+        from rag2025.src.infrastructure.identity_store import (  # type: ignore
+            IdentityStore,
+        )
+    app.state.identity_store = IdentityStore(root)
+    for stale in (root / "records", root / "audit" / "ledger.jsonl"):
+        if stale.exists():
+            logger.warning(
+                "STORE_BACKEND=postgres: ignoring pre-cutover file store {} (not written)",
+                stale.name,
+            )
 
 
 def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None):
@@ -115,9 +164,11 @@ def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None
     Ticket 12: the admin lifecycle endpoints read their store from app state
     (same injection pattern as reload-table's ``state.request_tracker``), so
     something has to construct it at startup. The store is file-backed
-    (``<root>/records/rec-<encoded-id>/vNNNN.json``), so no database is needed
-    and spec Further-Note #10 — which DB the canonical store runs on — does not
-    block this.
+    (``<root>/records/rec-<encoded-id>/vNNNN.json``) under the default
+    ``STORE_BACKEND=file``, and ``SqlRecordStore`` over DATABASE_URL under
+    ``STORE_BACKEND=postgres``. The audit ledger follows the same switch
+    (``audit_events`` table versus ``<root>/audit/ledger.jsonl``). The outbox,
+    releases, conflict queue and source documents stay file-backed in both modes.
 
     ``CANONICAL_STORE_ROOT`` is the configured root; the directory is created
     if missing. A failure here is raised, not swallowed: a store that silently
@@ -222,6 +273,8 @@ def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None
 
     store = _build_record_store(resolved, root, CanonicalRecordStore)
     app.state.canonical_record_store = store
+    if resolved.STORE_BACKEND == "postgres":
+        _attach_postgres_file_state(app, root)
 
     # Ticket 14: the append-only audit ledger. It lives beside the records
     # under the same root, so the two are published and rolled back together
@@ -230,7 +283,7 @@ def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None
     # on app.state so the read-only audit router can serve them; that router
     # answers 503 when this is absent, so an unwired app refuses rather than
     # reporting an empty history.
-    ledger = AuditLedger(root / "audit" / "ledger.jsonl")
+    ledger = _build_audit_ledger(resolved, root, AuditLedger)
     app.state.audit_ledger = ledger
 
     # Ticket 15: the re-index outbox. Constructed here, at startup, rather than
