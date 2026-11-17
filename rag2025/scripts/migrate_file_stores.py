@@ -1,7 +1,8 @@
 """Migrate legacy file stores into PostgreSQL rows (U3, Task 2a slice).
 
-Loaders are pure functions: store root in, row dicts out. Nothing here
-connects to a database or writes to the legacy store.
+Loaders are pure functions: store root in, row dicts out. Only the real run
+(apply_to_database) connects to PostgreSQL; nothing here writes to the legacy store
+except --scrub-identities after a committed real run.
 """
 from __future__ import annotations
 
@@ -9,12 +10,16 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
+
+import psycopg
+from psycopg.types.json import Jsonb
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -935,6 +940,606 @@ def build_report(root: str | Path) -> dict:
     return report
 
 
+# ---- Task 3a (U3): real run -- one transaction, idempotent, PostgreSQL ----
+# Every store is written inside one transaction. Re-running inserts nothing new:
+# each INSERT ... ON CONFLICT (natural key) DO NOTHING, and no existing row is updated.
+
+LEGACY_ACTOR = "legacy-migration"
+LEGACY_REASON = "legacy migration: no reason recorded"
+LEGACY_REASON_PREFIX = "legacy migration: "
+_ROLE_FALLBACK = "viewer"  # an identity with no role gets the least privilege
+_OUTBOX_EVENT_TYPES = {
+    "upsert": "upsert",
+    "publish": "upsert",
+    "tombstone": "tombstone",
+    "supersede": "supersede",
+    "revoke_supersession": "revoke_supersession",
+}
+_SCRUBBED_CREDENTIAL = re.compile(r"^scrubbed:[0-9a-f]{64}$")
+# report store -> (table, key column, key cast) for the post-commit PostgreSQL re-count.
+_TARGET_TABLES = {
+    "source_documents": ("source_documents", "document_id", "text"),
+    "identities": ("admin_identities", "subject_id", "uuid"),
+    "releases": ("releases", "release_id", "text"),
+    "outbox": ("reindex_outbox", "event_id", "uuid"),
+    "conflicts": ("conflict_entries", "conflict_id", "text"),
+    "idempotency": ("idempotency_keys", "key", "text"),
+    "unanswered": ("unanswered_questions", "trace_id", "text"),
+    "feedback": ("chat_feedback", "feedback_id", "uuid"),
+    "retractions": ("supersession_retractions", "retraction_id", "uuid"),
+    "audit": ("audit_events", "event_id", "uuid"),
+}
+
+
+def sync_database_url(url: str) -> str:
+    """DATABASE_URL (asyncpg form) -> the psycopg form used by the real run."""
+    return url.strip().replace("+asyncpg", "+psycopg", 1)
+
+
+def _conninfo(url: str) -> str:
+    # libpq takes postgresql://, not the SQLAlchemy dialect form.
+    return url.replace("+psycopg", "", 1)
+
+
+class _Tally:
+    def __init__(self, now: datetime) -> None:
+        self.now = now
+        self.defaulted: dict[str, dict[str, int]] = {}
+        self.inserted: dict[str, int] = {}
+        self.keys: dict[str, set] = {}
+        self.skipped_idempotency = 0
+        self.dangling = 0
+
+    def default(self, store: str, column: str) -> None:
+        cols = self.defaulted.setdefault(store, {})
+        cols[column] = cols.get(column, 0) + 1
+
+    def seen(self, store: str, key: object) -> None:
+        self.keys.setdefault(store, set()).add(key)
+
+
+def _utc(value: object, where: str) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value))
+        except ValueError as exc:
+            raise MigrationError(f"{where} is not an ISO-8601 timestamp") from exc
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _ts(t: _Tally, store: str, column: str, value: object, *siblings: object) -> datetime:
+    """NOT NULL timestamp: the value, else the nearest sibling timestamp on the row, else the run's now."""
+    found = _utc(value, f"{store}.{column}")
+    if found is not None:
+        return found
+    t.default(store, column)
+    for sibling in siblings:
+        found = _utc(sibling, f"{store}.{column}")
+        if found is not None:
+            return found
+    return t.now
+
+
+def _day(value: object, where: str) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError as exc:
+        raise MigrationError(f"{where} is not a date") from exc
+
+
+def _text(t: _Tally, store: str, column: str, value: object, fallback: str) -> object:
+    if value is None:
+        t.default(store, column)
+        return fallback
+    return value
+
+
+def _write(cur, t: _Tally, store: str, table: str, row: dict, target: str, key: object,
+           overriding: str = "") -> None:
+    columns = ", ".join(row)
+    holes = ", ".join(f"%({name})s" for name in row)
+    sql = f"INSERT INTO {table} ({columns}) {overriding}VALUES ({holes}) ON CONFLICT {target} DO NOTHING"
+    try:
+        cur.execute(sql, row)
+    except psycopg.Error as exc:
+        reason = (exc.diag.message_primary if exc.diag else None) or type(exc).__name__
+        raise MigrationError(f"{store}: {key}: rejected by PostgreSQL ({reason})") from exc
+    if cur.rowcount == 1:
+        t.inserted[store] = t.inserted.get(store, 0) + 1
+
+
+def _write_source_documents(cur, t: _Tally, rows: list[dict]) -> None:
+    store = "source_documents"
+    for r in rows:
+        doc_id = r["document_id"]
+        location = doc_id.partition("#")[0]
+        kind = r["kind"]
+        if kind is None:
+            t.default(store, "kind")
+            kind = "url" if location.startswith(("http://", "https://")) else "pdf"
+        sha = r["sha256"]
+        if sha is None:
+            t.default(store, "sha256")
+            sha = hashlib.sha256(doc_id.encode("utf-8")).digest()
+        row = {
+            "document_id": doc_id,
+            "sha256": sha,
+            "kind": kind,
+            "storage_uri": _text(t, store, "storage_uri", r["storage_uri"], location),
+            "original_name": r["original_name"],
+            "status": _text(t, store, "status", r["status"], "uploaded"),
+            "uploaded_by": _text(t, store, "uploaded_by", r["uploaded_by"], LEGACY_ACTOR),
+            "created_at": _ts(t, store, "created_at", r["created_at"], r["updated_at"]),
+            "updated_at": _ts(t, store, "updated_at", r["updated_at"], r["created_at"]),
+        }
+        t.seen(store, doc_id)
+        _write(cur, t, store, "source_documents", row, "(document_id)", doc_id)
+
+
+def _write_identities(cur, t: _Tally, rows: list[dict]) -> None:
+    store = "identities"
+    for r in rows:
+        subject = r["subject_id"]
+        actor = r["actor_id"]
+        if actor is None:
+            t.default(store, "actor_id")
+            actor = f"legacy:{subject}"
+        role = r["role"]
+        if role is None:
+            t.default(store, "role")
+            role = _ROLE_FALLBACK
+        created = _ts(t, store, "created_at", None)
+        row = {
+            "subject_id": subject,
+            "actor_id": actor,
+            "role": role,
+            "password_hash": r["password_hash"],
+            "header_token_hash": r["header_token_hash"],
+            "disabled": r["disabled"],
+            "created_by": _text(t, store, "created_by", r["created_by"], LEGACY_ACTOR),
+            "created_at": created,
+            "updated_at": _ts(t, store, "updated_at", None, created),
+        }
+        t.seen(store, subject)
+        _write(cur, t, store, "admin_identities", row, "(subject_id)", actor)
+
+
+def _parents_first(rows: list[dict], parent_of: dict) -> list[dict]:
+    loaded = {r["release_id"] for r in rows}
+    done: set[str] = set()
+    order: list[dict] = []
+    pending = list(rows)
+    while pending:
+        ready = [
+            r for r in pending
+            if parent_of[r["release_id"]] not in loaded or parent_of[r["release_id"]] in done
+        ]
+        if not ready:
+            raise MigrationError("releases: parent_release_id forms a cycle")
+        order.extend(ready)
+        done.update(r["release_id"] for r in ready)
+        pending = [r for r in pending if r["release_id"] not in done]
+    return order
+
+
+def _write_releases(cur, t: _Tally, rows: list[dict], known: set[str]) -> None:
+    store = "releases"
+    for r in rows:
+        if r["release_id"] is None:
+            raise MigrationError(f"{store}: a release manifest has no release_id")
+    parent_of: dict[str, str | None] = {}
+    for r in rows:
+        parent = r["parent_release_id"]
+        if parent is not None and parent not in known:
+            t.default(store, "parent_release_id")
+            parent = None
+        parent_of[r["release_id"]] = parent
+    for r in _parents_first(rows, parent_of):
+        rid = r["release_id"]
+        stamp = r["corpus_stamp"]
+        if stamp is None:
+            t.default(store, "corpus_stamp")
+            stamp = {}
+        row = {
+            "release_id": rid,
+            "parent_release_id": parent_of[rid],
+            "corpus_stamp": Jsonb(stamp),
+            "lancedb_table": _text(t, store, "lancedb_table", r["lancedb_table"], LEGACY_ACTOR),
+            "lancedb_version": r["lancedb_version"],
+            "graphml_uri": r["graphml_uri"],
+            "manifest": Jsonb(r["manifest"]),
+            "status": _text(t, store, "status", r["status"], "ready"),
+            "created_by": _text(t, store, "created_by", r["created_by"], LEGACY_ACTOR),
+            "created_at": _ts(t, store, "created_at", r["created_at"]),
+        }
+        t.seen(store, rid)
+        _write(cur, t, store, "releases", row, "(release_id)", rid)
+
+
+def _write_records(cur, t: _Tally, rows: list[dict], known_docs: set[str]) -> None:
+    store = "records"
+    for r in rows:
+        key = f"{r['record_id']}@{r['version']}"
+        structured = dict(r["structured_payload"])
+        source = r["source_document_id"]
+        if source is not None and source not in known_docs:
+            structured["legacy_source_document_id"] = source
+            source = None
+            t.dangling += 1
+            if r["status"] == "published":
+                raise MigrationError(
+                    f"{store}: {key}: published record cites source document {structured['legacy_source_document_id']!r}, "
+                    "which is not in source_documents"
+                )
+        status = r["status"]
+        if status is None:
+            t.default(store, "status")
+            status = "draft"
+        year = r["admission_year"]
+        if year is None:
+            t.default(store, "admission_year")
+            year = t.now.year
+        archive = None
+        if status == "archived":
+            t.default(store, "archive_reason")
+            archive = "archived"
+        effective_from = _day(r["effective_from"], f"{store}.effective_from")
+        if effective_from is None:
+            t.default(store, "effective_from")
+            effective_from = date(year, 1, 1)
+        published = _utc(r["published_at"], f"{store}.published_at")
+        created = _ts(t, store, "created_at", None, published)
+        row = {
+            "record_id": r["record_id"],
+            "version": r["version"],
+            "coordinate_key": r["coordinate_key"],
+            "record_type": _text(t, store, "record_type", r["record_type"], LEGACY_ACTOR),
+            "scope": r["scope"],
+            "subject": r["subject"],
+            "admission_year": year,
+            "admission_round": r["admission_round"],
+            "methods_hash": r["methods_hash"],
+            "status": status,
+            "archive_reason": archive,
+            "authority_level": _text(t, store, "authority_level", r["authority_level"], LEGACY_ACTOR),
+            "effective_from": effective_from,
+            "effective_to": _day(r["effective_to"], f"{store}.effective_to"),
+            "text": _text(t, store, "text", r["text"], ""),
+            "structured_payload": Jsonb(structured),
+            "major_codes": Jsonb(r["major_codes"]),
+            "admission_methods": Jsonb(r["admission_methods"]),
+            "source_document_id": source,
+            "source_url": r["source_url"],
+            "source_page": r["source_page"],
+            "supersedes": r["supersedes"],
+            "authored_by": _text(t, store, "authored_by", r["authored_by"], LEGACY_ACTOR),
+            "published_at": published,
+            "created_at": created,
+            "updated_at": _ts(t, store, "updated_at", None, created),
+        }
+        t.seen(store, (r["record_id"], r["version"]))
+        _write(cur, t, store, "canonical_records", row, "(record_id, version)", key)
+
+
+def _write_outbox(cur, t: _Tally, rows: list[dict], known: set[str]) -> None:
+    store = "outbox"
+    for r in rows:
+        event_id = r["event_id"]
+        if event_id is None:
+            raise MigrationError(f"{store}: an outbox entry has no entry_id")
+        payload = r["payload"]
+        event_type = r["event_type"]
+        if event_type is None:
+            t.default(store, "event_type")
+            event_type = _OUTBOX_EVENT_TYPES.get(payload.get("action"), "upsert")
+        release = r["release_id"]
+        if release is not None and release not in known:
+            t.default(store, "release_id")
+            release = None
+        version = r["record_version"]
+        if version is None:
+            t.default(store, "record_version")
+            version = 1
+        row = {
+            "event_id": event_id,
+            "record_id": _text(t, store, "record_id", r["record_id"], LEGACY_ACTOR),
+            "record_version": version,
+            "event_type": event_type,
+            "payload": Jsonb(payload),
+            "release_id": release,
+            "available_at": _ts(t, store, "available_at", r["available_at"]),
+        }
+        t.seen(store, event_id)
+        _write(cur, t, store, "reindex_outbox", row, "(event_id)", event_id)
+
+
+def _write_conflicts(cur, t: _Tally, rows: list[dict]) -> None:
+    store = "conflicts"
+    for r in rows:
+        cid = r["conflict_id"]
+        if cid is None:
+            raise MigrationError(f"{store}: an item has no conflict_id")
+        legacy = r["field_diffs"]["legacy_item"]
+        record_ids = legacy.get("record_ids")
+        if record_ids is None:
+            t.default(store, "record_ids")
+            record_ids = []
+        row = {
+            "conflict_id": cid,
+            "coordinate_key": _text(t, store, "coordinate_key", legacy.get("coordinate_key"), LEGACY_ACTOR),
+            "record_ids": Jsonb(record_ids),
+            "old_record_id": legacy.get("old_record_id"),
+            "new_record_id": legacy.get("new_record_id"),
+            "conflict_type": _text(t, store, "conflict_type", legacy.get("conflict_type"), LEGACY_ACTOR),
+            "field_diffs": Jsonb(r["field_diffs"]),
+            "status": _text(t, store, "status", r["status"], "open"),
+            "resolution": r["resolution"],
+            "override_reason": r["override_reason"],
+            "resolved_by": r["resolved_by"],
+            "created_at": _ts(t, store, "created_at", legacy.get("created_at"), r["resolved_at"]),
+            "resolved_at": _utc(r["resolved_at"], f"{store}.resolved_at"),
+        }
+        t.seen(store, cid)
+        _write(cur, t, store, "conflict_entries", row, "(conflict_id)", cid)
+
+
+def _write_idempotency(cur, t: _Tally, rows: list[dict]) -> None:
+    store = "idempotency"
+    for r in rows:
+        if r["status_code"] is None:
+            # An in_progress claim has no response: it is ephemeral and never migrated.
+            t.skipped_idempotency += 1
+            continue
+        created = _ts(t, store, "created_at", r["created_at"])
+        response = r["response_body"]
+        if response is None:
+            t.default(store, "response_body")
+            response = {}
+        row = {
+            "key": r["key"],
+            "scope": _text(t, store, "scope", r["scope"], LEGACY_ACTOR),
+            "request_hash": _text(t, store, "request_hash", r["request_hash"], LEGACY_ACTOR),
+            "status_code": r["status_code"],
+            "response_body": Jsonb(response),
+            "created_at": created,
+            "expires_at": _ts(t, store, "expires_at", None, created),
+        }
+        t.seen(store, r["key"])
+        _write(cur, t, store, "idempotency_keys", row, "(key)", r["key"])
+
+
+def _write_unanswered(cur, t: _Tally, rows: list[dict]) -> None:
+    store = "unanswered"
+    for r in rows:
+        trace = r["trace_id"]
+        question = r["question"]
+        if question is None:
+            t.default(store, "question")
+            question = ""
+        normalized = r["normalized_hash"]
+        if normalized is None:
+            t.default(store, "normalized_hash")
+            normalized = hashlib.sha256(question.strip().lower().encode("utf-8")).hexdigest()
+        asked = _ts(t, store, "asked_at", r["asked_at"], r["resolved_at"])
+        status_code = r["status_code"]
+        if status_code is None:
+            t.default(store, "status_code")
+            status_code = LEGACY_ACTOR
+        row = {
+            "trace_id": trace,
+            "question": question,
+            "normalized_hash": normalized,
+            "asked_at": asked,
+            "route": _text(t, store, "route", r["route"], LEGACY_ACTOR),
+            "status_code": str(status_code),
+            "resolved_at": _utc(r["resolved_at"], f"{store}.resolved_at"),
+            "resolved_by_record_id": r["resolved_by_record_id"],
+            "out_of_scope": r["out_of_scope"],
+            "sla_due_at": _ts(t, store, "sla_due_at", None, asked),
+        }
+        t.seen(store, trace)
+        _write(cur, t, store, "unanswered_questions", row, "(trace_id)", trace)
+
+
+def _write_feedback(cur, t: _Tally, rows: list[dict]) -> None:
+    store = "feedback"
+    for r in rows:
+        if r["helpful"] is None:
+            raise MigrationError(f"{store}: trace {r['trace_id']!r} has no 'helpful' value")
+        # The legacy row has no id: derive a stable one so a re-run finds the same row.
+        identity = _canonical_json([r["trace_id"], r["helpful"], r["reason"], r["answered_at"]])
+        feedback_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "husc-feedback:" + identity))
+        t.default(store, "feedback_id")
+        row = {
+            "feedback_id": feedback_id,
+            "trace_id": r["trace_id"],
+            "helpful": r["helpful"],
+            "reason": r["reason"],
+            "answered_at": _ts(t, store, "answered_at", r["answered_at"]),
+            "linked_item": r["linked_item"],
+            "release_id": r["release_id"],
+        }
+        t.seen(store, feedback_id)
+        _write(cur, t, store, "chat_feedback", row, "(feedback_id)", feedback_id)
+
+
+def _write_retractions(cur, t: _Tally, rows: list[dict], id_map: dict) -> None:
+    store = "retractions"
+    for r in rows:
+        target = r["target_record_id"]
+        if r["superseded_version"] is None or r["superseding_version"] is None:
+            raise MigrationError(
+                f"{store}: {target}: superseded or superseding version is not known"
+            )
+        reason = r["reason"]
+        if reason is None:
+            t.default(store, "reason")
+            reason = LEGACY_REASON
+        elif len(reason) < 10:
+            t.default(store, "reason")
+            reason = LEGACY_REASON_PREFIX + reason
+        row = {
+            "retraction_id": r["retraction_id"],
+            "target_record_id": id_map.get(target, target),
+            "superseded_version": r["superseded_version"],
+            "superseding_record_id": id_map.get(r["superseding_record_id"], r["superseding_record_id"]),
+            "superseding_version": r["superseding_version"],
+            "revoked_by": _text(t, store, "revoked_by", r["revoked_by"], LEGACY_ACTOR),
+            "revoked_at": _ts(t, store, "revoked_at", r["revoked_at"]),
+            "reason": reason,
+        }
+        t.seen(store, r["retraction_id"])
+        _write(cur, t, store, "supersession_retractions", row, "(retraction_id)", target)
+
+
+def _write_audit(cur, t: _Tally, rows: list[dict]) -> None:
+    store = "audit"
+    cur.execute("SELECT pg_advisory_xact_lock(hashtext('audit_chain'))")
+    cur.execute("SELECT event_id::text FROM audit_events")
+    present = {r[0] for r in cur.fetchall()}
+    for r in rows:
+        event_id = r["event_id"]
+        t.seen(store, event_id)
+        if event_id in present:
+            continue
+        row = {
+            "event_id": event_id,
+            "seq": r["seq"],
+            "aggregate_type": _text(t, store, "aggregate_type", r["aggregate_type"], LEGACY_ACTOR),
+            "aggregate_id": _text(t, store, "aggregate_id", r["aggregate_id"], LEGACY_ACTOR),
+            "actor_id": _text(t, store, "actor_id", r["actor_id"], LEGACY_ACTOR),
+            "role": _text(t, store, "role", r["role"], LEGACY_ACTOR),
+            "action": _text(t, store, "action", r["action"], LEGACY_ACTOR),
+            "before": None if r["before"] is None else Jsonb(r["before"]),
+            "after": None if r["after"] is None else Jsonb(r["after"]),
+            "reason": r["reason"],
+            "before_version": r["before_version"],
+            "after_version": r["after_version"],
+            "release_id": r["release_id"],
+            "created_at": _ts(t, store, "created_at", r["created_at"]),
+            "prev_hash": r["prev_hash"],
+            "entry_hash": r["entry_hash"],
+        }
+        _write(cur, t, store, "audit_events", row, "(event_id)", event_id, overriding="OVERRIDING SYSTEM VALUE ")
+    cur.execute("SELECT setval(pg_get_serial_sequence('audit_events', 'seq'), (SELECT max(seq) FROM audit_events))")
+
+
+def _count_targets(conn, t: _Tally) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    with conn.cursor() as cur:
+        for store, (table, column, cast) in _TARGET_TABLES.items():
+            keys = sorted(t.keys.get(store, ()))
+            counts[store] = 0
+            if keys:
+                cur.execute(f"SELECT count(*) FROM {table} WHERE {column} = ANY(%s::{cast}[])", (keys,))
+                counts[store] = cur.fetchone()[0]
+        pairs = t.keys.get("records", set())
+        counts["records"] = 0
+        if pairs:
+            cur.execute(
+                "SELECT record_id, version FROM canonical_records WHERE record_id = ANY(%s::text[])",
+                (sorted({p[0] for p in pairs}),),
+            )
+            counts["records"] = sum(1 for row in cur.fetchall() if (row[0], row[1]) in pairs)
+    return counts
+
+
+def apply_to_database(root: str | Path, conn, *, now: datetime) -> dict:
+    """Write every legacy store into PostgreSQL in one transaction; return the real-run report.
+
+    Any failure rolls the whole transaction back and raises (MigrationError or psycopg.Error).
+    """
+    run_at = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+    base = build_report(root)
+    loads = {name: loader(root) for name, loader in _loaders()}
+    rows = {name: _parts(load)[0] for name, load in loads.items()}
+    record_ids = getattr(loads["records"], "id_map", {})
+    tally = _Tally(run_at)
+    with conn.transaction():
+        with conn.cursor() as cur:
+            _write_source_documents(cur, tally, rows["source_documents"])
+            cur.execute("SELECT document_id FROM source_documents")
+            known_docs = {r[0] for r in cur.fetchall()}
+            _write_identities(cur, tally, rows["identities"])
+            cur.execute("SELECT release_id FROM releases")
+            known_releases = {r[0] for r in cur.fetchall()} | {r["release_id"] for r in rows["releases"]}
+            _write_releases(cur, tally, rows["releases"], known_releases)
+            _write_records(cur, tally, rows["records"], known_docs)
+            _write_outbox(cur, tally, rows["outbox"], known_releases)
+            _write_conflicts(cur, tally, rows["conflicts"])
+            _write_idempotency(cur, tally, rows["idempotency"])
+            _write_unanswered(cur, tally, rows["unanswered"])
+            _write_feedback(cur, tally, rows["feedback"])
+            _write_retractions(cur, tally, rows["retractions"], record_ids)
+            _write_audit(cur, tally, rows["audit"])
+    targets = _count_targets(conn, tally)
+    stores = []
+    for entry in base["stores"]:
+        name = entry["name"]
+        stores.append({
+            "name": name,
+            "source_rows": entry["source_rows"],
+            "target_rows": targets[name],
+            "mismatch": abs(entry["source_rows"] - targets[name]),
+            "hash": entry["hash"],
+            "inserted": tally.inserted.get(name, 0),
+        })
+    report = {k: v for k, v in base.items() if k != "report_hash"}
+    report.update({
+        "stores": stores,
+        "dry_run": False,
+        "defaulted": tally.defaulted,
+        "skipped": {"idempotency": tally.skipped_idempotency},
+        "dangling_source_document_id": tally.dangling,
+        "run_at": run_at.isoformat(),
+    })
+    return report
+
+
+def scrub_identities_file(root: str | Path) -> int:
+    """Replace each plaintext credential with ``scrubbed:<sha256 hex>``; atomic (tmp + os.replace)."""
+    path = Path(root) / "identity" / "identities.json"
+    if not path.is_file():
+        return 0
+    doc = _json_object(path)
+    scrubbed = 0
+    for entry in doc.get("entries") or []:
+        credential = entry.get("credential")
+        if isinstance(credential, str) and credential and not _SCRUBBED_CREDENTIAL.match(credential):
+            entry["credential"] = "scrubbed:" + hashlib.sha256(credential.encode("utf-8")).hexdigest()
+            scrubbed += 1
+    tmp = Path(str(path) + ".tmp")
+    try:
+        tmp.write_text(json.dumps(doc, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    return scrubbed
+
+
+def run_real_run(root: str | Path, url: str, *, now: datetime, scrub_identities: bool = False) -> dict:
+    with psycopg.connect(_conninfo(sync_database_url(url))) as conn:
+        report = apply_to_database(root, conn, now=now)
+    if scrub_identities:
+        identities = next(s for s in report["stores"] if s["name"] == "identities")
+        if identities["target_rows"] != identities["source_rows"]:
+            raise MigrationError("identities: PostgreSQL does not hold every identity; file not scrubbed")
+        scrub_identities_file(root)
+    return report
+
+
 def _failure_text(exc: BaseException) -> str:
     message = str(exc)
     filename = getattr(exc, "filename", None)
@@ -944,19 +1549,44 @@ def _failure_text(exc: BaseException) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Migrate legacy file stores (U3). Dry run only.")
-    parser.add_argument("--dry-run", action="store_true", help="read-only report")
+    parser = argparse.ArgumentParser(description="Migrate legacy file stores (U3).")
+    parser.add_argument("--dry-run", action="store_true", help="read-only report; never connects to a database")
     parser.add_argument("--report", required=True, metavar="PATH", help="where to write the JSON report")
     parser.add_argument("--root", default=str(_DEFAULT_ROOT), metavar="DIR", help="legacy canonical_store root")
+    parser.add_argument("--confirm-frozen", action="store_true", help="required for a real run: the legacy stores are frozen")
+    parser.add_argument("--database-url", default=None, metavar="URL", help="PostgreSQL URL (default: $DATABASE_URL)")
+    parser.add_argument(
+        "--scrub-identities", action="store_true",
+        help="real run only: after PostgreSQL verification, replace plaintext credentials in identity/identities.json",
+    )
     args = parser.parse_args(argv)
-    if not args.dry_run:
-        print("real run not implemented", file=sys.stderr)
-        return 2
-    try:
-        report = build_report(args.root)
-    except (MigrationError, OSError, TypeError) as exc:
-        print(_failure_text(exc), file=sys.stderr)
-        return 2
+    if args.dry_run:
+        if args.scrub_identities:
+            print("--scrub-identities needs a real run, not --dry-run", file=sys.stderr)
+            return 2
+        try:
+            report = build_report(args.root)
+        except (MigrationError, OSError, TypeError) as exc:
+            print(_failure_text(exc), file=sys.stderr)
+            return 2
+    else:
+        if not args.confirm_frozen:
+            print(
+                "real run not implemented without --confirm-frozen: freeze the legacy stores first",
+                file=sys.stderr,
+            )
+            return 2
+        url = args.database_url or os.environ.get("DATABASE_URL")
+        if not url:
+            print("real run needs --database-url or DATABASE_URL", file=sys.stderr)
+            return 2
+        try:
+            report = run_real_run(
+                args.root, url, now=datetime.now(timezone.utc), scrub_identities=args.scrub_identities
+            )
+        except (MigrationError, OSError, TypeError, psycopg.Error) as exc:
+            print(_failure_text(exc), file=sys.stderr)
+            return 2
     target = Path(args.report)
     tmp = Path(str(target) + ".tmp")
     try:

@@ -49,6 +49,7 @@ pyarrow==24.0.0
 sqlalchemy[asyncio]==2.0.57
 asyncpg==0.32.0
 alembic==1.20.1
+psycopg[binary]==3.3.*  # U3 sync driver for the file-store migration (scripts/migrate_file_stores.py real run).
 
 # LLM gateway: ns24 (OpenAI-compatible) via the openai SDK pinned above.
 openai==2.34.0  # ns24 gateway client (services/llm_client.py)
