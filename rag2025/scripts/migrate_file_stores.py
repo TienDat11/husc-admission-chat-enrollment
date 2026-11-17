@@ -10,7 +10,6 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from src.services.log_redaction import redact_pii
 
 from src.infrastructure.canonical_record_store import (
     _RECORD_DIR_PREFIX,
@@ -335,6 +334,8 @@ def load_retractions(root: str | Path) -> list[dict]:
     return rows
 
 
+
+
 # ---- Task 2b-1 (U3): releases, outbox, conflicts, idempotency, unanswered, feedback ----
 # Pure loaders: root -> rows shaped for the target table columns in
 # alembic/versions/0001_baseline.py. Nothing is written. Every row is kept
@@ -347,6 +348,7 @@ class RowsLoad:
     source_rows: int
     redacted_rows: int = 0
     unfillable: list[dict] = field(default_factory=list)
+    id_map: dict = field(default_factory=dict)
 
 
 def _json_object(path: Path) -> dict:
@@ -359,14 +361,14 @@ def _json_object(path: Path) -> dict:
     return obj
 
 
-def _jsonl_objects(path: Path) -> list[dict]:
+def _jsonl_objects(path: Path) -> list[tuple[int, dict]]:
     if not path.is_file():
         return []
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, ValueError) as exc:
         raise MigrationError(f"{path}: unreadable ({exc})") from exc
-    out: list[dict] = []
+    out: list[tuple[int, dict]] = []
     for lineno, raw in enumerate(lines, start=1):
         if not raw.strip():
             continue
@@ -376,12 +378,26 @@ def _jsonl_objects(path: Path) -> list[dict]:
             raise MigrationError(f"{path}: line {lineno}: invalid JSON ({exc})") from exc
         if not isinstance(obj, dict):
             raise MigrationError(f"{path}: line {lineno}: expected a JSON object")
-        out.append(obj)
+        out.append((lineno, obj))
     return out
+
+
+def _reject_non_text(path: Path, lineno: int, obj: dict, names: tuple[str, ...]) -> None:
+    for name in names:
+        value = obj.get(name)
+        if value is not None and not isinstance(value, str):
+            raise MigrationError(f"{path}: line {lineno}: '{name}' must be a string")
 
 
 def _not_null_gaps(legacy_id, row: dict, columns: list[str]) -> list[dict]:
     return [{"legacy_id": legacy_id, "column": c} for c in columns if row.get(c) is None]
+
+
+def _redact(text: str) -> str:
+    # Lazy import: records/retractions loaders must stay importable without src on sys.path.
+    from src.services.log_redaction import redact_pii
+
+    return redact_pii(text)
 
 
 def _redact_text_fields(row: dict, names: tuple[str, ...]) -> bool:
@@ -389,7 +405,7 @@ def _redact_text_fields(row: dict, names: tuple[str, ...]) -> bool:
     for name in names:
         value = row.get(name)
         if isinstance(value, str):
-            clean = redact_pii(value)
+            clean = _redact(value)
             if clean != value:
                 changed = True
             row[name] = clean
@@ -432,9 +448,16 @@ def load_outbox(root: str | Path) -> RowsLoad:
     entries = _jsonl_objects(Path(root) / "reindex_outbox.jsonl")
     rows: list[dict] = []
     unfill: list[dict] = []
-    for e in entries:
+    id_map: dict = {}
+    for _, e in entries:
+        legacy_entry = e.get("entry_id")
+        event_id = None
+        if isinstance(legacy_entry, str):
+            # Legacy ids look like "<release>|<record@version>", not uuids.
+            event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "husc-outbox:" + legacy_entry))
+            id_map[legacy_entry] = event_id
         row = {
-            "event_id": e.get("entry_id"),
+            "event_id": event_id,
             "record_id": e.get("record_id"),
             "record_version": e.get("version"),
             # Legacy action ("publish") is not a reindex_outbox event_type; Task 3 maps it.
@@ -445,10 +468,10 @@ def load_outbox(root: str | Path) -> RowsLoad:
             "processed_at": None,
         }
         unfill += _not_null_gaps(
-            e.get("entry_id"), row, ["event_id", "record_id", "record_version", "event_type"]
+            legacy_entry, row, ["event_id", "record_id", "record_version", "event_type"]
         )
         rows.append(row)
-    return RowsLoad(rows=rows, source_rows=len(entries), unfillable=unfill)
+    return RowsLoad(rows=rows, source_rows=len(entries), unfillable=unfill, id_map=id_map)
 
 
 def load_conflicts(root: str | Path) -> RowsLoad:
@@ -461,10 +484,25 @@ def load_conflicts(root: str | Path) -> RowsLoad:
         raise MigrationError(f"{path}: 'items' must be a list")
     rows: list[dict] = []
     unfill: list[dict] = []
+    redacted = 0
     for item in items:
         if not isinstance(item, dict):
             raise MigrationError(f"{path}: conflict item is not a JSON object")
         resolution = item.get("resolution")
+        if resolution is not None and not isinstance(resolution, dict):
+            raise MigrationError(f"{path}: conflict resolution must be a JSON object")
+        clean_res = dict(resolution) if resolution is not None else None
+        reason = (clean_res or {}).get("reason")
+        if reason is not None and not isinstance(reason, str):
+            raise MigrationError(f"{path}: conflict resolution 'reason' must be a string")
+        override_reason = None
+        row_redacted = False
+        if isinstance(reason, str):
+            override_reason = _redact(reason)
+            row_redacted = override_reason != reason
+            clean_res["reason"] = override_reason
+        if row_redacted:
+            redacted += 1
         row = {
             "conflict_id": item.get("conflict_id"),
             "coordinate_key": None,
@@ -472,15 +510,16 @@ def load_conflicts(root: str | Path) -> RowsLoad:
             "old_record_id": None,
             "new_record_id": None,
             "conflict_type": None,
+            "field_diffs": {"legacy_item": {k: v for k, v in item.items() if k != "resolution"}},
             "status": item.get("status"),
             "resolution": (
-                json.dumps(resolution, ensure_ascii=False, sort_keys=True)
-                if resolution is not None
+                json.dumps(clean_res, ensure_ascii=False, sort_keys=True)
+                if clean_res is not None
                 else None
             ),
-            "override_reason": None,
-            "resolved_by": None,
-            "resolved_at": None,
+            "override_reason": override_reason,
+            "resolved_by": (clean_res or {}).get("resolved_by"),
+            "resolved_at": (clean_res or {}).get("resolved_at"),
         }
         unfill += _not_null_gaps(
             item.get("conflict_id"),
@@ -488,7 +527,7 @@ def load_conflicts(root: str | Path) -> RowsLoad:
             ["conflict_id", "coordinate_key", "record_ids", "conflict_type", "status"],
         )
         rows.append(row)
-    return RowsLoad(rows=rows, source_rows=len(items), unfillable=unfill)
+    return RowsLoad(rows=rows, source_rows=len(items), redacted_rows=redacted, unfillable=unfill)
 
 
 def load_idempotency(root: str | Path) -> RowsLoad:
@@ -521,11 +560,13 @@ def load_idempotency(root: str | Path) -> RowsLoad:
 
 
 def load_unanswered(root: str | Path) -> RowsLoad:
-    entries = _jsonl_objects(Path(root) / "unanswered" / "queue.jsonl")
+    path = Path(root) / "unanswered" / "queue.jsonl"
+    entries = _jsonl_objects(path)
     rows: list[dict] = []
     unfill: list[dict] = []
     redacted = 0
-    for q in entries:
+    for lineno, q in entries:
+        _reject_non_text(path, lineno, q, ("question",))
         row = {
             "trace_id": q.get("trace_id"),
             "question": q.get("question"),
@@ -550,11 +591,13 @@ def load_unanswered(root: str | Path) -> RowsLoad:
 
 
 def load_feedback(root: str | Path) -> RowsLoad:
-    entries = _jsonl_objects(Path(root) / "unanswered" / "feedback.jsonl")
+    path = Path(root) / "unanswered" / "feedback.jsonl"
+    entries = _jsonl_objects(path)
     rows: list[dict] = []
     unfill: list[dict] = []
     redacted = 0
-    for f in entries:
+    for lineno, f in entries:
+        _reject_non_text(path, lineno, f, ("reason",))
         row = {
             # Legacy feedback rows carry no feedback id; Task 3 assigns one.
             "feedback_id": None,

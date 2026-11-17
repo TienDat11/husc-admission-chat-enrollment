@@ -656,7 +656,7 @@ def test_load_outbox_maps_entries_to_rows(tmp_path):
     out = migrate_mod.load_outbox(tmp_path)
     assert out.source_rows == 2
     assert len(out.rows) == 2
-    assert out.rows[1]["event_id"] == "e2"
+    assert out.rows[1]["event_id"] == str(uuid.uuid5(uuid.NAMESPACE_URL, "husc-outbox:e2"))
     assert out.rows[1]["record_version"] == 2
 
 
@@ -758,3 +758,95 @@ def test_load_feedback_redacts_reason_and_flags_missing_pk(tmp_path):
     assert EMAIL not in dumped
     assert out.rows[0]["feedback_id"] is None
     assert any(u["column"] == "feedback_id" for u in out.unfillable)
+
+
+# ---- Task 2b-1 fix round 1 ----
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+import uuid  # noqa: E402
+
+
+def _conflict_file_with(tmp_path, item: dict) -> Path:
+    return _write(
+        tmp_path / "conflicts" / "queue.json",
+        json.dumps({"schema_version": 1, "items": [item]}),
+    )
+
+
+def test_load_conflicts_redacts_resolution_reason_and_fills_override_fields(tmp_path):
+    item = _conflict_item("c1")
+    item["resolution"] = {
+        "reason": f"officer note cccd {CCCD}",
+        "resolved_by": "officer1",
+        "resolved_by_role": "admin",
+        "resolved_at": "2026-11-02T00:00:00+00:00",
+        "event_id": "ev1",
+    }
+    _conflict_file_with(tmp_path, item)
+    out = migrate_mod.load_conflicts(tmp_path)
+    assert out.redacted_rows == 1
+    assert CCCD not in json.dumps(out.rows, ensure_ascii=False)
+    assert out.rows[0]["override_reason"] is not None
+    assert out.rows[0]["resolved_by"] == "officer1"
+    assert out.rows[0]["resolved_at"] == "2026-11-02T00:00:00+00:00"
+
+
+def test_load_conflicts_keeps_legacy_item_minus_resolution_in_field_diffs(tmp_path):
+    item = _conflict_item("c1")
+    item["resolution"] = None
+    _conflict_file_with(tmp_path, item)
+    out = migrate_mod.load_conflicts(tmp_path)
+    expected = {k: v for k, v in item.items() if k != "resolution"}
+    assert out.rows[0]["field_diffs"] == {"legacy_item": expected}
+    assert out.rows[0]["field_diffs"]["legacy_item"]["record_type"] == "program"
+
+
+def test_load_conflicts_non_dict_resolution_names_path(tmp_path):
+    item = _conflict_item("c1")
+    item["resolution"] = [1]
+    path = _conflict_file_with(tmp_path, item)
+    _assert_error_names(lambda: migrate_mod.load_conflicts(tmp_path), path)
+
+
+def test_load_outbox_event_id_is_deterministic_uuid_with_id_map(tmp_path):
+    row = _outbox_row(1)
+    row["entry_id"] = "REL1|rec1@1"
+    _write(tmp_path / "reindex_outbox.jsonl", _jsonl([row]))
+    first = migrate_mod.load_outbox(tmp_path)
+    second = migrate_mod.load_outbox(tmp_path)
+    assert first.rows[0]["event_id"] == second.rows[0]["event_id"]
+    uuid.UUID(first.rows[0]["event_id"])
+    assert first.id_map == {"REL1|rec1@1": first.rows[0]["event_id"]}
+
+
+def test_load_unanswered_non_string_question_names_path_and_line(tmp_path):
+    bad = json.dumps({"trace_id": "a", "question": 5}) + "\n"
+    path = _write(tmp_path / "unanswered" / "queue.jsonl", _jsonl([_unanswered_row(1)]) + bad)
+    _assert_error_names(lambda: migrate_mod.load_unanswered(tmp_path), path, line=2)
+
+
+def test_load_feedback_non_string_reason_names_path_and_line(tmp_path):
+    bad = json.dumps({"trace_id": "a", "helpful": True, "reason": 5, "answered_at": "x"}) + "\n"
+    path = _write(tmp_path / "unanswered" / "feedback.jsonl", bad)
+    _assert_error_names(lambda: migrate_mod.load_feedback(tmp_path), path, line=1)
+
+
+def test_migrate_module_loads_without_src_on_sys_path():
+    rag_root = Path(__file__).resolve().parents[2]
+    script = (
+        "import importlib.util, sys\n"
+        "sys.path.insert(0, sys.argv[1])\n"
+        "spec = importlib.util.spec_from_file_location('mfs', sys.argv[2])\n"
+        "mod = importlib.util.module_from_spec(spec)\n"
+        "sys.modules['mfs'] = mod\n"
+        "spec.loader.exec_module(mod)\n"
+        "mod.derive_coordinate_key({})\n"
+        "assert not any(p.replace('\\\\', '/').endswith('/rag2025/src') for p in sys.path)\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-I", "-c", script, str(rag_root), str(rag_root / "scripts" / "migrate_file_stores.py")],
+        capture_output=True,
+        text=True,
+        cwd=str(rag_root),
+    )
+    assert proc.returncode == 0, proc.stderr
