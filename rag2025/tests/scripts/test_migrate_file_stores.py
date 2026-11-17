@@ -1103,7 +1103,7 @@ def test_audit_row_field_mapping(tmp_path):
     assert row["before_version"] == 1 and row["after_version"] == 2
     assert row["reason"] == "reason 1"
     assert row["release_id"] == "rel-1"
-    assert row["request_id"] is None
+    assert row["request_id"] == "legacy:file-ledger"
     assert row["created_at"] == datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 

@@ -36,6 +36,7 @@ from src.infrastructure.canonical_record_store import (
     RECORDS_DIRNAME,
     RETRACTIONS_DIRNAME,
 )
+from src.infrastructure.sql_audit_ledger import LEGACY_REQUEST_ID
 
 UNANCHORED_PREFIX = "unanchored:"
 UNANCHORED_BLOCKER = "UNANCHORED_DRAFT"
@@ -850,7 +851,7 @@ def load_audit(root: str | Path) -> RowsLoad:
             "before_version": before_version,
             "after_version": after_version,
             "release_id": event.get("release_id"),
-            "request_id": None,
+            "request_id": LEGACY_REQUEST_ID,
             "created_at": _parse_iso(f"{where} timestamp", event.get("timestamp")),
             "prev_hash": None if prev_digest == _ZERO_DIGEST else prev_digest,
             "entry_hash": entry_digest,
