@@ -304,7 +304,17 @@ def load_records(root: str | Path) -> RecordsLoad:
             )
         except _MALFORMED as exc:
             raise MigrationError(f"malformed legacy record: {version.path} ({exc})") from exc
+    for row in out.rows:
+        if row["supersedes"]:
+            row["supersedes"] = _remap_reference(row["supersedes"], out.id_map)
     return out
+
+
+def _remap_reference(reference: str, id_map: dict[str, str]) -> str:
+    """Map the record part of ``"legacy@N"`` through ``id_map``; unmapped names pass through."""
+    name, version = split_version_key(reference)
+    mapped = id_map.get(name, name)
+    return mapped if version is None else f"{mapped}@{version}"
 
 
 def split_version_key(reference: str) -> tuple[str, int | None]:

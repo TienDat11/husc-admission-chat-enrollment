@@ -39,6 +39,7 @@ B = f"DIEM_CHUAN:NGANH:cntt:2027:all:{H}"
 D = f"THOI_GIAN:NGANH:cntt:2026:all:{H}"
 C_LEGACY = "HOC_PHI:NGANH:cntt:2026:all"  # 5-part legacy id: the migrator remaps it
 C = "HOC_PHI:NGANH:cntt:2026:all:all"
+E = "HOC_PHI:NGANH:cntt:2027:all:all"  # supersedes the remapped C_LEGACY
 RETRACT_REASON = "claim withdrawn by the issuing office"
 
 
@@ -97,8 +98,18 @@ def _legacy_root(root: Path) -> None:
     store.write_record(_base(D, 1, record_type="THOI_GIAN", authored_by="carol", text="d draft"))
 
 
+def _mapped_reference(ref: str, idmap: dict) -> str:
+    name, sep, version = ref.rpartition("@")
+    if not sep:
+        return idmap.get(ref, ref)
+    return f"{idmap.get(name, name)}@{version}"
+
+
 def _mapped(record: CanonicalRecord, idmap: dict) -> CanonicalRecord:
-    return record.model_copy(update={"record_id": idmap.get(record.record_id, record.record_id)})
+    update = {"record_id": idmap.get(record.record_id, record.record_id)}
+    if record.supersedes:
+        update["supersedes"] = _mapped_reference(record.supersedes, idmap)
+    return record.model_copy(update=update)
 
 
 def _assert_parity(file: CanonicalRecordStore, sql: SqlRecordStore, idmap: dict) -> None:
@@ -350,3 +361,21 @@ def test_unique_violation_on_insert_maps_to_conflict(fresh_db, monkeypatch):  # 
     monkeypatch.undo()
     assert sql.versions(A) == (1,)
     assert sql.get_version(A, 1).text == "first"
+
+
+def test_supersession_of_a_remapped_legacy_record_survives_migration(tmp_path, fresh_db):  # noqa: F811
+    root = tmp_path / "root"
+    _document(root)
+    file = CanonicalRecordStore(root)
+    file.write_record(_published(C_LEGACY, 1, record_type="HOC_PHI", text="c"))
+    file.write_record(_published(
+        E, 1, record_type="HOC_PHI", admission_year=2027, supersedes=f"{C_LEGACY}@1", authored_by="bob", text="e",
+    ))
+    report = _apply(root, fresh_db)
+    idmap = report["id_map"]["records"]
+    assert idmap[C_LEGACY] == C
+
+    sql = SqlRecordStore(fresh_db)
+    _assert_parity(file, sql, idmap)
+    assert sql.is_superseded(C) is True
+    assert sql.superseding_record(C).record_id == idmap.get(E, E)

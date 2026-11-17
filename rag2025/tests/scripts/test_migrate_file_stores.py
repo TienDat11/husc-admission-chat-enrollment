@@ -1242,3 +1242,28 @@ def test_audit_crlf_terminated_ledger_still_loads(tmp_path):
     result = load_audit(tmp_path)
     assert len(result.rows) == 3
     assert [r["entry_hash"] for r in result.rows] == [bytes.fromhex(e.entry_hash) for e in entries]
+
+
+def test_supersedes_follows_the_remapped_id_and_keeps_the_version(tmp_path):
+    store, root = _store(tmp_path)
+    legacy = "DIEM_CHUAN:nganh:7220104:2026:hoc_ba:ttts-p61"
+    store.write_record(_rec(legacy, record_type=RecordType.DIEM_CHUAN))
+    store.write_record(_rec(
+        "DIEM_CHUAN:nganh:7220104:2026:hoc_ba:ttts-p62",
+        record_type=RecordType.DIEM_CHUAN,
+        supersedes=f"{legacy}@1",
+    ))
+    store.write_record(_rec(
+        "DIEM_CHUAN:nganh:7220104:2026:hoc_ba:ttts-p63",
+        record_type=RecordType.DIEM_CHUAN,
+        supersedes="UNMAPPED:nganh:7220104:2026:x@2",
+    ))
+
+    out = load_records(root)
+
+    key = out.id_map[legacy]
+    by_legacy = {r["structured_payload"]["legacy_record_id"]: r for r in out.rows}
+    p62 = by_legacy["DIEM_CHUAN:nganh:7220104:2026:hoc_ba:ttts-p62"]
+    p63 = by_legacy["DIEM_CHUAN:nganh:7220104:2026:hoc_ba:ttts-p63"]
+    assert p62["supersedes"] == f"{key}@1"
+    assert p63["supersedes"] == "UNMAPPED:nganh:7220104:2026:x@2"
