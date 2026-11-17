@@ -3,6 +3,10 @@
 Loaders are pure functions: store root in, row dicts out. Only the real run
 (apply_to_database) connects to PostgreSQL; nothing here writes to the legacy store
 except --scrub-identities after a committed real run.
+
+Deviation from the brief: a published record whose source_document_id is not in
+source_documents aborts the real run (MigrationError) instead of nulling the FK, because
+the DDL CHECK (status <> 'published' OR source_document_id IS NOT NULL) forbids NULL.
 """
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import uuid
 from collections.abc import Callable
@@ -956,6 +961,7 @@ _OUTBOX_EVENT_TYPES = {
     "revoke_supersession": "revoke_supersession",
 }
 _SCRUBBED_CREDENTIAL = re.compile(r"^scrubbed:[0-9a-f]{64}$")
+_AUDIT_LOCK_TIMEOUT = "10s"  # bounds the wait for the audit chain advisory lock
 # report store -> (table, key column, key cast) for the post-commit PostgreSQL re-count.
 _TARGET_TABLES = {
     "source_documents": ("source_documents", "document_id", "text"),
@@ -1050,8 +1056,12 @@ def _write(cur, t: _Tally, store: str, table: str, row: dict, target: str, key: 
     try:
         cur.execute(sql, row)
     except psycopg.Error as exc:
-        reason = (exc.diag.message_primary if exc.diag else None) or type(exc).__name__
-        raise MigrationError(f"{store}: {key}: rejected by PostgreSQL ({reason})") from exc
+        # message_primary echoes offending row values; keep only the SQLSTATE, constraint and table.
+        diag = exc.diag
+        raise MigrationError(
+            f"{store}: {key}: rejected by PostgreSQL (sqlstate {diag.sqlstate or '-'}, "
+            f"constraint {diag.constraint_name or '-'}, table {table})"
+        ) from exc
     if cur.rowcount == 1:
         t.inserted[store] = t.inserted.get(store, 0) + 1
 
@@ -1357,7 +1367,6 @@ def _write_feedback(cur, t: _Tally, rows: list[dict]) -> None:
         # The legacy row has no id: derive a stable one so a re-run finds the same row.
         identity = _canonical_json([r["trace_id"], r["helpful"], r["reason"], r["answered_at"]])
         feedback_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "husc-feedback:" + identity))
-        t.default(store, "feedback_id")
         row = {
             "feedback_id": feedback_id,
             "trace_id": r["trace_id"],
@@ -1402,9 +1411,22 @@ def _write_retractions(cur, t: _Tally, rows: list[dict], id_map: dict) -> None:
 
 def _write_audit(cur, t: _Tally, rows: list[dict]) -> None:
     store = "audit"
-    cur.execute("SELECT pg_advisory_xact_lock(hashtext('audit_chain'))")
+    cur.execute(f"SET LOCAL lock_timeout = '{_AUDIT_LOCK_TIMEOUT}'")
+    try:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext('audit_chain'))")
+    except psycopg.errors.LockNotAvailable as exc:
+        raise MigrationError(
+            f"{store}: could not take the audit chain lock within {_AUDIT_LOCK_TIMEOUT}; another writer holds it"
+        ) from exc
     cur.execute("SELECT event_id::text FROM audit_events")
     present = {r[0] for r in cur.fetchall()}
+    # Migrating genesis-chain rows after live app rows would fork the audit chain: refuse first.
+    foreign = present - {r["event_id"] for r in rows}
+    if foreign:
+        raise MigrationError(
+            f"{store}: audit_events already has rows not in the ledger ({len(foreign)} row(s)); "
+            "migrating ledger rows after them would fork the audit chain"
+        )
     for r in rows:
         event_id = r["event_id"]
         t.seen(store, event_id)
@@ -1481,6 +1503,8 @@ def apply_to_database(root: str | Path, conn, *, now: datetime) -> dict:
             _write_retractions(cur, tally, rows["retractions"], record_ids)
             _write_audit(cur, tally, rows["audit"])
     targets = _count_targets(conn, tally)
+    # Rows skipped on purpose (in_progress claims) are reported under "skipped", not as mismatch.
+    skipped_by_store = {"idempotency": tally.skipped_idempotency}
     stores = []
     for entry in base["stores"]:
         name = entry["name"]
@@ -1488,7 +1512,7 @@ def apply_to_database(root: str | Path, conn, *, now: datetime) -> dict:
             "name": name,
             "source_rows": entry["source_rows"],
             "target_rows": targets[name],
-            "mismatch": abs(entry["source_rows"] - targets[name]),
+            "mismatch": abs(entry["source_rows"] - skipped_by_store.get(name, 0) - targets[name]),
             "hash": entry["hash"],
             "inserted": tally.inserted.get(name, 0),
         })
@@ -1518,7 +1542,11 @@ def scrub_identities_file(root: str | Path) -> int:
             scrubbed += 1
     tmp = Path(str(path) + ".tmp")
     try:
-        tmp.write_text(json.dumps(doc, indent=2, ensure_ascii=False), encoding="utf-8")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(doc, indent=2, ensure_ascii=False))
+            fh.flush()
+            os.fsync(fh.fileno())
+        shutil.copymode(path, tmp)
         os.replace(tmp, path)
     except OSError:
         try:
@@ -1536,7 +1564,13 @@ def run_real_run(root: str | Path, url: str, *, now: datetime, scrub_identities:
         identities = next(s for s in report["stores"] if s["name"] == "identities")
         if identities["target_rows"] != identities["source_rows"]:
             raise MigrationError("identities: PostgreSQL does not hold every identity; file not scrubbed")
-        scrub_identities_file(root)
+        try:
+            scrub_identities_file(root)
+        except OSError as exc:
+            raise MigrationError(
+                "data committed; identities scrub failed - re-run is safe "
+                f"({exc.strerror or type(exc).__name__})"
+            ) from exc
     return report
 
 
@@ -1548,13 +1582,25 @@ def _failure_text(exc: BaseException) -> str:
     return message
 
 
+def _pg_failure_text(exc: psycopg.Error) -> str:
+    # str(psycopg.Error) carries server message text with row values; print only the code.
+    diag = exc.diag
+    return (
+        f"PostgreSQL error {type(exc).__name__} (sqlstate {diag.sqlstate or '-'}, "
+        f"constraint {diag.constraint_name or '-'})"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Migrate legacy file stores (U3).")
     parser.add_argument("--dry-run", action="store_true", help="read-only report; never connects to a database")
     parser.add_argument("--report", required=True, metavar="PATH", help="where to write the JSON report")
     parser.add_argument("--root", default=str(_DEFAULT_ROOT), metavar="DIR", help="legacy canonical_store root")
     parser.add_argument("--confirm-frozen", action="store_true", help="required for a real run: the legacy stores are frozen")
-    parser.add_argument("--database-url", default=None, metavar="URL", help="PostgreSQL URL (default: $DATABASE_URL)")
+    parser.add_argument(
+        "--database-url", default=None, metavar="URL",
+        help="PostgreSQL URL; prefer the DATABASE_URL env var (argv is visible to other users)",
+    )
     parser.add_argument(
         "--scrub-identities", action="store_true",
         help="real run only: after PostgreSQL verification, replace plaintext credentials in identity/identities.json",
@@ -1585,7 +1631,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.root, url, now=datetime.now(timezone.utc), scrub_identities=args.scrub_identities
             )
         except (MigrationError, OSError, TypeError, psycopg.Error) as exc:
-            print(_failure_text(exc), file=sys.stderr)
+            print(_pg_failure_text(exc) if isinstance(exc, psycopg.Error) else _failure_text(exc), file=sys.stderr)
             return 2
     target = Path(args.report)
     tmp = Path(str(target) + ".tmp")
@@ -1602,6 +1648,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     mismatch_total = sum(s["mismatch"] for s in report["stores"])
     print(f"wrote {args.report}: {len(report['stores'])} stores, mismatch total {mismatch_total}")
+    if not args.dry_run:
+        unexplained = [s["name"] for s in report["stores"] if s["mismatch"] > 0]
+        if unexplained:
+            print(
+                "post-commit mismatch in store(s) " + ", ".join(unexplained)
+                + ": PostgreSQL does not hold every source row (see the report)",
+                file=sys.stderr,
+            )
+            return 2
     return 0
 
 

@@ -11,6 +11,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +23,7 @@ from sqlalchemy.engine import make_url
 
 import scripts.migrate_file_stores as migrate
 from scripts.migrate_file_stores import MigrationError
+from src.domain.canonical.record import RecordStatus
 from src.infrastructure.canonical_record_store import CanonicalRecordStore
 from tests.infrastructure.conftest import run_alembic
 from tests.scripts.test_migrate_cli import (
@@ -355,3 +358,244 @@ def test_no_plaintext_token_in_report_or_exception(tmp_path, fresh_db):
     with pytest.raises(MigrationError) as exc:
         _apply(dup_root, fresh_db)
     assert _PLAIN_ALICE not in str(exc.value) and _PLAIN_BOB not in str(exc.value)
+
+
+# ── Fail-closed exit, redaction, audit chain guard, scrub durability ─────
+
+
+def _hold_audit_lock(url: str):
+    conn = psycopg.connect(_conninfo(url), autocommit=True)
+    conn.execute("SELECT pg_advisory_lock(hashtext('audit_chain'))")
+    return conn
+
+
+def _insert_app_audit_row(url: str) -> None:
+    with psycopg.connect(_conninfo(url), autocommit=True) as conn:
+        conn.execute(
+            "INSERT INTO audit_events (event_id, aggregate_type, aggregate_id, actor_id, role, action, entry_hash) "
+            "VALUES (%s, 'app', 'x', 'app', 'editor', 'publish', %s)",
+            (str(uuid.uuid4()), b"\x00" * 32),
+        )
+
+
+def test_scrub_keeps_the_original_file_mode(tmp_path):
+    root = tmp_path / "root"
+    _identity_fixture(root)
+    path = root / "identity" / "identities.json"
+    os.chmod(path, 0o600)
+    assert migrate.scrub_identities_file(root) == 2
+    if os.name != "nt":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_scrub_fsyncs_the_tmp_file(tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    _identity_fixture(root)
+    synced: list[int] = []
+    real_fsync = os.fsync
+
+    def spy(fd):
+        synced.append(fd)
+        real_fsync(fd)
+
+    monkeypatch.setattr(migrate.os, "fsync", spy)
+    assert migrate.scrub_identities_file(root) == 2
+    assert synced
+
+
+def test_failed_scrub_leaves_identities_byte_identical_and_says_data_is_committed(
+    tmp_path, fresh_db, capsys, monkeypatch
+):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    root = tmp_path / "root"
+    _full_fixture(root)
+    path = root / "identity" / "identities.json"
+    before = path.read_bytes()
+    (root / "identity" / "identities.json.tmp").mkdir()  # blocks the tmp write
+    code = migrate.main([
+        "--confirm-frozen", "--scrub-identities", "--report", str(tmp_path / "out" / "r.json"),
+        "--root", str(root), "--database-url", fresh_db,
+    ])
+    assert code == 2
+    assert path.read_bytes() == before
+    assert "data committed; identities scrub failed - re-run is safe" in capsys.readouterr().err
+    assert _counts(fresh_db)["admin_identities"] == 2
+
+
+def test_write_error_text_names_sqlstate_and_table_not_row_values(fresh_db):
+    marker = "MARKER-ROWVALUE-7f3a"
+    with psycopg.connect(_conninfo(fresh_db)) as conn:
+        with conn.cursor() as cur:
+            with pytest.raises(MigrationError) as exc:
+                migrate._write(
+                    cur, migrate._Tally(NOW), "outbox", "reindex_outbox",
+                    {"event_id": marker}, "(event_id)", "k1",
+                )
+    text = str(exc.value)
+    assert marker not in text
+    assert "22P02" in text
+    assert "reindex_outbox" in text
+
+
+def test_main_prints_reduced_text_for_a_psycopg_error(tmp_path, fresh_db, capsys, monkeypatch):
+    marker = "MARKER-PGERR-91c2"
+    with psycopg.connect(_conninfo(fresh_db)) as conn:
+        try:
+            conn.execute("SELECT %s::uuid", (marker,))
+        except psycopg.Error as exc:
+            pg_error = exc
+
+    def fail(*args, **kwargs):
+        raise pg_error
+
+    monkeypatch.setattr(migrate, "run_real_run", fail)
+    root = tmp_path / "root"
+    _multi_store(root)
+    code = migrate.main([
+        "--confirm-frozen", "--report", str(tmp_path / "r.json"), "--root", str(root),
+        "--database-url", fresh_db,
+    ])
+    err = capsys.readouterr().err
+    assert code == 2
+    assert marker not in err
+    assert "22P02" in err
+
+
+def test_in_progress_claim_is_skipped_without_a_mismatch_and_exits_0(tmp_path, fresh_db):
+    root = tmp_path / "root"
+    _write_json(root / "idempotency" / f"{'cd' * 32}.json", {
+        "state": "in_progress", "actor_id": "alice", "operation": "publish",
+        "request_fingerprint": "ef" * 32, "created_at": "2026-01-06T00:00:00+00:00",
+    })
+    report_path = tmp_path / "r.json"
+    code = migrate.main([
+        "--confirm-frozen", "--report", str(report_path), "--root", str(root),
+        "--database-url", fresh_db,
+    ])
+    assert code == 0
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    idem = _stores(report)["idempotency"]
+    assert (idem["source_rows"], idem["target_rows"], idem["mismatch"]) == (1, 0, 0)
+    assert report["skipped"] == {"idempotency": 1}
+
+
+def test_silent_on_conflict_skip_exits_2_and_names_the_store(tmp_path, fresh_db, capsys):
+    root = tmp_path / "root"
+    same = {
+        "trace_id": "trace-dup", "helpful": True, "reason": None,
+        "answered_at": "2026-01-07T00:00:00+00:00", "linked_item": False,
+    }
+    _write_lines(root / "unanswered" / "feedback.jsonl", [same, dict(same)])
+    report_path = tmp_path / "r.json"
+    code = migrate.main([
+        "--confirm-frozen", "--report", str(report_path), "--root", str(root),
+        "--database-url", fresh_db,
+    ])
+    assert code == 2
+    assert "feedback" in capsys.readouterr().err
+    assert report_path.exists()  # the report is still written
+    assert _stores(json.loads(report_path.read_text(encoding="utf-8")))["feedback"]["mismatch"] == 1
+
+
+def test_audit_rerun_refuses_app_rows_outside_the_ledger_and_rolls_back(tmp_path, fresh_db):
+    root = tmp_path / "root"
+    _full_fixture(root)
+    _apply(root, fresh_db)
+    _insert_app_audit_row(fresh_db)
+    counts = _counts(fresh_db)
+    with pytest.raises(MigrationError) as exc:
+        _apply(root, fresh_db)
+    assert "audit_events already has rows not in the ledger" in str(exc.value)
+    assert _counts(fresh_db) == counts
+
+
+def test_audit_lock_timeout_is_a_clear_error_and_rolls_back_every_store(tmp_path, fresh_db, monkeypatch):
+    monkeypatch.setattr(migrate, "_AUDIT_LOCK_TIMEOUT", "500ms", raising=False)
+    root = tmp_path / "root"
+    _full_fixture(root)
+    holder = _hold_audit_lock(fresh_db)
+    outcome: dict[str, BaseException] = {}
+
+    def run() -> None:
+        try:
+            _apply(root, fresh_db)
+        except BaseException as exc:  # captured for the assertions below
+            outcome["exc"] = exc
+
+    worker = threading.Thread(target=run, daemon=True)
+    try:
+        worker.start()
+        worker.join(60)
+        assert not worker.is_alive(), "apply blocked on the audit lock with no timeout"
+    finally:
+        holder.execute("SELECT pg_advisory_unlock(hashtext('audit_chain'))")
+        holder.close()
+    worker.join(60)
+    exc = outcome.get("exc")
+    assert isinstance(exc, MigrationError), exc
+    assert "audit" in str(exc) and "lock" in str(exc)
+    assert all(count == 0 for count in _counts(fresh_db).values())
+
+
+def test_published_record_with_dangling_source_raises_and_rolls_back(tmp_path, fresh_db):
+    # Deliberate deviation from the brief: the brief asked for the source FK to be nulled,
+    # but DDL CHECK (status <> 'published' OR source_document_id IS NOT NULL) forbids NULL,
+    # so a published record that cites a missing source document aborts the run.
+    root = tmp_path / "root"
+    _full_fixture(root)
+    CanonicalRecordStore(root).write_record(
+        _rec("CHI_TIEU:nganh:7220104:2026:published").model_copy(update={
+            "status": RecordStatus.PUBLISHED, "published_at": NOW, "source_document_id": "doc-missing",
+        })
+    )
+    with pytest.raises(MigrationError) as exc:
+        _apply(root, fresh_db)
+    assert "records" in str(exc.value)
+    assert "published" in str(exc.value)
+    assert all(count == 0 for count in _counts(fresh_db).values())
+
+
+def test_defaulted_sentinels_cover_each_filled_gap(tmp_path, fresh_db, monkeypatch):
+    root = tmp_path / "root"
+    _full_fixture(root)
+    doc_path = root / "documents" / "doc-1_d.json"
+    doc = json.loads(doc_path.read_text(encoding="utf-8"))
+    for key in ("registered_by", "registered_at", "updated_at"):
+        doc.pop(key)
+    doc_path.write_text(json.dumps(doc), encoding="utf-8")
+    _write_json(root / "supersession_retractions" / "d1" / "r1.json", {
+        "target_record_id": RECORD_KEY,
+        "superseding_version_key": RECORD_KEY + "@2",
+        "reason": "short",
+    })
+    real_load = migrate.load_retractions
+
+    def with_known_superseded_version(root_arg):
+        rows = real_load(root_arg)
+        for row in rows:
+            row["superseded_version"] = 1
+        return rows
+
+    monkeypatch.setattr(migrate, "load_retractions", with_known_superseded_version)
+    report = _apply(root, fresh_db)
+    defaulted = report["defaulted"]
+    assert defaulted["source_documents"]["uploaded_by"] == 1
+    assert defaulted["source_documents"]["created_at"] == 1
+    assert defaulted["source_documents"]["updated_at"] == 1
+    assert defaulted["records"]["authored_by"] == 1
+    assert defaulted["records"]["created_at"] == 1
+    assert defaulted["releases"]["created_by"] == 2
+    assert defaulted["identities"]["created_by"] == 2
+    assert defaulted["retractions"]["revoked_by"] == 1
+    assert defaulted["retractions"]["revoked_at"] == 1
+    assert defaulted["retractions"]["reason"] == 1
+    assert "feedback_id" not in defaulted.get("feedback", {})
+    with psycopg.connect(_conninfo(fresh_db)) as conn:
+        assert conn.execute("SELECT uploaded_by FROM source_documents").fetchone()[0] == "legacy-migration"
+        assert conn.execute("SELECT authored_by FROM canonical_records").fetchone()[0] == "legacy-migration"
+        revoked_by, reason = conn.execute(
+            "SELECT revoked_by, reason FROM supersession_retractions"
+        ).fetchone()
+    assert revoked_by == "legacy-migration"
+    assert reason == "legacy migration: short"
+    assert len(reason) >= 10
