@@ -628,3 +628,43 @@ def test_a_store_with_no_ledger_refuses_rather_than_writing_unaudited(
 
     assert response.status_code == 503
     assert "audit ledger is not configured" in response.json()["detail"]
+
+
+def test_verify_legacy_fields_default_to_zero_and_none_for_the_file_ledger(client, ledger):
+    _append(ledger)
+    body = client.get("/admin/audit/verify", headers=_headers("viewer")).json()
+    assert body["ok"] is True
+    assert body["legacy_checked"] == 0
+    assert body["legacy_last_hash"] is None
+    assert body["skipped_legacy_rows"] == 0
+
+
+def test_verify_reports_legacy_fields_from_verify_detailed(client, app):
+    class DetailedLedger:
+        def verify(self):
+            raise AssertionError("verify_detailed should be the only walk")
+
+        def verify_detailed(self):
+            return {
+                "ok": True,
+                "checked": 4,
+                "legacy_checked": 3,
+                "broken_index": None,
+                "reason": None,
+                "last_hash": "ab",
+                "legacy_last_hash": "cd",
+                "skipped_legacy_rows": 1,
+            }
+
+    app.state.audit_ledger = DetailedLedger()
+    body = client.get("/admin/audit/verify", headers=_headers("viewer")).json()
+    assert body == {
+        "ok": True,
+        "checked": 4,
+        "broken_index": None,
+        "reason": None,
+        "last_hash": "ab",
+        "legacy_checked": 3,
+        "legacy_last_hash": "cd",
+        "skipped_legacy_rows": 1,
+    }

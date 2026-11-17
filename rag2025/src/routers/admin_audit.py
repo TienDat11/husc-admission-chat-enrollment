@@ -77,6 +77,11 @@ class ChainVerificationResponse(BaseModel):
     broken_index: int | None = None
     reason: str | None = None
     last_hash: str | None = None
+    # Additive (ticket A3): zero/None for the file ledger, populated from
+    # verify_detailed() under the SQL ledger.
+    legacy_checked: int = 0
+    legacy_last_hash: str | None = None
+    skipped_legacy_rows: int = 0
 
 
 def _ledger(request: Request) -> AuditLedger:
@@ -146,11 +151,25 @@ async def verify_chain(request: Request) -> ChainVerificationResponse:
     A 200 with ``ok: false`` rather than a 5xx: a broken chain is an answer, not
     a server failure, and the caller needs ``broken_index`` to investigate.
     """
-    verification = _ledger(request).verify()
+    ledger = _ledger(request)
+    detailed = getattr(ledger, "verify_detailed", None)
+    if detailed is None:
+        verification = ledger.verify()
+        return ChainVerificationResponse(
+            ok=verification.ok,
+            checked=verification.checked,
+            broken_index=verification.broken_index,
+            reason=verification.reason,
+            last_hash=verification.last_hash,
+        )
+    result = detailed()
     return ChainVerificationResponse(
-        ok=verification.ok,
-        checked=verification.checked,
-        broken_index=verification.broken_index,
-        reason=verification.reason,
-        last_hash=verification.last_hash,
+        ok=result["ok"],
+        checked=result["checked"],
+        broken_index=result["broken_index"],
+        reason=result["reason"],
+        last_hash=result["last_hash"],
+        legacy_checked=result["legacy_checked"],
+        legacy_last_hash=result["legacy_last_hash"],
+        skipped_legacy_rows=result["skipped_legacy_rows"],
     )
