@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import uuid
@@ -224,9 +225,7 @@ def test_report_top_level_shape_and_contains_no_row_contents(tmp_path):
     assert report["redacted_rows"] == 0
     assert "records" in report["id_map"]
     assert "retractions" not in report["id_map"]
-    assert report["id_map"]["identities"]["bob-legacy"] == str(
-        uuid.uuid5(uuid.NAMESPACE_URL, "husc-identity:bob-legacy")
-    )
+    assert "identities" not in report["id_map"]
     assert "identities" in report["unfillable"]
     assert all(type(v) is int for v in report["unfillable"].values())
 
@@ -248,9 +247,115 @@ def test_report_hash_is_sha256_of_canonical_report_without_hash_key(tmp_path):
 # ── 6. redaction is counted (in-process; subprocess variant below) ───────
 
 
-def test_redaction_of_cccd_and_email_is_counted(tmp_path):
-    _push_unredacted_question(tmp_path, "CCCD 012345678901 lien he nguoi@example.com", "trace-r")
-    assert build_report(tmp_path)["redacted_rows"] >= 1
+_RAW_CCCD = "012345678901"
+_RAW_EMAIL = "nguoi@example.com"
+
+
+def test_redaction_of_cccd_and_email_is_counted_and_never_printed(tmp_path, capsys):
+    root = tmp_path / "root"
+    _push_unredacted_question(root, f"CCCD {_RAW_CCCD} lien he {_RAW_EMAIL}", "trace-r")
+    report = build_report(root)
+    assert report["redacted_rows"] == 1
+    assert _RAW_CCCD not in json.dumps(report)
+    assert _RAW_EMAIL not in json.dumps(report)
+
+    report_path = tmp_path / "out" / "r.json"
+    assert main(["--dry-run", "--report", str(report_path), "--root", str(root)]) == 0
+    captured = capsys.readouterr()
+    assert _RAW_CCCD not in captured.out + captured.err
+    assert _RAW_EMAIL not in captured.out + captured.err
+    assert _RAW_CCCD not in report_path.read_text(encoding="utf-8")
+    assert _RAW_EMAIL not in report_path.read_text(encoding="utf-8")
+
+
+def test_redaction_leaks_nothing_through_the_subprocess(tmp_path):
+    root = tmp_path / "root"
+    _push_unredacted_question(root, f"CCCD {_RAW_CCCD} lien he {_RAW_EMAIL}", "trace-r")
+    report_path = tmp_path / "r.json"
+    proc = _run_cli(root, report_path, tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(report_path.read_text(encoding="utf-8"))["redacted_rows"] == 1
+    assert _RAW_CCCD not in proc.stdout + proc.stderr
+    assert _RAW_EMAIL not in proc.stdout + proc.stderr
+    assert _RAW_CCCD not in report_path.read_text(encoding="utf-8")
+    assert _RAW_EMAIL not in report_path.read_text(encoding="utf-8")
+
+
+def test_identity_subject_email_stays_out_of_report_and_output(tmp_path, capsys):
+    root = tmp_path / "root"
+    IdentityStore(root).seed([
+        IdentityEntry(
+            subject_id="someone@example.com", actor_id="someone", role=Role.EDITOR,
+            credential=_PLAIN_ALICE, password_hash=_PWHASH,
+        ),
+    ])
+    report = build_report(root)
+    assert "identities" not in report["id_map"]
+    assert "someone@example.com" not in json.dumps(report)
+    report_path = tmp_path / "out" / "r.json"
+    assert main(["--dry-run", "--report", str(report_path), "--root", str(root)]) == 0
+    captured = capsys.readouterr()
+    assert "someone@example.com" not in captured.out + captured.err
+    assert "someone@example.com" not in report_path.read_text(encoding="utf-8")
+
+
+def test_drift_on_second_load_counts_as_mismatch(tmp_path, monkeypatch, capsys):
+    def drifting_loader():
+        answers = [RowsLoad(rows=[{"a": 1}], source_rows=1), RowsLoad(rows=[{"a": 2}], source_rows=1)]
+        return lambda root: answers.pop(0)
+
+    monkeypatch.setattr(migrate, "load_releases", drifting_loader())
+    by_name = {s["name"]: s for s in build_report(tmp_path)["stores"]}
+    assert by_name["releases"]["mismatch"] == 1
+
+    monkeypatch.setattr(migrate, "load_releases", drifting_loader())
+    report_path = tmp_path / "out" / "r.json"
+    assert main(["--dry-run", "--report", str(report_path), "--root", str(tmp_path)]) == 0
+    assert "mismatch total 1" in capsys.readouterr().out
+
+
+def test_report_hash_is_equal_for_identical_content_under_different_roots(tmp_path):
+    first = tmp_path / "a"
+    _multi_store(first)
+    second = tmp_path / "b"
+    shutil.copytree(first, second)
+    assert build_report(first)["report_hash"] == build_report(second)["report_hash"]
+
+
+def _denied(root):
+    raise PermissionError(13, "denied", "/x/y")
+
+
+def test_os_error_from_a_loader_exits_2_naming_the_path(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(migrate, "load_releases", _denied)
+    report_path = tmp_path / "r.json"
+    assert main(["--dry-run", "--report", str(report_path), "--root", str(tmp_path)]) == 2
+    assert "/x/y" in capsys.readouterr().err
+    assert not report_path.exists()
+
+
+def test_type_error_from_serializing_a_row_exits_2(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        migrate, "load_releases", lambda root: RowsLoad(rows=[{"x": {1, 2}}], source_rows=1)
+    )
+    report_path = tmp_path / "r.json"
+    assert main(["--dry-run", "--report", str(report_path), "--root", str(tmp_path)]) == 2
+    assert capsys.readouterr().err.strip() != ""
+    assert not report_path.exists()
+
+
+def test_failed_replace_exits_2_leaves_no_tmp_and_keeps_old_report(tmp_path, monkeypatch, capsys):
+    report_path = tmp_path / "r.json"
+    report_path.write_bytes(b"previous-report")
+
+    def broken_replace(src, dst):
+        raise OSError(28, "disk full", str(dst))
+
+    monkeypatch.setattr(migrate.os, "replace", broken_replace)
+    assert main(["--dry-run", "--report", str(report_path), "--root", str(tmp_path / "absent")]) == 2
+    assert report_path.read_bytes() == b"previous-report"
+    assert not Path(str(report_path) + ".tmp").exists()
+    assert capsys.readouterr().err.strip() != ""
 
 
 # ── 7. main writes the report; corrupt input exits 2 and writes nothing ──

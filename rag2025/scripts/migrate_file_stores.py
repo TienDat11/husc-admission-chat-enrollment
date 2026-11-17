@@ -917,7 +917,8 @@ def build_report(root: str | Path) -> dict:
         redacted_rows += getattr(first, "redacted_rows", 0)
         quarantined_rows += getattr(first, "quarantined_rows", 0)
         mapping = getattr(first, "id_map", None)
-        if mapping:
+        # Identity subject ids default to actor_id (may be a person's email): never report them.
+        if mapping and name != "identities":
             id_map[name] = dict(mapping)
         gaps = len(getattr(first, "unfillable", []))
         if gaps:
@@ -934,6 +935,14 @@ def build_report(root: str | Path) -> dict:
     return report
 
 
+def _failure_text(exc: BaseException) -> str:
+    message = str(exc)
+    filename = getattr(exc, "filename", None)
+    if filename and str(filename) not in message:
+        message = f"{filename}: {message}"
+    return message
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Migrate legacy file stores (U3). Dry run only.")
     parser.add_argument("--dry-run", action="store_true", help="read-only report")
@@ -945,14 +954,22 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         report = build_report(args.root)
-    except MigrationError as exc:
-        print(str(exc), file=sys.stderr)
+    except (MigrationError, OSError, TypeError) as exc:
+        print(_failure_text(exc), file=sys.stderr)
         return 2
     target = Path(args.report)
-    target.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(str(target) + ".tmp")
-    tmp.write_text(json.dumps(report, sort_keys=True, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, target)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps(report, sort_keys=True, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError as exc:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        print(_failure_text(exc), file=sys.stderr)
+        return 2
     mismatch_total = sum(s["mismatch"] for s in report["stores"])
     print(f"wrote {args.report}: {len(report['stores'])} stores, mismatch total {mismatch_total}")
     return 0
