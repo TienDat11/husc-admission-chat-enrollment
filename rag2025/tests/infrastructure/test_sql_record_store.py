@@ -436,3 +436,17 @@ def test_supersession_of_a_remapped_legacy_record_survives_migration(tmp_path, f
     _assert_parity(file, sql, idmap)
     assert sql.is_superseded(C) is True
     assert sql.superseding_record(C).record_id == idmap.get(E, E)
+
+
+def test_materializer_admits_the_live_version_after_archived_predecessors(tmp_path, fresh_db):
+    from src.services.published_materializer import PublishedMaterializer
+
+    _register(fresh_db)
+    store = SqlRecordStore(fresh_db)
+    store.write_record(_published(A, 1, text="a v1 published"))
+    store.write_record(_published(A, 2, text="a v2 published"))  # archives v1 as superseded
+    assert store.get_version(A, 1).status is RecordStatus.ARCHIVED
+
+    result = PublishedMaterializer(store).materialize("rel-2026-1", tmp_path / "out")
+
+    assert [(r.record_id, r.version) for r in result.admitted] == [(A, 2)]
