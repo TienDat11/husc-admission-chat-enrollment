@@ -16,6 +16,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import psycopg
 import pytest
@@ -272,6 +273,72 @@ def test_dangling_source_document_id_becomes_null_with_payload_key_and_counter(t
         ).fetchone()
     assert source is None
     assert legacy == "doc-missing"
+
+
+def _register_doc_1(root: Path) -> None:
+    _write_json(root / "documents" / "doc-1_d.json", {
+        "document_id": "doc-1", "sha256": "cd" * 32, "path": "uploads/tuyensinh2026.pdf",
+        "state": "registered", "registered_by": "alice",
+        "registered_at": "2026-01-02T03:04:05", "updated_at": "2026-01-03T00:00:00+00:00",
+    })
+
+
+def test_superseded_published_row_with_dangling_source_is_archived_not_aborted(tmp_path, fresh_db):
+    root = tmp_path / "root"
+    _register_doc_1(root)
+    rid = "CHI_TIEU:nganh:7220104:2026:supersede"
+    store = CanonicalRecordStore(root)
+    store.write_record(_rec(rid).model_copy(update={
+        "status": RecordStatus.PUBLISHED, "published_at": NOW, "source_document_id": "doc-missing",
+    }))
+    store.write_record(_rec(rid).model_copy(update={
+        "version": 2, "status": RecordStatus.PUBLISHED,
+        "published_at": datetime(2026, 11, 18, tzinfo=timezone.utc),
+    }))
+    report = _apply(root, fresh_db)
+    assert report["dangling_source_document_id"] == 1
+    with psycopg.connect(_conninfo(fresh_db)) as conn:
+        rows = conn.execute(
+            "SELECT version, status, source_document_id::text, "
+            "structured_payload->>'legacy_source_document_id', structured_payload->>'legacy_status' "
+            "FROM canonical_records ORDER BY version"
+        ).fetchall()
+    assert rows == [
+        (1, "archived", None, "doc-missing", "published"),
+        (2, "published", "doc-1", None, None),
+    ]
+
+
+def test_single_published_row_with_dangling_source_still_aborts_and_rolls_back(tmp_path, fresh_db):
+    root = tmp_path / "root"
+    _register_doc_1(root)
+    CanonicalRecordStore(root).write_record(_rec("CHI_TIEU:nganh:7220104:2026:stays").model_copy(update={
+        "status": RecordStatus.PUBLISHED, "published_at": NOW, "source_document_id": "doc-missing",
+    }))
+    with pytest.raises(MigrationError) as exc:
+        _apply(root, fresh_db)
+    assert "doc-missing" in str(exc.value)
+    assert all(count == 0 for count in _counts(fresh_db).values())
+
+
+def test_superseded_row_without_original_status_records_draft_as_legacy_status(tmp_path, fresh_db):
+    root = tmp_path / "root"
+    _register_doc_1(root)
+    rid = "CHI_TIEU:nganh:7220104:2026:nostatus"
+    store = CanonicalRecordStore(root)
+    store.write_record(_rec(rid))
+    store.write_record(_rec(rid).model_copy(update={"version": 2}))
+    v1 = root / "records" / f"rec-{quote(rid, safe='')}_r" / "v0001.json"
+    payload = json.loads(v1.read_text(encoding="utf-8"))
+    payload["status"] = None  # legacy row with no status: the effective default is draft
+    v1.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    _apply(root, fresh_db)
+    with psycopg.connect(_conninfo(fresh_db)) as conn:
+        rows = conn.execute(
+            "SELECT version, status, structured_payload->>'legacy_status' "
+            "FROM canonical_records ORDER BY version"
+        ).fetchall()
+    assert rows == [(1, "archived", "draft"), (2, "draft", None)]
 
 
 def test_in_progress_idempotency_claim_is_skipped_and_counted(tmp_path, fresh_db):

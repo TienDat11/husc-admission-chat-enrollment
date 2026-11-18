@@ -1267,13 +1267,13 @@ def _write_records(cur, t: _Tally, rows: list[dict], known_docs: set[str]) -> No
         structured = dict(r["structured_payload"])
         legacy_status = r.get("_legacy_status", r["status"])
         if r.get("_superseded"):
-            structured["legacy_status"] = legacy_status
+            structured["legacy_status"] = legacy_status or "draft"
         source = r["source_document_id"]
         if source is not None and source not in known_docs:
             structured["legacy_source_document_id"] = source
             source = None
             t.dangling += 1
-            if legacy_status == "published":
+            if not r.get("_superseded") and legacy_status == "published":
                 raise MigrationError(
                     f"{store}: {key}: published record cites source document {structured['legacy_source_document_id']!r}, "
                     "which is not in source_documents"
