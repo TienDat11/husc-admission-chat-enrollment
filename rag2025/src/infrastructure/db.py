@@ -48,6 +48,16 @@ def database_url() -> str:
     url = os.getenv("DATABASE_URL", "").strip()
     if not url:
         raise RuntimeError("DATABASE_URL is not set")
+    # Normalize Neon connection strings for asyncpg:
+    #   postgresql:// -> postgresql+asyncpg://
+    #   sslmode=require -> ssl=require  (asyncpg uses 'ssl', not 'sslmode')
+    #   channel_binding=require -> dropped  (not supported by asyncpg)
+    url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    url = url.replace("sslmode=require", "ssl=require")
+    url = url.replace("&channel_binding=require", "").replace("?channel_binding=require", "?")
+    # Clean up a stray '?' if all query params were removed
+    if url.endswith("?"):
+        url = url[:-1]
     return url
 
 

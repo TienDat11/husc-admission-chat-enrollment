@@ -18,6 +18,15 @@ def _database_url() -> str:
     url = os.getenv("DATABASE_URL", "").strip()
     if not url:
         raise RuntimeError("DATABASE_URL must be set to run alembic migrations")
+    # Normalize Neon connection strings for asyncpg:
+    #   postgresql:// -> postgresql+asyncpg://
+    #   sslmode=require -> ssl=require
+    #   channel_binding=require -> dropped  (not supported by asyncpg)
+    url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    url = url.replace("sslmode=require", "ssl=require")
+    url = url.replace("&channel_binding=require", "").replace("?channel_binding=require", "?")
+    if url.endswith("?"):
+        url = url[:-1]
     return url
 
 
