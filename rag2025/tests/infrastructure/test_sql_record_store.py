@@ -92,7 +92,7 @@ def _legacy_root(root: Path) -> None:
     """Several records, multiple versions, a published supersession chain (B supersedes A)."""
     _document(root)
     store = CanonicalRecordStore(root)
-    store.write_record(_base(A, 1, text="a v1 draft"))
+    store.write_record(_base(A, 1, status="archived", text="a v1 superseded"))  # what the migrator normalises a draft under a published version to
     store.write_record(_published(A, 2, text="a v2 published"))
     store.write_record(_published(B, 1, admission_year=2027, supersedes=A, authored_by="bob", text="b"))
     store.write_record(_published(C_LEGACY, 1, record_type="HOC_PHI", text="c"))
