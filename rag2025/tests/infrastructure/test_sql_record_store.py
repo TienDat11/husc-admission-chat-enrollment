@@ -233,14 +233,14 @@ def test_write_and_edit_round_trip_is_lossless(fresh_db):  # noqa: F811
     assert sql.write_record(v1) == v1
     assert sql.get_version(A, 1) == v1
 
-    # A draft-to-draft edit would be a second open draft (uq_one_open_draft), so edit to published.
     edited = sql.edit_record(A, status="published", source_document_id=DOC, text="a v2")
     assert edited.version == 2
     assert edited == v1.model_copy(update={"version": 2, "status": RecordStatus.PUBLISHED,
                                            "source_document_id": DOC, "text": "a v2"})
     assert sql.get_version(A, 2) == edited
     assert sql.get_record(A).latest == edited
-    assert sql.get_record(A).prior == (v1,)
+    # Writing v2 superseded the open v1, so the prior version is archived now.
+    assert sql.get_record(A).prior == (v1.model_copy(update={"status": RecordStatus.ARCHIVED}),)
 
 
 def test_duplicate_version_raises_conflict_and_keeps_history(fresh_db):  # noqa: F811
@@ -317,12 +317,68 @@ def test_publishing_archives_the_previous_published_version(fresh_db):  # noqa: 
     assert row[0] == "superseded"
 
 
-def test_second_open_draft_raises_conflict(fresh_db):  # noqa: F811
+def _open_and_published_counts(url: str, record_id: str) -> tuple[int, int]:
+    with _pg(url) as conn:
+        row = conn.execute(
+            "SELECT count(*) FILTER (WHERE status IN ('draft','review','approved')), "
+            "count(*) FILTER (WHERE status = 'published') "
+            "FROM canonical_records WHERE record_id = %s",
+            (record_id,),
+        ).fetchone()
+    return int(row[0]), int(row[1])
+
+
+def _archive_reason(url: str, record_id: str, version: int) -> str | None:
+    with _pg(url) as conn:
+        row = conn.execute(
+            "SELECT archive_reason FROM canonical_records WHERE record_id = %s AND version = %s",
+            (record_id, version),
+        ).fetchone()
+    return row[0]
+
+
+def test_second_open_draft_archives_the_first_as_superseded(fresh_db):  # noqa: F811
     sql = SqlRecordStore(fresh_db)
     sql.write_record(_base(A, 1))
-    with pytest.raises(RecordVersionConflictError):
-        sql.write_record(_base(A, 2))
-    assert sql.versions(A) == (1,)
+    sql.write_record(_base(A, 2))
+    assert sql.get_version(A, 1).status is RecordStatus.ARCHIVED
+    assert _archive_reason(fresh_db, A, 1) == "superseded"
+    assert sql.get_version(A, 2).status is RecordStatus.DRAFT
+    assert sql.versions(A) == (1, 2)
+    assert _open_and_published_counts(fresh_db, A) == (1, 0)
+
+
+def test_admin_chain_keeps_one_open_version_and_ends_published(fresh_db):  # noqa: F811
+    _register(fresh_db)
+    sql = SqlRecordStore(fresh_db)
+    sql.write_record(_base(A, 1))
+    sql.write_record(_base(A, 2, status="review"))
+    sql.write_record(_base(A, 3, status="approved"))
+    assert _open_and_published_counts(fresh_db, A) == (1, 0)
+    sql.write_record(_published(A, 4, text="a v4"))
+
+    for version in (1, 2, 3):
+        assert sql.get_version(A, version).status is RecordStatus.ARCHIVED
+        assert _archive_reason(fresh_db, A, version) == "superseded"
+    assert sql.get_version(A, 4).status is RecordStatus.PUBLISHED
+    assert sql.versions(A) == (1, 2, 3, 4)
+    assert sql.get_record(A).latest.version == 4
+    assert _open_and_published_counts(fresh_db, A) == (0, 1)
+
+
+def test_draft_on_top_of_published_leaves_it_published(fresh_db):  # noqa: F811
+    _register(fresh_db)
+    sql = SqlRecordStore(fresh_db)
+    sql.write_record(_published(A, 1))
+    sql.write_record(_base(A, 2, text="edit after publish"))
+    assert sql.get_version(A, 1).status is RecordStatus.PUBLISHED
+    assert _open_and_published_counts(fresh_db, A) == (1, 1)
+
+    sql.write_record(_base(A, 3, status="review"))
+    assert sql.get_version(A, 1).status is RecordStatus.PUBLISHED
+    assert sql.get_version(A, 2).status is RecordStatus.ARCHIVED
+    assert _open_and_published_counts(fresh_db, A) == (1, 1)
+    assert sql.get_record(A).latest.version == 3
 
 
 def test_unregistered_source_document_raises_store_error(fresh_db):  # noqa: F811

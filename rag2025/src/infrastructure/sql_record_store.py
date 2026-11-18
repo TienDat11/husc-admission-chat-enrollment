@@ -17,8 +17,12 @@ Documented divergences from the file store (the SQL model enforces these)
   in the same transaction (``status='archived'``, ``archive_reason='superseded'``).
   ``uq_current_coordinate`` allows one published version per coordinate, so the
   file store's "every version stays published" is not representable.
-- A second open (draft / review / approved) version of a ``record_id`` raises
-  :class:`RecordVersionConflictError` (``uq_one_open_draft``).
+- The workflow appends one version per transition, so every write archives the
+  earlier open (draft / review / approved) versions of its ``record_id`` in the
+  same transaction (``status='archived'``, ``archive_reason='superseded'``). One
+  open version per record is then kept, as ``uq_one_open_draft`` requires. A
+  draft written on top of a published version leaves the published one as it is.
+  A duplicate version number still raises :class:`RecordVersionConflictError`.
 - ``source_document_id`` must exist in ``source_documents`` (FK); otherwise
   :class:`RecordStoreError` is raised instead of a raw psycopg error.
 - Any unique violation on write (primary key, open-draft, coordinate) raises
@@ -107,6 +111,10 @@ INSERT INTO canonical_records (
 _ARCHIVE_PREVIOUS = (
     "UPDATE canonical_records SET status = 'archived', archive_reason = 'superseded', "
     "updated_at = now() WHERE record_id = %s AND status = 'published'"
+)
+_ARCHIVE_OPEN = (
+    "UPDATE canonical_records SET status = 'archived', archive_reason = 'superseded', "
+    "updated_at = now() WHERE record_id = %s AND status IN ('draft', 'review', 'approved')"
 )
 
 _RETRACT = """
@@ -260,8 +268,9 @@ class SqlRecordStore:
     def write_record(self, record: CanonicalRecord) -> CanonicalRecord:
         """Append ``record`` as the next version of its ``record_id``; returns it.
 
-        Publishing archives the previous published version of the same record in
-        the same transaction. Any failure rolls the whole write back.
+        Earlier open versions of the record are archived as superseded, and
+        publishing also archives the previous published version, all in the same
+        transaction. Any failure rolls the whole write back.
         """
         with self._connect() as conn:
             existing = _version_numbers(conn, record.record_id)
@@ -283,6 +292,7 @@ class SqlRecordStore:
                         "source_document_id is not registered in source_documents"
                     )
             try:
+                conn.execute(_ARCHIVE_OPEN, (record.record_id,))
                 if record.status is RecordStatus.PUBLISHED:
                     conn.execute(_ARCHIVE_PREVIOUS, (record.record_id,))
                 conn.execute(_INSERT, _to_params(record))
