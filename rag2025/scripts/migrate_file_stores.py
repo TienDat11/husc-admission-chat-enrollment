@@ -1006,6 +1006,7 @@ class _Tally:
         self.keys: dict[str, set] = {}
         self.skipped_idempotency = 0
         self.dangling = 0
+        self.normalised = 0
 
     def default(self, store: str, column: str) -> None:
         cols = self.defaulted.setdefault(store, {})
@@ -1185,8 +1186,50 @@ def _write_releases(cur, t: _Tally, rows: list[dict], known: set[str]) -> None:
         _write(cur, t, store, "releases", row, "(release_id)", rid)
 
 
+_OPEN_STATUSES = ("draft", "review", "approved")
+
+
+def _supersede_extra_open_and_published(rows: list[dict]) -> tuple[list[dict], int]:
+    """Archive the non-newest open and non-newest published versions of each record.
+
+    The file store could hold several open versions and several published ones for
+    one record_id. The SQL model allows one open version (uq_one_open_draft) and one
+    published version per coordinate (uq_current_coordinate), so the extra ones are
+    written as ``archived`` / ``superseded`` instead. The newest of each group is kept
+    as it is. Returns new row dicts (inputs are not mutated) and how many were changed.
+    """
+    def group(row: dict) -> str | None:
+        status = row["status"] or "draft"
+        if status in _OPEN_STATUSES:
+            return "open"
+        if status == "published":
+            return "published"
+        return None
+
+    newest: dict[tuple[str, str], int] = {}
+    for index, row in enumerate(rows):
+        kind = group(row)
+        if kind is None:
+            continue
+        key = (row["record_id"], kind)
+        if key not in newest or row["version"] > rows[newest[key]]["version"]:
+            newest[key] = index
+    out: list[dict] = []
+    changed = 0
+    for index, row in enumerate(rows):
+        kind = group(row)
+        if kind is not None and newest[(row["record_id"], kind)] != index:
+            out.append(dict(row, status="archived", _superseded=True))
+            changed += 1
+        else:
+            out.append(row)
+    return out, changed
+
+
 def _write_records(cur, t: _Tally, rows: list[dict], known_docs: set[str]) -> None:
     store = "records"
+    rows, changed = _supersede_extra_open_and_published(rows)
+    t.normalised += changed
     for r in rows:
         key = f"{r['record_id']}@{r['version']}"
         structured = dict(r["structured_payload"])
@@ -1209,7 +1252,9 @@ def _write_records(cur, t: _Tally, rows: list[dict], known_docs: set[str]) -> No
             t.default(store, "admission_year")
             year = t.now.year
         archive = None
-        if status == "archived":
+        if r.get("_superseded"):
+            archive = "superseded"
+        elif status == "archived":
             t.default(store, "archive_reason")
             archive = "archived"
         effective_from = _day(r["effective_from"], f"{store}.effective_from")
@@ -1535,6 +1580,7 @@ def apply_to_database(root: str | Path, conn, *, now: datetime) -> dict:
         "defaulted": tally.defaulted,
         "skipped": {"idempotency": tally.skipped_idempotency},
         "dangling_source_document_id": tally.dangling,
+        "normalised": {"records": tally.normalised},
         "run_at": run_at.isoformat(),
     })
     return report

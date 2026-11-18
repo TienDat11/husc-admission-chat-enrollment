@@ -576,3 +576,67 @@ def test_defaulted_sentinels_cover_each_filled_gap(tmp_path, fresh_db, monkeypat
     assert revoked_by == "legacy-migration"
     assert reason == "legacy migration: short"
     assert len(reason) >= 10
+
+
+def _row(record_id: str, version: int, status: str | None) -> dict:
+    return {"record_id": record_id, "version": version, "status": status}
+
+
+def test_normalise_keeps_the_newest_open_and_newest_published_version_per_record():
+    rows = [
+        _row("A", 1, "draft"),
+        _row("A", 2, "review"),
+        _row("A", 3, "draft"),  # newest open: kept
+        _row("A", 4, "published"),
+        _row("A", 5, "published"),  # newest published: kept
+        _row("A", 6, "published"),
+        _row("B", 1, "published"),
+        _row("B", 2, None),  # status None is a draft after defaulting
+        _row("C", 1, "archived"),  # untouched
+    ]
+    out, count = migrate._supersede_extra_open_and_published(rows)
+    statuses = {(r["record_id"], r["version"]): r["status"] for r in out}
+    assert statuses == {
+        ("A", 1): "archived",
+        ("A", 2): "archived",
+        ("A", 3): "draft",
+        ("A", 4): "archived",
+        ("A", 5): "archived",
+        ("A", 6): "published",
+        ("B", 1): "published",
+        ("B", 2): None,
+        ("C", 1): "archived",
+    }
+    assert count == 4
+    superseded = [r for r in out if r.get("_superseded")]
+    assert {(r["record_id"], r["version"]) for r in superseded} == {("A", 1), ("A", 2), ("A", 4), ("A", 5)}
+    assert [r for r in rows if "_superseded" in r] == []  # input not mutated
+
+
+def test_normalise_is_a_no_op_for_a_clean_chain():
+    rows = [_row("A", 1, "archived"), _row("A", 2, "published"), _row("A", 3, "draft")]
+    out, count = migrate._supersede_extra_open_and_published(rows)
+    assert out == rows
+    assert count == 0
+
+
+def test_normalise_writes_duplicate_open_versions_as_superseded(tmp_path, fresh_db):
+    root = tmp_path / "root"
+    _write_json(root / "documents" / "doc-1_d.json", {
+        "document_id": "doc-1", "sha256": "cd" * 32, "path": "uploads/tuyensinh2026.pdf",
+        "state": "registered", "registered_by": "alice",
+        "registered_at": "2026-01-02T03:04:05", "updated_at": "2026-01-03T00:00:00+00:00",
+    })
+    base = _rec("CHI_TIEU:nganh:7220104:2026:dup")
+    store = CanonicalRecordStore(root)
+    store.write_record(base)  # v1 draft
+    store.write_record(base.model_copy(update={"version": 2}))  # v2 draft: second open version
+    report = _apply(root, fresh_db)
+    for name, s in _stores(report).items():
+        assert s["mismatch"] == 0, (name, s)
+    assert report["normalised"]["records"] == 1
+    with psycopg.connect(_conninfo(fresh_db)) as conn:
+        rows = conn.execute(
+            "SELECT version, status, archive_reason FROM canonical_records ORDER BY version"
+        ).fetchall()
+    assert rows == [(1, "archived", "superseded"), (2, "draft", None)]
