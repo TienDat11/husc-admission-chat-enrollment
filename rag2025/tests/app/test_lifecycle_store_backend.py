@@ -198,9 +198,11 @@ def test_postgres_backend_warns_about_stale_pre_cutover_file_stores(tmp_path, mo
     (root / "audit" / "ledger.jsonl").write_text("{}\n", encoding="utf-8")
     messages: list[str] = []
     sink_id = logger.add(lambda message: messages.append(str(message)), level="WARNING")
-    app = _configure(root.parent, "postgres")
     try:
+        app = _configure(root.parent, "postgres")
+    finally:
         logger.remove(sink_id)
+    try:
         joined = "\n".join(messages)
         assert "records" in joined and "ledger.jsonl" in joined
         assert "not written" in joined
