@@ -129,14 +129,45 @@ def test_build_is_deterministic():
     assert first == second
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BLOCKER U1: 26 supersession cases (§PL-6.7 matrix) need old/new record "
-        "pairs with ground-truth outcomes; tests/fixtures/legal_vn/golden_40.jsonl "
-        "holds single sentences, not pairs. Awaiting user decision."
-    ),
-)
-def test_supersession_has_26_matrix_cases():
-    supersession = [r for r in _rows() if r.get("matrix_row")]
-    assert len(supersession) >= 26
+def test_supersession_has_26_matrix_cases_with_exact_distribution():
+    expected = {
+        "1to1_same_id": 3,
+        "1to1_diff_id": 3,
+        "amends_dieu": 5,
+        "corrects": 2,
+        "repeals_expires": 3,
+        "split_1_to_n": 2,
+        "merge_n_to_1": 3,
+        "chain_a_b_c": 2,
+        "temporal_handoff": 1,
+        "coexist_revoke": 2,
+    }
+    supersession = [r for r in _rows() if r["group"] == "supersession"]
+    assert len(supersession) == 26
+    counts: dict[str, int] = {}
+    for row in supersession:
+        counts[row["matrix_row"]] = counts.get(row["matrix_row"], 0) + 1
+    assert counts == expected
+
+
+def test_supersession_rows_carry_relation_keys_and_legal_text():
+    import json as _json
+    import re as _re
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    legal = root / "tests" / "fixtures" / "legal_vn" / "golden_40.jsonl"
+    legal_texts = {
+        _json.loads(line)["text"]
+        for line in legal.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    }
+    key_format = _re.compile(r"^[A-Z_]+:[a-z_]+:[^:]+:\d{4}:[^:]+:(all|[0-9a-f]{12})$")
+    for row in _rows():
+        if row["group"] != "supersession":
+            continue
+        assert row["relation"], row["id"]
+        assert row["question"] in legal_texts, row["id"]
+        assert row["expected_coordinate_keys"], row["id"]
+        for key in row["expected_coordinate_keys"]:
+            assert key_format.match(key), key

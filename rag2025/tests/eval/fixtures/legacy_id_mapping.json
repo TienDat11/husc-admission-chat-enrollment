@@ -394,5 +394,19 @@
   },
   "mapping_rule": "RECORD_TYPE:scope:subject:year:none:methods_hash (plan §PL-6.6; admission_round null)",
   "out_of_scope_count": 10,
-  "source_artifact_version": 1
+  "source_artifact_version": 1,
+  "supersession_count": 26,
+  "supersession_matrix": {
+    "1to1_diff_id": 3,
+    "1to1_same_id": 3,
+    "amends_dieu": 5,
+    "chain_a_b_c": 2,
+    "coexist_revoke": 2,
+    "corrects": 2,
+    "merge_n_to_1": 3,
+    "repeals_expires": 3,
+    "split_1_to_n": 2,
+    "temporal_handoff": 1
+  },
+  "supersession_source": "tests/fixtures/legal_vn/golden_40.jsonl"
 }
