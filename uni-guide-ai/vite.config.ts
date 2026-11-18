@@ -12,8 +12,8 @@ export default defineConfig(({ mode }) => ({
       "Content-Security-Policy": [
         "default-src 'self'",
         "script-src 'self' 'unsafe-inline'",
-        "style-src 'self' 'unsafe-inline'",
-        "font-src 'self'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
         "connect-src 'self' http://localhost:8000 https://api.husc.edu.vn",
         "img-src 'self' data: https:",
       ].join("; "),
@@ -25,6 +25,19 @@ export default defineConfig(({ mode }) => ({
   preview: {
     host: "::",
     port: 8080,
+    headers: {
+      "Content-Security-Policy": [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "connect-src 'self' http://localhost:8000 https://api.husc.edu.vn",
+        "img-src 'self' data: https:",
+      ].join("; "),
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
