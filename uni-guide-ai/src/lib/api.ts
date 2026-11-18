@@ -500,7 +500,15 @@ export async function checkHealth(): Promise<HealthResponse> {
  */
 export async function warmup(): Promise<void> {
   try {
-    await fetch(`${API_BASE_URL}/warmup`, { method: 'GET' });
+    // Bounded on purpose: this runs on the landing route, and a preload that
+    // never settles holds the page's network-quiet window open (a filtered
+    // port makes Chrome spend its full connect timeout here, twice — ::1 then
+    // 127.0.0.1). 1.5s is enough for a reachable backend to start warming and
+    // short enough that an unreachable one cannot delay first interaction.
+    await fetch(`${API_BASE_URL}/warmup`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(1500),
+    });
   } catch (error) {
     // Swallow — warmup is best-effort. Log so devs can see it in the console
     // but never propagate to the UI mount path.

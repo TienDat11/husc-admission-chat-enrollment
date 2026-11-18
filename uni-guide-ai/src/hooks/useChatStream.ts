@@ -7,11 +7,13 @@ import {
   sendChatMessage,
   queryStream,
   classifyFetchError,
+  type ChatTurn,
   type QueryError,
   type QueryErrorKind,
 } from '@/lib/api';
 import { mapSources, decorateAnswer } from '@/lib/chat-helpers';
 import type { SourceChip } from '@/lib/api-types';
+import type { SessionHistoryEntry } from '@/lib/session-history';
 
 export interface UseChatStreamResult {
   /** Append a user message and run the streaming + fallback pipeline. */
@@ -60,7 +62,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
   );
 
   const send = useCallback(
-    async (content: string) => {
+    async (content: string, history?: SessionHistoryEntry[]) => {
       // Abort any previous in-flight request
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -78,10 +80,16 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
       // Multi-turn context slice: last 4 prior messages (2 user + 2 assistant
       // turns). Exclude the current user message — the BE treats `content` as
       // the live question.
-      const historyWindow = messages.slice(-4).map((m) => ({
+      const historyWindow: ChatTurn[] = messages.slice(-4).map((m) => ({
         role: m.role,
         content: m.content,
       }));
+      // Ticket 43: the session history (one entry per user turn) is passed
+      // into send(content, history) and forwarded to sendChatMessage/queryStream;
+      // fall back to the sliding window when no history is supplied.
+      const apiHistory: ChatTurn[] = history
+        ? history.map((e) => ({ role: 'user' as const, content: e.question }))
+        : historyWindow;
 
       const assistantId = generateId();
       const placeholder: Message = {
@@ -177,7 +185,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
                 finalAnswer = fullAnswer;
               },
             },
-            historyWindow,
+            apiHistory,
             signal,
           );
 
@@ -220,7 +228,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
           );
         }
 
-        const response = await sendChatMessage(content, historyWindow);
+        const response = await sendChatMessage(content, apiHistory);
         const rawSources = response.sources || [];
         sources = mapSources(rawSources as Array<SourceChip | string>, response.confidence ?? 0.5);
         statusCode = response.status_code || 'SUCCESS';

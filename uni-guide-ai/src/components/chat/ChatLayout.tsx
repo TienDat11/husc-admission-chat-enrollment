@@ -1,22 +1,28 @@
-// @spec(plan-warmup-ux-20260705-111031 §3.2 / §5 Phase 3)
-// ChatLayout — top-level container that wires backend readiness UX.
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+// @spec(PL-7.2 Frame 12 XaDgH — Chat thí sinh)
+// ChatLayout — khung chat công khai theo frame XaDgH: rail trái 320 (nền trắng, kẻ 1px phải)
+// + cột chat co giãn. Giữ toàn bộ logic/hooks hiện có (streaming gửi,
+// danh sách tin nhắn, phản hồi, lỗi/Trạng thái sẵn sàng backend), chỉ thay đổi trình bày.
+// Màn hình chào mừng render DÙ backend chưa sẵn sàng (trạng thái rỗng thiết kế-đủ mà không cần API).
+// Phục hồi hành vi từ HEAD: buildSessionHistory → send(content, history), khung báo GENERATION_FAILED,
+// badge INSUFFICIENT_DATA, chip nguồn, đọc answer_confidence, xử lý lỗi "Có lỗi xảy ra".
+import React from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useChatStream } from '@/hooks/useChatStream';
 import { useBackendReadiness, type ReadinessStage } from '@/hooks/useBackendReadiness';
-import { ChatHeader } from './ChatHeader';
-import { ChatSidebar } from './ChatSidebar';
-import { ChatMessages } from './ChatMessages';
-import { ChatInput } from './ChatInput';
-import { SuggestedQuestions } from './SuggestedQuestions';
 import type { Message } from '@/lib/chat-types';
 import { buildSessionHistory, removeExchange } from '@/lib/session-history';
 import { deriveFollowUpQuestions } from '@/lib/follow-up-questions';
-
-interface BannerState {
-  visible: boolean;
-  seconds: number;
-}
+import type { SessionHistoryEntry } from '@/lib/session-history';
+import { ChatRail } from './ChatRail';
+import { ChatTopBar } from './ChatTopBar';
+import { ChatSidebar } from './ChatSidebar';
+import { ChatWelcome } from './ChatWelcome';
+import { ChatUserBubble } from './ChatUserBubble';
+import { ChatBotBubble } from './ChatBotBubble';
+import { ChatRoadmap } from './ChatRoadmap';
+import { ChatComposer } from './ChatComposer';
+import { SuggestedQuestions } from './SuggestedQuestions';
 
 function WarmingBanner({ stage }: { stage: ReadinessStage }) {
   const mountedAtRef = useRef<number>(Date.now());
@@ -38,10 +44,9 @@ function WarmingBanner({ stage }: { stage: ReadinessStage }) {
   const copy = isFailed
     ? '🔴 Máy chủ không phản hồi. Sẽ thử lại...'
     : `⏳ Đang kết nối tới máy chủ... (${seconds}s)`;
-  const tail = isFailed ? '' : '';
   const cls = isFailed
-    ? 'border-red-600 bg-red-50 text-red-900 dark:border-red-700 dark:bg-red-950/40 dark:text-red-100'
-    : 'border-blue-600 bg-blue-50 text-blue-900 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100';
+    ? 'border-[#DC3545] bg-[#FDECEA] text-[#8B1A1A]'
+    : 'border-[#096EBA] bg-[#E6ECF7] text-[#143980]';
 
   return (
     <motion.div
@@ -52,10 +57,9 @@ function WarmingBanner({ stage }: { stage: ReadinessStage }) {
       data-stage={stage}
       role="status"
       aria-live="polite"
-      className={`max-w-4xl mx-auto mt-3 mx-3 md:mx-auto px-4 py-2 rounded-2xl border-2 text-sm font-semibold flex items-center gap-2 ${cls}`}
+      className={`mx-4 mt-3 px-4 py-2 rounded-xl border-2 text-sm font-semibold flex items-center gap-2 ${cls}`}
     >
       <span>{copy}</span>
-      {tail && <span className="text-xs opacity-80">{tail}</span>}
     </motion.div>
   );
 }
@@ -66,23 +70,19 @@ export function ChatLayout() {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
 
   const readiness = useBackendReadiness({ pollMs: 2000 });
-
-  const { send, isTyping } = useChatStream({
-    messages,
-    onMessagesChange: setMessages,
-  });
+  const { send, isTyping } = useChatStream({ messages, onMessagesChange: setMessages });
 
   const history = useMemo(() => buildSessionHistory(messages), [messages]);
   const followUps = useMemo(() => deriveFollowUpQuestions(messages), [messages]);
 
   const handleSendMessage = useCallback(
     (content: string) => {
-      send(content);
+      send(content, history);
     },
-    [send],
+    [send, history],
   );
 
-  const handleSelectQuestion = useCallback(
+  const handleTopicSelect = useCallback(
     (question: string) => {
       handleSendMessage(question);
     },
@@ -107,55 +107,81 @@ export function ChatLayout() {
     setIsSidebarOpen(false);
   }, []);
 
+  const ROADMAP_STEPS = [
+    { title: 'Chọn ngành và tổ hợp', detail: 'Đủ điểm chuẩn CNTT (24.50) và Quản trị kinh doanh (23.75)', status: 'done' as const },
+    { title: 'Chọn phương thức xét tuyển', detail: 'Xét điểm thi tốt nghiệp hoặc xét tuyển thẳng IELTS ≥ 6.0', status: 'done' as const },
+    { title: 'Chuẩn bị hồ sơ ưu tiên', detail: 'Nộp minh chứng trước 30/06/2026', status: 'done' as const },
+    { title: 'Đăng ký nguyện vọng', detail: 'Cần đặt CNTT là nguyện vọng 1 trên Cổng Bộ GD&ĐT', status: 'current' as const },
+    { title: 'Xác nhận nhập học', detail: 'Chuẩn bị học phí học kỳ I khoảng 7.250.000 đ', status: 'pending' as const },
+  ];
+
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background mesh-gradient-bg">
-      <ChatSidebar
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        onNewChat={handleNewChat}
-        history={history}
-        activeMessageId={activeMessageId}
-        onSelectEntry={handleSelectEntry}
-        onDeleteEntry={handleDeleteEntry}
-      />
+    <div className="flex h-screen w-full bg-[#F3F5F9]">
+      {/* Rail trái 320 — ẩn trên mobile, cột chat lấp đầy khung nhìn */}
+      <div className="hidden lg:flex w-[320px] shrink-0 border-r border-[#E3E8F0] bg-white">
+        <ChatRail onTopicSelect={handleTopicSelect} />
+      </div>
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <ChatHeader onMenuClick={() => setIsSidebarOpen(true)} />
+      <div className="flex-1 flex flex-col min-w-0 bg-white">
+        <ChatTopBar />
 
-        {/* Readiness banner: shown above ChatMessages while the BE
-            is warming or has gone away. Plan §3.2 + N-goal: graceful
-            degradation — typing is NOT blocked, only Send is disabled. */}
+        {/* Readiness banner: shown above the transcript while the BE is warming/failed.
+            Typing is NOT blocked, only Send is disabled. */}
         <AnimatePresence>
-          {!readiness.ready && (
-            <WarmingBanner stage={readiness.stage} />
-          )}
+          {!readiness.ready && <WarmingBanner stage={readiness.stage} />}
         </AnimatePresence>
 
-        <ChatMessages
-          messages={messages}
-          isTyping={isTyping}
-          backendReady={readiness.ready}
+        {/* Lịch sử phiên — phục hồi hành vi từ HEAD (test ids luôn có mặt trong DOM). */}
+        <ChatSidebar
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          onNewChat={handleNewChat}
+          history={history}
           activeMessageId={activeMessageId}
-          onRetryMessage={handleSendMessage}
+          onSelectEntry={handleSelectEntry}
+          onDeleteEntry={handleDeleteEntry}
         />
 
-        <AnimatePresence>
-          {followUps.length > 0 && !isTyping && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-            >
-              <SuggestedQuestions questions={followUps} onSelect={handleSelectQuestion} />
-            </motion.div>
+        <div
+          className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-4"
+          role="log"
+          aria-live="polite"
+          aria-label="Dòng hội thoại"
+          tabIndex={0}
+        >
+          {/* Màn hình chào mừng khi chưa có tin nhắn — render mà không cần backend */}
+          {messages.length === 0 && !isTyping && (
+            <ChatWelcome onTopicSelect={handleTopicSelect} />
           )}
-        </AnimatePresence>
 
-        <ChatInput
+          {messages.map((message) => (
+            <div key={message.id} data-message-id={message.id}>
+              {message.role === 'user' ? (
+                <ChatUserBubble key={message.id} message={message} />
+              ) : (
+                <ChatBotBubble
+                  key={message.id}
+                  message={message}
+                  onRetry={
+                    message.retryQuery ? () => handleSendMessage(message.retryQuery) : undefined
+                  }
+                />
+              )}
+            </div>
+          ))}
+
+          {/* Lộ trình 5 bước xuất hiện sau khi có cuộc trò chuyện */}
+          {messages.length > 0 && <ChatRoadmap steps={ROADMAP_STEPS} readyCount={3} />}
+
+          {followUps.length > 0 && !isTyping && (
+            <SuggestedQuestions questions={followUps} onSelect={handleTopicSelect} />
+          )}
+        </div>
+
+        <ChatComposer
           onSend={handleSendMessage}
           isLoading={isTyping}
-          backendReady={readiness.ready}
-          readinessStage={readiness.stage}
+          disabled={!readiness.ready}
         />
       </div>
     </div>

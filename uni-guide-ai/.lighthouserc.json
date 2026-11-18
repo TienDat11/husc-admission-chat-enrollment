@@ -7,8 +7,8 @@
         "preset": "desktop",
         "skipAudits": ["uses-http2"]
       },
-      "startServerCommand": "npm run preview",
-      "startServerReadyPattern": "Local:.*http://localhost"
+      "startServerCommand": "npm run preview -- --strictPort",
+      "startServerReadyPattern": "https?://localhost:8080"
     },
     "assert": {
       "assertions": {

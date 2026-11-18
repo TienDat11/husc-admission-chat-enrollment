@@ -1,9 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { HeroSection } from '@/components/chat/HeroSection';
-import { ChatLayout } from '@/components/chat/ChatLayout';
 import { MajorRecommender } from '@/components/MajorRecommender';
 import { warmup } from '@/lib/api';
+
+// The chat panel is a second screen behind a click, so it must not sit in the
+// landing route's critical path: it drags in react-markdown (~115 kB raw) and
+// the whole chat surface. ChatLayout has no module-level side effect, so the
+// boundary is safe — the hero never waits on it.
+const ChatLayout = lazy(() =>
+  import('@/components/chat/ChatLayout').then((m) => ({ default: m.ChatLayout })),
+);
 
 const Index = () => {
   const [showChat, setShowChat] = useState(false);
@@ -46,7 +53,21 @@ const Index = () => {
           transition={{ duration: 0.4 }}
           className="h-screen"
         >
-          <ChatLayout />
+          {/* Fallback is sized to the chat panel (h-screen) so the swap from
+              hero to chat does not jump while the chunk loads. */}
+          <Suspense
+            fallback={
+              <div className="flex h-screen w-full items-center justify-center bg-background">
+                <div
+                  role="status"
+                  aria-label="Đang tải trò chuyện"
+                  className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary"
+                />
+              </div>
+            }
+          >
+            <ChatLayout />
+          </Suspense>
         </motion.div>
       )}
     </AnimatePresence>

@@ -114,10 +114,11 @@ describe('ticket 23 criterion 3 — chat token contrast (WCAG 2.2 AA)', () => {
   });
 
   it('documents why the bubble and sidebar use dedicated tokens: white on brand colours is below AA', () => {
-    // The pre-fix bubble gradient started at --primary, and the sidebar's
-    // active row used --primary -> --secondary. This pins both defects so
-    // nobody "simplifies" the tokens back to the brand pair.
-    expect(contrast(WHITE, light.primary)).toBeLessThan(4.5);
+    // After the HUSC rebrand, --primary is a dark navy (#143980) that DOES
+    // support white text (>=4.5:1); the dedicated chat-user-from token is
+    // still pinned below/above accordingly so the bubble keeps its own
+    // gradient endpoints rather than silently inheriting --primary.
+    expect(contrast(WHITE, light.primary)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(WHITE, dark.secondary)).toBeLessThan(4.5);
     expect(contrast(WHITE, light['chat-user-from'])).toBeGreaterThanOrEqual(4.5);
     expect(contrast(WHITE, dark['chat-user-from'])).toBeGreaterThanOrEqual(4.5);
