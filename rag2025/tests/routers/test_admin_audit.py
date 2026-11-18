@@ -668,3 +668,14 @@ def test_verify_reports_legacy_fields_from_verify_detailed(client, app):
         "legacy_last_hash": "cd",
         "skipped_legacy_rows": 1,
     }
+
+
+def test_a_ledger_database_outage_answers_503_without_leaking_the_url(client, app):
+    from src.infrastructure.sql_audit_ledger import SqlAuditLedger
+
+    url = "postgresql+psycopg://rag:s3cret-pw@127.0.0.1:1/husc"
+    app.state.audit_ledger = SqlAuditLedger(url)
+    response = client.get("/admin/audit/verify", headers=_headers("viewer"))
+    assert response.status_code == 503
+    assert "s3cret-pw" not in response.text
+    assert "127.0.0.1" not in response.text

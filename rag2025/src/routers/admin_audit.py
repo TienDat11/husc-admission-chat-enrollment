@@ -31,7 +31,7 @@ from pydantic import BaseModel
 
 from src.domain.admin_identity import AdminAction
 from src.domain.audit import AuditAction
-from src.infrastructure.audit_ledger import AuditEntry, AuditLedger
+from src.infrastructure.audit_ledger import AuditEntry, AuditLedger, AuditLedgerError
 from src.routers.admin_auth import require_action
 from src.routers.admin_rate_limit import admin_rate_limit
 
@@ -153,16 +153,20 @@ async def verify_chain(request: Request) -> ChainVerificationResponse:
     """
     ledger = _ledger(request)
     detailed = getattr(ledger, "verify_detailed", None)
-    if detailed is None:
-        verification = ledger.verify()
-        return ChainVerificationResponse(
-            ok=verification.ok,
-            checked=verification.checked,
-            broken_index=verification.broken_index,
-            reason=verification.reason,
-            last_hash=verification.last_hash,
-        )
-    result = detailed()
+    try:
+        if detailed is None:
+            verification = ledger.verify()
+            return ChainVerificationResponse(
+                ok=verification.ok,
+                checked=verification.checked,
+                broken_index=verification.broken_index,
+                reason=verification.reason,
+                last_hash=verification.last_hash,
+            )
+        result = detailed()
+    except AuditLedgerError:
+        # Unavailable backend, not a broken chain: no driver detail reaches the caller.
+        raise HTTPException(status_code=503, detail="audit ledger is unavailable") from None
     return ChainVerificationResponse(
         ok=result["ok"],
         checked=result["checked"],
