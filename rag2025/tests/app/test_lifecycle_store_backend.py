@@ -186,3 +186,23 @@ def test_postgres_backend_without_database_url_names_the_setting_for_the_ledger_
         configure_canonical_record_store(app, settings=settings)
     assert str(excinfo.value) == "STORE_BACKEND=postgres requires DATABASE_URL to be set"
     assert not hasattr(app.state, "audit_ledger")
+
+
+def test_postgres_backend_warns_about_stale_pre_cutover_file_stores(tmp_path, monkeypatch):
+    from loguru import logger
+
+    monkeypatch.setenv("DATABASE_URL", SECRET_URL)
+    root = tmp_path / "canonical_store"
+    (root / "records").mkdir(parents=True)
+    (root / "audit").mkdir()
+    (root / "audit" / "ledger.jsonl").write_text("{}\n", encoding="utf-8")
+    messages: list[str] = []
+    sink_id = logger.add(lambda message: messages.append(str(message)), level="WARNING")
+    app = _configure(root.parent, "postgres")
+    try:
+        logger.remove(sink_id)
+        joined = "\n".join(messages)
+        assert "records" in joined and "ledger.jsonl" in joined
+        assert "not written" in joined
+    finally:
+        _stop_runner(app)
