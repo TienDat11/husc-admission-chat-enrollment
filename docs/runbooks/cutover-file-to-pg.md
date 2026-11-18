@@ -63,7 +63,7 @@ Run every check against the legacy root you plan to migrate (default
    for every marker, and `_write_retractions` raises `MigrationError` for any `None` version.
    The dry run does NOT catch this; only the real run does.
    ```
-   find "<root>/supersession_retractions" -name '*.json' 2>/dev/null | wc -l
+   find "<root>/supersession_retractions" -mindepth 2 -maxdepth 2 -name '*.json' 2>/dev/null | wc -l
    ```
    The result must be `0`. If it is not, stop. The real run cannot pass until the data is
    reviewed; do not edit the files as part of this runbook.
@@ -78,19 +78,23 @@ Run every check against the legacy root you plan to migrate (default
    several open (`draft`, `review`, `approved`) or several `published` versions for one
    `record_id`. The SQL model allows one open version (`uq_one_open_draft`) and one published
    version per coordinate (`uq_current_coordinate`). The migrator normalises the extra
-   versions: older open versions and all but the newest published version are written as
-   `archived` / `superseded`. The newest of each group is kept. The count is reported in
-   `normalised.records` of the real-run report. Expect that count to equal the number of
-   extra versions you found; any mismatch means you need to investigate.
-   The original status is kept as `legacy_status` in `structured_payload`, and the affected
-   `record_id@version` keys are listed in the migration report.
+   versions: older open versions, open versions whose number is below the newest published
+   version, and all but the newest published version are written as `archived` /
+   `superseded`. The newest published version is kept, and so is the newest open version
+   above it (or the newest open one when there is no published version). `normalised.records`
+   is the true count of rewritten rows. `normalised.keys` lists the affected
+   `record_id@version` entries but is capped at 200. The dry-run report carries `normalised`
+   too. Expect the count to equal the number of extra versions you found; any mismatch means
+   you need to investigate. The original status is kept in `structured_payload.legacy_status`.
 
 4. **Published records citing an unknown document.** `source_document_id` values that are
-   not in `source_documents` are set to NULL and kept as `legacy_source_document_id`, and
-   counted in `dangling_source_document_id`. Exception: a PUBLISHED record whose source is
-   not in `source_documents` aborts the real run with `MigrationError`, because the DDL check
-   `status <> 'published' OR source_document_id IS NOT NULL` forbids NULL. Fix the registry
-   data or the record before cutover, not during it.
+   not in `source_documents` are set to NULL, kept as `legacy_source_document_id`, and
+   counted in `dangling_source_document_id`. A PUBLISHED row whose source is not in
+   `source_documents` aborts the real run with `MigrationError` only if it stays published
+   after normalisation, because the DDL check `status <> 'published' OR source_document_id IS
+   NOT NULL` would reject a published row with a NULL source. A superseded older published
+   version that cites a missing document is archived with a NULL source and does NOT abort.
+   Fix the registry data or the record before cutover, not during it.
 
 5. **Dry run.**
    ```
@@ -129,6 +133,8 @@ Run every check against the legacy root you plan to migrate (default
    password in argv, which other users can see. Use the env var.
 2. Exit codes: `0` on success. `2` on: a missing `--confirm-frozen` or `DATABASE_URL`,
    `MigrationError`, a PostgreSQL error, a report-write failure, or a post-commit mismatch.
+   A dry run (and a real run) also exits `2` on `MigrationError`, an OS error, or a bad flag
+   combination such as `--dry-run` with `--scrub-identities`.
    On `2` for a post-commit mismatch, the report is written and the message lists the stores.
 3. The real run is one transaction across all stores. A failure rolls everything back.
    Inserts use `ON CONFLICT DO NOTHING`, so re-running is safe and existing PostgreSQL rows
@@ -145,11 +151,7 @@ loader list has 11 entries. The plan text says 12 stores; this runbook follows t
 ### Step 3: switch to PostgreSQL and unfreeze
 
 1. Restart the API with `STORE_BACKEND=postgres`, `WRITE_FREEZE` unset or false, and
-   `DATABASE_URL` set. Record `:cutover_at` from the database clock right before the restart:
-   ```
-   SELECT now();
-   ```
-   Use the database clock, not the application clock.
+   `DATABASE_URL` set.
 2. With `STORE_BACKEND=postgres` the API uses `SqlRecordStore` and `SqlAuditLedger`.
    Startup logs a WARNING for each stale file store still under the root (`records`,
    `audit/ledger.jsonl`), because nothing under postgres writes to them any more.
@@ -184,15 +186,17 @@ loader list has 11 entries. The plan text says 12 stores; this runbook follows t
 
 Rollback to `STORE_BACKEND=file` is allowed ONLY before the first write to PostgreSQL.
 
-1. Check for any PostgreSQL write since `:cutover_at`:
+1. Check for any PostgreSQL audit write since the cutover:
    ```
-   SELECT count(*) FROM audit_events WHERE created_at > :cutover_at;
+   SELECT count(*) FROM audit_events WHERE request_id IS DISTINCT FROM 'legacy:file-ledger';
    ```
-   It must return `0`. This check covers audit rows only. A write that appends no audit row is
-   not visible to it, so also confirm no admin write went through the postgres backend since
-   the cutover.
+   It must return `0`. New rows written by the SQL ledger have `request_id` NULL, and migrated
+   rows carry `legacy:file-ledger`. The check does not compare timestamps:
+   `audit_events.created_at` is set by the application clock, which can be skewed. This check
+   covers audit rows only. A write that appends no audit row is not visible to it, so also
+   confirm no admin write went through the postgres backend since the cutover.
 2. If it returns `0`, set `STORE_BACKEND=file`, restart, and the file stores are the source of
-   truth again. Writes to PostgreSQL after `:cutover_at` are not in the file store.
+   truth again. Writes to PostgreSQL made after the cutover restart are not in the file store.
 3. If it returns anything other than `0`, there is no rollback. Recovery goes through
    `pg_restore` (section 6), not through the file stores.
 
@@ -260,8 +264,7 @@ Startup logs a WARNING for each one still present.
 Limitation: the source-document registry stays file-backed, but `SqlRecordStore` requires a
 cited `source_document_id` to exist in the SQL `source_documents` table. Documents migrated by
 the migrator are fine. A document registered AFTER cutover is not in SQL, so creating or
-updating a record that cites it returns `409` with "source document is not registered in the
-SQL store", until the documents unit lands. Mitigation: register all documents you need
+updating a record that cites it returns `409` with the message `source document is not registered in the SQL store; see cutover runbook`, until the documents unit lands. Mitigation: register all documents you need
 before cutover and run the migrator, or hold off registering new documents.
 
 ---
