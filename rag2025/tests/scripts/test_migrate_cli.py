@@ -218,7 +218,7 @@ def test_report_top_level_shape_and_contains_no_row_contents(tmp_path):
     _multi_store(tmp_path)
     report = build_report(tmp_path)
     assert set(report) == {
-        "stores", "redacted_rows", "quarantined_rows", "id_map", "unfillable", "dry_run", "report_hash",
+        "stores", "redacted_rows", "quarantined_rows", "id_map", "unfillable", "normalised", "dry_run", "report_hash",
     }
     assert report["dry_run"] is True
     assert report["quarantined_rows"] == 0

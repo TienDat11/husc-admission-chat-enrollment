@@ -586,31 +586,55 @@ def test_normalise_keeps_the_newest_open_and_newest_published_version_per_record
     rows = [
         _row("A", 1, "draft"),
         _row("A", 2, "review"),
-        _row("A", 3, "draft"),  # newest open: kept
+        _row("A", 3, "draft"),  # below the newest published: superseded
         _row("A", 4, "published"),
-        _row("A", 5, "published"),  # newest published: kept
-        _row("A", 6, "published"),
+        _row("A", 5, "published"),  # older published: superseded
+        _row("A", 6, "published"),  # newest published: kept
         _row("B", 1, "published"),
-        _row("B", 2, None),  # status None is a draft after defaulting
+        _row("B", 2, None),  # status None is a draft after defaulting; above the published: kept
         _row("C", 1, "archived"),  # untouched
+        _row("E", 1, "published"),
+        _row("E", 2, "draft"),  # open above the newest published: kept
     ]
     out, count = migrate._supersede_extra_open_and_published(rows)
     statuses = {(r["record_id"], r["version"]): r["status"] for r in out}
     assert statuses == {
         ("A", 1): "archived",
         ("A", 2): "archived",
-        ("A", 3): "draft",
+        ("A", 3): "archived",
         ("A", 4): "archived",
         ("A", 5): "archived",
         ("A", 6): "published",
         ("B", 1): "published",
         ("B", 2): None,
         ("C", 1): "archived",
+        ("E", 1): "published",
+        ("E", 2): "draft",
     }
-    assert count == 4
+    assert count == 5
     superseded = [r for r in out if r.get("_superseded")]
-    assert {(r["record_id"], r["version"]) for r in superseded} == {("A", 1), ("A", 2), ("A", 4), ("A", 5)}
+    assert {(r["record_id"], r["version"]) for r in superseded} == {
+        ("A", 1), ("A", 2), ("A", 3), ("A", 4), ("A", 5),
+    }
+    assert {(r["record_id"], r["version"]): r["_legacy_status"] for r in superseded} == {
+        ("A", 1): "draft", ("A", 2): "review", ("A", 3): "draft",
+        ("A", 4): "published", ("A", 5): "published",
+    }
     assert [r for r in rows if "_superseded" in r] == []  # input not mutated
+
+
+def test_normalise_archives_every_open_version_below_the_newest_published_in_a_chain():
+    rows = [
+        _row("A", 1, "draft"),
+        _row("A", 2, "review"),
+        _row("A", 3, "approved"),
+        _row("A", 4, "published"),
+    ]
+    out, count = migrate._supersede_extra_open_and_published(rows)
+    assert [(r["version"], r["status"]) for r in out] == [
+        (1, "archived"), (2, "archived"), (3, "archived"), (4, "published"),
+    ]
+    assert count == 3
 
 
 def test_normalise_is_a_no_op_for_a_clean_chain():
@@ -620,23 +644,50 @@ def test_normalise_is_a_no_op_for_a_clean_chain():
     assert count == 0
 
 
-def test_normalise_writes_duplicate_open_versions_as_superseded(tmp_path, fresh_db):
+def test_normalise_report_keys_are_capped_and_counted():
+    rows = [_row("A", v, "draft") for v in range(1, 252)]
+    keys = migrate._normalised_report([f"A@{v}" for v in range(1, 252)])
+    assert keys["records"] == 251
+    assert len(keys["keys"]) == 200
+    assert keys["keys"][0] == "A@1"
+    superseded = migrate._superseded_keys(migrate._supersede_extra_open_and_published(rows)[0])  # 251 open drafts: only the newest is kept
+    assert len(superseded) == 250
+    assert "A@251" not in superseded
+
+
+def test_normalise_chain_writes_one_current_version_with_legacy_status(tmp_path, fresh_db):
     root = tmp_path / "root"
     _write_json(root / "documents" / "doc-1_d.json", {
         "document_id": "doc-1", "sha256": "cd" * 32, "path": "uploads/tuyensinh2026.pdf",
         "state": "registered", "registered_by": "alice",
         "registered_at": "2026-01-02T03:04:05", "updated_at": "2026-01-03T00:00:00+00:00",
     })
-    base = _rec("CHI_TIEU:nganh:7220104:2026:dup")
+    base = _rec("CHI_TIEU:nganh:7220104:2026:chain")
     store = CanonicalRecordStore(root)
     store.write_record(base)  # v1 draft
-    store.write_record(base.model_copy(update={"version": 2}))  # v2 draft: second open version
+    store.write_record(base.model_copy(update={"version": 2, "status": RecordStatus.REVIEW}))
+    store.write_record(base.model_copy(update={"version": 3, "status": RecordStatus.APPROVED}))
+    store.write_record(base.model_copy(update={
+        "version": 4, "status": RecordStatus.PUBLISHED, "source_document_id": "doc-1",
+        "published_at": datetime(2026, 2, 1, tzinfo=timezone.utc),
+    }))
+
+    dry = migrate.build_report(root)
+    assert dry["normalised"]["records"] == 3
+
     report = _apply(root, fresh_db)
     for name, s in _stores(report).items():
         assert s["mismatch"] == 0, (name, s)
-    assert report["normalised"]["records"] == 1
+    assert report["normalised"]["records"] == 3
+    assert [k.rsplit("@", 1)[1] for k in report["normalised"]["keys"]] == ["1", "2", "3"]
     with psycopg.connect(_conninfo(fresh_db)) as conn:
         rows = conn.execute(
-            "SELECT version, status, archive_reason FROM canonical_records ORDER BY version"
+            "SELECT version, status, archive_reason, structured_payload->>'legacy_status' "
+            "FROM canonical_records ORDER BY version"
         ).fetchall()
-    assert rows == [(1, "archived", "superseded"), (2, "draft", None)]
+    assert rows == [
+        (1, "archived", "superseded", "draft"),
+        (2, "archived", "superseded", "review"),
+        (3, "archived", "superseded", "approved"),
+        (4, "published", None, None),
+    ]

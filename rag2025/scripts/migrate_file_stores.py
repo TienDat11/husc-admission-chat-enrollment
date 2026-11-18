@@ -922,9 +922,12 @@ def build_report(root: str | Path) -> dict:
     unfillable: dict[str, int] = {}
     redacted_rows = 0
     quarantined_rows = 0
+    normalised = _normalised_report([])
     for name, loader in _loaders():
         first = loader(root)
         rows, source_rows = _parts(first)
+        if name == "records":
+            normalised = _normalised_report(_superseded_keys(_supersede_extra_open_and_published(rows)[0]))
         digest = _canonical_hash(rows)
         second_rows, _ = _parts(loader(root))
         drift = 0 if _canonical_hash(second_rows) == digest else 1
@@ -950,6 +953,7 @@ def build_report(root: str | Path) -> dict:
         "quarantined_rows": quarantined_rows,
         "id_map": id_map,
         "unfillable": unfillable,
+        "normalised": normalised,
         "dry_run": True,
     }
     report["report_hash"] = hashlib.sha256(_canonical_json(report).encode("utf-8")).hexdigest()
@@ -1006,7 +1010,7 @@ class _Tally:
         self.keys: dict[str, set] = {}
         self.skipped_idempotency = 0
         self.dangling = 0
-        self.normalised = 0
+        self.normalised_keys: list[str] = []
 
     def default(self, store: str, column: str) -> None:
         cols = self.defaulted.setdefault(store, {})
@@ -1189,14 +1193,20 @@ def _write_releases(cur, t: _Tally, rows: list[dict], known: set[str]) -> None:
 _OPEN_STATUSES = ("draft", "review", "approved")
 
 
-def _supersede_extra_open_and_published(rows: list[dict]) -> tuple[list[dict], int]:
-    """Archive the non-newest open and non-newest published versions of each record.
+_NORMALISED_KEY_CAP = 200
 
-    The file store could hold several open versions and several published ones for
-    one record_id. The SQL model allows one open version (uq_one_open_draft) and one
-    published version per coordinate (uq_current_coordinate), so the extra ones are
-    written as ``archived`` / ``superseded`` instead. The newest of each group is kept
-    as it is. Returns new row dicts (inputs are not mutated) and how many were changed.
+
+def _supersede_extra_open_and_published(rows: list[dict]) -> tuple[list[dict], int]:
+    """Archive every version the SQL model cannot hold as a current one.
+
+    The file store could hold several open versions, several published ones, and open
+    versions below a published one (a chain that write_record would never produce). The
+    SQL model allows one open version (uq_one_open_draft) and one published version per
+    coordinate (uq_current_coordinate). Kept as they are: the newest published version,
+    and the newest open version that sits above it (or the newest open one if there is
+    no published version). Everything else becomes ``archived`` with a ``_superseded``
+    flag and the original status in ``_legacy_status``. Returns new row dicts (inputs are
+    not mutated) and how many rows were changed.
     """
     def group(row: dict) -> str | None:
         status = row["status"] or "draft"
@@ -1206,47 +1216,71 @@ def _supersede_extra_open_and_published(rows: list[dict]) -> tuple[list[dict], i
             return "published"
         return None
 
-    newest: dict[tuple[str, str], int] = {}
+    newest_pub: dict[str, int] = {}
     for index, row in enumerate(rows):
-        kind = group(row)
-        if kind is None:
+        if group(row) == "published":
+            rid = row["record_id"]
+            if rid not in newest_pub or row["version"] > rows[newest_pub[rid]]["version"]:
+                newest_pub[rid] = index
+    newest_open: dict[str, int] = {}
+    for index, row in enumerate(rows):
+        if group(row) != "open":
             continue
-        key = (row["record_id"], kind)
-        if key not in newest or row["version"] > rows[newest[key]]["version"]:
-            newest[key] = index
+        rid = row["record_id"]
+        if rid in newest_pub and row["version"] < rows[newest_pub[rid]]["version"]:
+            continue  # below the newest published: never a current open version
+        if rid not in newest_open or row["version"] > rows[newest_open[rid]]["version"]:
+            newest_open[rid] = index
     out: list[dict] = []
     changed = 0
     for index, row in enumerate(rows):
         kind = group(row)
-        if kind is not None and newest[(row["record_id"], kind)] != index:
-            out.append(dict(row, status="archived", _superseded=True))
-            changed += 1
-        else:
+        rid = row["record_id"]
+        keep = (
+            kind is None
+            or (kind == "published" and newest_pub[rid] == index)
+            or (kind == "open" and newest_open.get(rid) == index)
+        )
+        if keep:
             out.append(row)
+        else:
+            out.append(dict(row, status="archived", _superseded=True, _legacy_status=row["status"]))
+            changed += 1
     return out, changed
+
+
+def _superseded_keys(rows: list[dict]) -> list[str]:
+    """``record_id@version`` for each row rewritten by the normalisation, in input order."""
+    return [f"{r['record_id']}@{r['version']}" for r in rows if r.get("_superseded")]
+
+
+def _normalised_report(keys: list[str]) -> dict:
+    return {"records": len(keys), "keys": keys[:_NORMALISED_KEY_CAP]}
 
 
 def _write_records(cur, t: _Tally, rows: list[dict], known_docs: set[str]) -> None:
     store = "records"
-    rows, changed = _supersede_extra_open_and_published(rows)
-    t.normalised += changed
+    rows, _ = _supersede_extra_open_and_published(rows)
+    t.normalised_keys.extend(_superseded_keys(rows))
     for r in rows:
         key = f"{r['record_id']}@{r['version']}"
         structured = dict(r["structured_payload"])
+        legacy_status = r.get("_legacy_status", r["status"])
+        if r.get("_superseded"):
+            structured["legacy_status"] = legacy_status
         source = r["source_document_id"]
         if source is not None and source not in known_docs:
             structured["legacy_source_document_id"] = source
             source = None
             t.dangling += 1
-            if r["status"] == "published":
+            if legacy_status == "published":
                 raise MigrationError(
                     f"{store}: {key}: published record cites source document {structured['legacy_source_document_id']!r}, "
                     "which is not in source_documents"
                 )
-        status = r["status"]
-        if status is None:
+        if legacy_status is None:
             t.default(store, "status")
-            status = "draft"
+        status = r["status"] or "draft"
         year = r["admission_year"]
         if year is None:
             t.default(store, "admission_year")
@@ -1580,7 +1614,7 @@ def apply_to_database(root: str | Path, conn, *, now: datetime) -> dict:
         "defaulted": tally.defaulted,
         "skipped": {"idempotency": tally.skipped_idempotency},
         "dangling_source_document_id": tally.dangling,
-        "normalised": {"records": tally.normalised},
+        "normalised": _normalised_report(tally.normalised_keys),
         "run_at": run_at.isoformat(),
     })
     return report
