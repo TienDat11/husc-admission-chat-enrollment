@@ -51,8 +51,7 @@ def pg_root(tmp_path: Path) -> Path:
     return tmp_path / "canonical_store"
 
 
-@pytest.fixture
-def pg_app(pg_root, fresh_db, monkeypatch):  # noqa: F811
+def _build_pg_app(pg_root, fresh_db, monkeypatch):  # noqa: F811
     monkeypatch.setenv("DATABASE_URL", fresh_db)
     _configure_identities(monkeypatch)
     app = FastAPI()
@@ -63,6 +62,12 @@ def pg_app(pg_root, fresh_db, monkeypatch):  # noqa: F811
     configure_canonical_record_store(
         app, settings=RAGSettings(CANONICAL_STORE_ROOT=pg_root, STORE_BACKEND="postgres")
     )
+    return app
+
+
+@pytest.fixture
+def pg_app(pg_root, fresh_db, monkeypatch):  # noqa: F811
+    app = _build_pg_app(pg_root, fresh_db, monkeypatch)
     # The record's source document must be registered before a SQL write
     # (SqlRecordStore enforces the reference); seed the row the way the store tests do.
     with psycopg.connect(_conninfo(fresh_db), autocommit=True) as conn:
@@ -112,9 +117,9 @@ def test_identity_credential_path_answers_under_postgres(pg_client):
     assert unknown.status_code in (401, 403)
 
 
-def test_source_document_list_is_not_a_server_error_under_postgres(pg_client):
+def test_source_document_list_is_answered_under_postgres(pg_client):
     response = pg_client.get("/admin/source-documents", headers=_headers("viewer"))
-    assert response.status_code not in (500, 503), response.text
+    assert response.status_code == 200, response.text
 
 
 def test_preview_is_not_the_unexpected_type_refusal_under_postgres(pg_client):
@@ -158,3 +163,14 @@ def test_create_submit_approve_publish_under_postgres_leaves_file_stores_alone(p
     assert pg_client.get("/admin/audit/verify", headers=_headers("viewer")).json()["ok"] is True
     assert not (pg_root / "records").exists()
     assert not (pg_root / "audit" / "ledger.jsonl").exists()
+
+
+def test_a_source_document_only_in_the_file_registry_is_a_409_under_postgres(pg_root, fresh_db, monkeypatch):
+    app = _build_pg_app(pg_root, fresh_db, monkeypatch)  # no source_documents row inserted
+    with TestClient(app) as client:
+        response = client.post("/admin/records", json={"record": _record()}, headers=_headers("editor"))
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"] == (
+        "source document is not registered in the SQL store; see cutover runbook"
+    )
+    assert "source_documents" not in response.text

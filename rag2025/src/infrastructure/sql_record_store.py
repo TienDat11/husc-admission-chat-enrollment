@@ -246,6 +246,14 @@ def _claim_parts(key: str) -> tuple[str, int]:
     return head, int(tail)
 
 
+class SourceDocumentNotRegisteredError(RecordStoreError):
+    """The record cites a source document that the SQL source_documents table does not hold."""
+
+
+class RecordStoreUnavailableError(RecordStoreError):
+    """The PostgreSQL record store could not be reached."""
+
+
 class SqlRecordStore:
     """PostgreSQL-backed :class:`CanonicalRecordStore` (same method surface)."""
 
@@ -261,7 +269,7 @@ class SqlRecordStore:
         try:
             conn = psycopg.connect(self._conninfo, row_factory=dict_row, connect_timeout=10)
         except psycopg.OperationalError:
-            raise RecordStoreError("record store database unavailable") from None
+            raise RecordStoreUnavailableError("record store database unavailable") from None
         with conn:
             yield conn
 
@@ -287,7 +295,7 @@ class SqlRecordStore:
                     (record.source_document_id,),
                 ).fetchone()
                 if found is None:
-                    raise RecordStoreError(
+                    raise SourceDocumentNotRegisteredError(
                         f"cannot write {record.record_id}@{record.version}: "
                         "source_document_id is not registered in source_documents"
                     )
@@ -302,7 +310,7 @@ class SqlRecordStore:
                     f"unique constraint {exc.diag.constraint_name or '-'} (sqlstate {exc.diag.sqlstate or '-'})"
                 ) from None
             except psycopg.OperationalError:
-                raise RecordStoreError("record store database unavailable") from None
+                raise RecordStoreUnavailableError("record store database unavailable") from None
             except psycopg.Error as exc:
                 raise RecordStoreError(
                     f"cannot write {record.record_id}@{record.version}: rejected by PostgreSQL "
