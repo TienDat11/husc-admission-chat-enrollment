@@ -27,6 +27,8 @@ const Unanswered = lazy(() => import("./pages/teacher/Unanswered"));
 const AskTest = lazy(() => import("./pages/teacher/AskTest"));
 const History = lazy(() => import("./pages/teacher/History"));
 const Accounts = lazy(() => import("./pages/teacher/Accounts"));
+const LoginGate = lazy(() => import("./pages/teacher/LoginGate"));
+const Ops = lazy(() => import("./pages/teacher/Ops"));
 
 const queryClient = new QueryClient();
 
@@ -86,6 +88,7 @@ const App = () => (
             </Route>
             {/* Ticket T09: 7 teacher-facing screens (05-ux-spec), all behind
                 the same credential gate as the records screens. */}
+            <Route path="/quan-ly/dang-nhap" element={<LoginGate />} />
             <Route path="/quan-ly" element={<TeacherLayout />}>
               {/* The gate is a pathless layout route: an *index* route may
                   not have children, so `/quan-ly` itself resolves through
@@ -111,6 +114,9 @@ const App = () => (
               </Route>
               <Route path="lich-su" element={<RecordsGate />}>
                 <Route index element={<History />} />
+              </Route>
+              <Route path="van-hanh" element={<RecordsGate />}>
+                <Route index element={<Ops />} />
               </Route>
               <Route path="tai-khoan" element={<RecordsGate />}>
                 <Route index element={<Accounts />} />

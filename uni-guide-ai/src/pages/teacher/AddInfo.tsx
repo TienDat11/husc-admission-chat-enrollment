@@ -1,348 +1,238 @@
+// Thêm thông tin — step 1 (Frame 1) and the mobile layout (Frame 10).
+// Upload is real: POST /admin/source-documents/upload answers 202 with the
+// parse job; GET /admin/jobs/{id} is polled until it is terminal. The job id is
+// kept in sessionStorage, so a reload keeps following the same job.
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { z } from "zod";
+import { useAdminSession } from "@/hooks/useAdminSession";
+import { AdminApiError } from "@/lib/adminApi";
+import type { ApiFailure } from "@/lib/apiError";
+import { fetchJob, uploadSourceDocument, type UploadReport } from "@/lib/adminOpsApi";
+import { ExceptionBar } from "@/components/ui-kit/ExceptionBar";
+import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
+import { SecondaryButton } from "@/components/ui-kit/SecondaryButton";
+import { StatusPill, type PillTone } from "@/components/ui-kit/StatusPill";
 
 const STEPS = ["1 Chọn tệp", "2 Kiểm tra", "3 Hỏi thử", "4 Gửi duyệt"];
+const STORAGE_KEY = "admin.addinfo.upload";
+const TERMINAL_STATES: Record<string, true> = { completed: true, failed_terminal: true, cancelled: true };
+const POLL_MS = 2000;
+const NETWORK_MESSAGE = "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.";
 
-const INFO_TYPES = [
-  "Điểm chuẩn",
-  "Chỉ tiêu",
-  "Học phí",
-  "Tổ hợp",
-  "Lịch",
-  "Thông báo chung",
-];
+const StoredUploadSchema = z.object({
+  parseJobId: z.string(),
+  fileName: z.string(),
+  pageCount: z.number(),
+  draftRecordId: z.string().nullable(),
+  warnings: z.array(z.string()),
+});
+type StoredUpload = z.infer<typeof StoredUploadSchema>;
 
-const SUGGESTED_QUESTIONS = [
-  "Học phí có tăng theo từng năm không?",
-  "Học phí ngành Công nghệ thông tin?",
-  "Đóng học phí khi nào?",
-];
+function readStored(): StoredUpload | null {
+  const raw = sessionStorage.getItem(STORAGE_KEY);
+  if (raw === null) return null;
+  const parsed = StoredUploadSchema.safeParse(JSON.parse(raw));
+  return parsed.success ? parsed.data : null;
+}
 
-/**
- * Ticket T09 — "Thêm thông tin" (mockup 02, 05 §4.2): the 4-step flow.
- *
- * Step 1 selects the file + metadata. Steps 2-4 are the reading report, the
- * test-ask and the send-for-review; on the real server each maps to
- * endpoints built by T04/T05/T06. For this UI ticket the flow is complete
- * and wired; the individual step actions post to the existing lifecycle
- * once the upload endpoints land, so the screen is testable now with a fake
- * fetch.
- */
+function toStored(report: UploadReport, fileName: string): StoredUpload {
+  return {
+    parseJobId: report.parse_job_id,
+    fileName,
+    pageCount: report.report.page_count,
+    draftRecordId: report.draft_record_id,
+    warnings: report.warnings ?? [],
+  };
+}
+
+const JOB_LABEL: Record<string, { label: string; tone: PillTone }> = {
+  completed: { label: "Hoàn tất", tone: "ok" },
+  failed_terminal: { label: "Thất bại", tone: "blocked" },
+  cancelled: { label: "Đã huỷ", tone: "muted" },
+};
+
+function failureOf(error: unknown): ApiFailure {
+  if (error instanceof AdminApiError) return error.failure;
+  return { kind: "error", status: 0, code: null, message: NETWORK_MESSAGE };
+}
+
 const AddInfo = () => {
-  const [params, setParams] = useSearchParams();
-  const [step, setStep] = useState<number>(() =>
-    Number(params.get("step") ?? 1),
-  );
-  const [fileName, setFileName] = useState("Thong-bao-hoc-phi-2026.pdf");
-  const [year, setYear] = useState("2026");
-  const [infoType, setInfoType] = useState(INFO_TYPES[0]);
-  const [from, setFrom] = useState("2026-10-01");
-  const [to, setTo] = useState("2027-09-30");
-  const [question, setQuestion] = useState("Học phí ngành Hán Nôm năm 2026 là bao nhiêu?");
-  const [note, setNote] = useState("");
-  const [sent, setSent] = useState(false);
+  const { can } = useAdminSession();
+  const canUpload = can("records.create");
+  const [stored, setStored] = useState<StoredUpload | null>(readStored);
+  const [chosen, setChosen] = useState<File | null>(null);
+  const [failure, setFailure] = useState<ApiFailure | null>(null);
+  const [lastFile, setLastFile] = useState<File | null>(null);
 
-  const goTo = (next: number) => {
-    setStep(next);
-    const copy = new URLSearchParams(params);
-    copy.set("step", String(next));
-    setParams(copy, { replace: true });
+  const upload = useMutation({
+    mutationFn: (file: File) => uploadSourceDocument(null, file),
+    onMutate: (file) => {
+      setLastFile(file);
+      setFailure(null);
+    },
+    onSuccess: (report, file) => {
+      const next = toStored(report, file.name);
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      setStored(next);
+      setChosen(null);
+    },
+    onError: (error) => setFailure(failureOf(error)),
+  });
+
+  const job = useQuery({
+    queryKey: ["admin", "job", stored?.parseJobId ?? ""],
+    queryFn: () => fetchJob(null, stored?.parseJobId ?? ""),
+    enabled: stored !== null,
+    retry: false,
+    refetchInterval: (query) => {
+      const state = query.state.data?.state;
+      return state !== undefined && TERMINAL_STATES[state] === true ? false : POLL_MS;
+    },
+  });
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (chosen !== null) upload.mutate(chosen);
   };
 
-  const handleFile = (event: FormEvent<HTMLInputElement>) => {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (file) setFileName(file.name);
-  };
-
-  if (sent) {
-    return (
-      <p role="status" className="note ok">
-        <span aria-hidden="true">✓</span> Đã gửi. Thầy Trần Văn Hùng sẽ nhận
-        được trong mục Chờ duyệt.
-      </p>
-    );
-  }
+  const jobState = job.data?.state;
+  const terminal = jobState !== undefined && TERMINAL_STATES[jobState] === true;
+  const jobView = jobState !== undefined && JOB_LABEL[jobState] !== undefined ? JOB_LABEL[jobState] : null;
+  const duplicate = failure?.kind === "duplicate-document" ? failure : null;
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Thêm tài liệu</h1>
-      <p className="text-zinc-600">
-        Có hai cách: tải tệp Word/PDF, hoặc{" "}
-        <a href="/quan-ly/them/qa">gõ trực tiếp câu hỏi và câu trả lời</a>.
-      </p>
+    <section data-workarea="" aria-labelledby="addinfo-title" className="space-y-6">
+      <h1 id="addinfo-title" className="text-2xl font-bold text-[#143980]">
+        Thêm thông tin
+      </h1>
 
-      <ol className="steps" aria-label="Các bước">
-        {STEPS.map((label, index) => {
-          const number = index + 1;
-          const className =
-            number < step ? "done" : number === step ? "current" : "";
-          return (
-            <li
-              key={label}
-              className={className}
-              aria-current={number === step ? "step" : undefined}
-            >
-              {number < step ? `✓ ${label}` : label}
-            </li>
-          );
-        })}
+      <ol aria-label="Các bước" className="flex flex-wrap gap-2">
+        {STEPS.map((label, index) => (
+          <li key={label}>
+            <StatusPill tone={index === 0 ? "pending" : "muted"} label={label} />
+          </li>
+        ))}
       </ol>
 
-      {step === 1 ? (
-        <section className="space-y-4" aria-label="Bước 1 — Chọn tệp">
-          <h2 className="text-xl font-bold">Bước 1 — Chọn tệp</h2>
-          <div className="drop">
-            <p>
-              <strong>Kéo tệp vào đây</strong> hoặc
-            </p>
-            <label className="btn">
-              Chọn tệp từ máy
-              <input
-                type="file"
-                className="sr-only"
-                accept=".docx,.pdf"
-                onChange={handleFile}
-              />
+      {!canUpload ? (
+        <ExceptionBar severity="info" title="Bạn chỉ có quyền xem" detail="Liên hệ người soạn để tải tài liệu lên." />
+      ) : null}
+
+      {canUpload && stored === null ? (
+        <form onSubmit={onSubmit} className="space-y-4" noValidate>
+          <div className="space-y-2">
+            <label htmlFor="upload-file" className="block text-base font-semibold">
+              Chọn tệp PDF, DOCX hoặc XLSX (tối đa 20 MB)
             </label>
-            <p className="hint">Nhận Word (.docx) và PDF, tối đa 20 MB.</p>
-          </div>
-
-          <div className="row">
-            <div className="field">
-              <label htmlFor="them-nam">Năm tuyển sinh</label>
-              <select
-                id="them-nam"
-                value={year}
-                onChange={(event) => setYear(event.target.value)}
-              >
-                {["2026", "2027"].map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="them-loai">Loại thông tin</label>
-              <select
-                id="them-loai"
-                value={infoType}
-                onChange={(event) => setInfoType(event.target.value)}
-              >
-                {INFO_TYPES.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="row">
-            <div className="field">
-              <label htmlFor="them-tu">Áp dụng từ ngày</label>
-              <input
-                id="them-tu"
-                type="date"
-                value={from}
-                onChange={(event) => setFrom(event.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="them-den">Đến ngày</label>
-              <input
-                id="them-den"
-                type="date"
-                value={to}
-                onChange={(event) => setTo(event.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => goTo(2)}
-              disabled={!fileName}
-            >
-              Tiếp tục: Kiểm tra
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {step === 2 ? (
-        <section className="space-y-4" aria-label="Bước 2 — Kiểm tra">
-          <h2 className="text-xl font-bold">
-            Bước 2 — Kiểm tra máy đã đọc đúng chưa
-          </h2>
-          <p>
-            Tệp: <strong>{fileName}</strong> (14 trang)
-          </p>
-          <p role="status" className="note warn">
-            <span aria-hidden="true">⚠</span> Máy đã đọc 12/14 trang. Trang 5
-            và 9 là ảnh chụp, máy chưa đọc được — vui lòng gõ lại hoặc tải
-            bản Word.
-          </p>
-          <div className="table-wrap">
-            <table>
-              <caption className="hint">
-                Các mục máy đã tách — cô có thể sửa trực tiếp từng ô
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Ngành</th>
-                  <th scope="col">Học phí năm học 2026–2027</th>
-                  <th scope="col">Tình trạng</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Hán Nôm</td>
-                  <td>
-                    <input
-                      type="text"
-                      aria-label="Học phí ngành Hán Nôm"
-                      defaultValue="15.000.000 đ/năm"
-                    />
-                  </td>
-                  <td>
-                    <span className="status s-ok">✓ Đủ thông tin</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td>Công nghệ thông tin</td>
-                  <td>
-                    <input
-                      type="text"
-                      aria-label="Học phí ngành Công nghệ thông tin"
-                      defaultValue="18.500.000 đ/năm"
-                    />
-                  </td>
-                  <td>
-                    <span className="status s-ok">✓ Đủ thông tin</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td>
-                    <input
-                      type="text"
-                      aria-label="Tên ngành còn thiếu"
-                      defaultValue=""
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="text"
-                      aria-label="Học phí dòng 3"
-                      defaultValue="16.000.000 đ/năm"
-                    />
-                  </td>
-                  <td>
-                    <span className="status s-warn">⚠ Thiếu: ngành</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div className="actions">
-            <button type="button" className="btn" onClick={() => goTo(1)}>
-              Quay lại
-            </button>
-            <button type="button" className="btn btn-primary" onClick={() => goTo(3)}>
-              Tiếp tục: Hỏi thử
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {step === 3 ? (
-        <section className="space-y-4" aria-label="Bước 3 — Hỏi thử">
-          <h2 className="text-xl font-bold">Bước 3 — Hỏi thử như thí sinh</h2>
-          <div className="field">
-            <label htmlFor="them-cau-hoi">Câu hỏi</label>
             <input
-              id="them-cau-hoi"
-              type="text"
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
+              id="upload-file"
+              type="file"
+              accept=".pdf,.docx,.xlsx"
+              disabled={upload.isPending}
+              onChange={(event) => setChosen(event.target.files?.[0] ?? null)}
+              className="block min-h-11 w-full rounded-md border border-zinc-500 px-2 py-2 text-base text-zinc-900 file:mr-3 file:min-h-11 file:rounded-md file:border file:border-zinc-500 file:bg-white file:px-3 file:font-semibold file:text-zinc-900"
             />
+            {chosen ? <p className="text-base">Đã chọn: {chosen.name}</p> : null}
           </div>
-          <p className="hint">Câu gợi ý:</p>
-          <div className="actions">
-            {SUGGESTED_QUESTIONS.map((value) => (
-              <button
-                key={value}
-                type="button"
-                className="btn"
-                onClick={() => setQuestion(value)}
-              >
-                {value}
-              </button>
-            ))}
+
+          {failure !== null && failure.kind !== "duplicate-document" ? (
+            <ExceptionBar title={failure.message}>
+              {lastFile !== null && failure.kind === "error" ? (
+                <SecondaryButton onClick={() => upload.mutate(lastFile)} disabled={upload.isPending}>
+                  Thử lại
+                </SecondaryButton>
+              ) : null}
+            </ExceptionBar>
+          ) : null}
+
+          {duplicate !== null ? (
+            <ExceptionBar title={duplicate.message} detail="Bạn có thể mở bản đã đăng ký hoặc chọn tệp khác.">
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  to="/quan-ly/kho"
+                  className="inline-flex min-h-11 items-center rounded-md border border-zinc-400 bg-white px-4 font-semibold text-zinc-900"
+                >
+                  Mở bản cũ
+                </Link>
+                <SecondaryButton onClick={() => setFailure(null)}>Chọn tệp khác</SecondaryButton>
+              </div>
+            </ExceptionBar>
+          ) : null}
+
+          <div className="sticky bottom-0 bg-white py-3 md:static md:p-0">
+            <PrimaryButton type="submit" disabled={chosen === null || upload.isPending} className="w-full md:w-auto">
+              {upload.isPending ? "Đang tải lên..." : "Tải lên"}
+            </PrimaryButton>
           </div>
-          <div className="answer" role="status" aria-live="polite">
-            <p>
-              <strong>Bot sẽ trả lời:</strong> Học phí ngành Hán Nôm năm học
-              2026–2027 là 15.000.000 đồng/năm.
-            </p>
-            <p className="hint">Nguồn (bấm để mở đúng chỗ):</p>
-            <a className="cite" href="#them-nguon-1">
-              📄 {fileName} — mở đúng trang 3
-            </a>
-            <p className="note ok">
-              <span aria-hidden="true">✓</span> 8/8 câu hỏi mẫu vẫn tìm đúng
-              thông tin.
-            </p>
-          </div>
-          <div className="actions">
-            <button type="button" className="btn" onClick={() => goTo(2)}>
-              Quay lại
-            </button>
-            <button type="button" className="btn btn-primary" onClick={() => goTo(4)}>
-              Tiếp tục: Gửi duyệt
-            </button>
-          </div>
-        </section>
+        </form>
       ) : null}
 
-      {step === 4 ? (
-        <section className="space-y-4" aria-label="Bước 4 — Gửi duyệt">
-          <h2 className="text-xl font-bold">Bước 4 — Gửi duyệt</h2>
-          <ul>
-            <li>
-              Tài liệu: {fileName} ({infoType}, {year})
-            </li>
-            <li>
-              Áp dụng {from} – {to}
-            </li>
-          </ul>
-          <div className="field">
-            <label htmlFor="them-ghi-chu">
-              Ghi chú cho người duyệt (không bắt buộc)
-            </label>
-            <textarea
-              id="them-ghi-chu"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-            />
+      {stored !== null ? (
+        <div className="space-y-4">
+          <p className="text-base">
+            Tệp: <span className="font-semibold">{stored.fileName}</span>
+          </p>
+
+          {job.isError ? (
+            <ExceptionBar title={failureOf(job.error).message}>
+              <SecondaryButton onClick={() => job.refetch()}>Thử lại</SecondaryButton>
+            </ExceptionBar>
+          ) : null}
+
+          <div role="status" aria-live="polite" className="space-y-2">
+            {jobView !== null ? (
+              <StatusPill tone={jobView.tone} label={jobView.label} />
+            ) : (
+              <StatusPill tone="pending" label="Đang xử lý" />
+            )}
+            {job.data ? (
+              <p className="text-base">
+                Giai đoạn: {String(job.data.progress.stage ?? "chưa rõ")}
+                {job.data.progress.total !== undefined
+                  ? ` — ${String(job.data.progress.done ?? 0)}/${String(job.data.progress.total)}`
+                  : ""}
+              </p>
+            ) : null}
           </div>
-          <div className="actions">
-            <button type="button" className="btn" onClick={() => goTo(3)}>
-              Quay lại
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => setSent(true)}
+
+          {terminal ? (
+            <div className="space-y-2 text-base">
+              <p>Số trang đã đọc: {stored.pageCount}</p>
+              {stored.draftRecordId !== null ? <p>Đã tạo bản nháp: {stored.draftRecordId}</p> : null}
+              {stored.warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </div>
+          ) : null}
+
+          {terminal ? (
+            <SecondaryButton
+              onClick={() => {
+                sessionStorage.removeItem(STORAGE_KEY);
+                setStored(null);
+              }}
             >
-              Gửi duyệt
-            </button>
-          </div>
-        </section>
+              Tải tệp khác
+            </SecondaryButton>
+          ) : null}
+        </div>
       ) : null}
-    </div>
+
+      <div className="flex flex-wrap gap-2">
+        {STEPS.slice(1).map((label) => (
+          <button
+            key={label}
+            type="button"
+            disabled
+            className="min-h-11 rounded-md border border-zinc-400 px-4 text-base text-zinc-600 disabled:cursor-not-allowed"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 };
 

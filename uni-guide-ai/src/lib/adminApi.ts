@@ -11,6 +11,7 @@
 //    which is what lets the form put the message *at the offending field*
 //    instead of in a banner.
 import { getApiBaseUrl } from "./api";
+import { parseApiError, type ApiFailure } from "./apiError";
 
 /** The header the backend reads (src/config/admin_identity.py). */
 export const ADMIN_TOKEN_HEADER = "X-Admin-Token";
@@ -132,12 +133,19 @@ export interface RecordListResult {
 export class AdminApiError extends Error {
   readonly status: number;
   readonly fieldErrors: Record<string, string>;
+  readonly failure: ApiFailure;
 
-  constructor(status: number, message: string, fieldErrors: Record<string, string> = {}) {
+  constructor(
+    status: number,
+    message: string,
+    fieldErrors: Record<string, string> = {},
+    failure: ApiFailure = { kind: "error", status, code: null, message },
+  ) {
     super(message);
     this.name = "AdminApiError";
     this.status = status;
     this.fieldErrors = fieldErrors;
+    this.failure = failure;
   }
 }
 
@@ -197,23 +205,30 @@ export async function adminRequest<T>(
     ...adminRequestHeaders(token),
     ...((init.headers as Record<string, string> | undefined) ?? {}),
   };
-  if (init.body !== undefined) headers["Content-Type"] = "application/json";
+  if (init.body !== undefined && !(init.body instanceof FormData)) headers["Content-Type"] = "application/json";
 
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
     headers,
-    credentials: "same-origin",
+    credentials: "include",
   });
 
   if (!response.ok) {
-    let detail: unknown = null;
+    let body: unknown = null;
     try {
-      detail = (await response.json())?.detail ?? null;
+      body = await response.json();
     } catch {
-      detail = null;
+      body = null;
     }
+    const detail = (body as { detail?: unknown } | null)?.detail ?? null;
     const { message, fieldErrors } = describe(detail);
-    throw new AdminApiError(response.status, message, fieldErrors);
+    const failure = parseApiError({
+      status: response.status,
+      body,
+      retryAfterHeader: response.headers.get("Retry-After"),
+      currentPath: typeof window === "undefined" ? "/quan-ly" : window.location.pathname,
+    });
+    throw new AdminApiError(response.status, message, fieldErrors, failure);
   }
 
   if (response.status === 204) return undefined as T;
@@ -442,7 +457,7 @@ export async function openSourceDocument(
     `${getApiBaseUrl()}/admin/source-documents/content?document_id=${encodeURIComponent(
       documentId,
     )}`,
-    { headers, credentials: "same-origin" },
+    { headers, credentials: "include" },
   );
 
   if (!response.ok) {

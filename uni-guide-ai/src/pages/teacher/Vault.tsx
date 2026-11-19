@@ -83,8 +83,8 @@ const Vault = () => {
   }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Kho thông tin</h1>
+    <section data-workarea="" aria-labelledby="vault-title" className="space-y-4">
+      <h1 id="vault-title" className="text-2xl font-bold">Kho thông tin</h1>
 
       <div className="field">
         <label htmlFor="kho-tim">Tìm theo chữ</label>
@@ -155,7 +155,7 @@ const Vault = () => {
         <button
           role="tab"
           aria-selected={tab === "all"}
-          className={`btn ${tab === "all" ? "btn-primary" : ""}`}
+          className={`btn ${tab === "all" ? "font-bold underline" : ""}`}
           onClick={() => setTab("all")}
         >
           Tất cả
@@ -163,7 +163,7 @@ const Vault = () => {
         <button
           role="tab"
           aria-selected={tab === "expiring"}
-          className={`btn ${tab === "expiring" ? "btn-primary" : ""}`}
+          className={`btn ${tab === "expiring" ? "font-bold underline" : ""}`}
           onClick={() => setTab("expiring")}
         >
           Sắp hết hạn ({expiring.length})
@@ -224,7 +224,7 @@ const Vault = () => {
           </table>
         </div>
       )}
-    </div>
+    </section>
   );
 };
 

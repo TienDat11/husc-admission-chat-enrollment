@@ -1404,3 +1404,10 @@ router.include_router(unanswered_router)
 from src.routers.admin_url_ingest import router as url_ingest_router  # noqa: E402
 
 router.include_router(url_ingest_router)
+
+# U6: the overview counts behind the sidebar badges (Frame 5). Mounted the same
+# way as the children above — its own ``/overview`` prefix, the parent's rate
+# limit, and RECORDS_READ on the child itself.
+from src.routers.admin_overview import router as overview_router  # noqa: E402
+
+router.include_router(overview_router)

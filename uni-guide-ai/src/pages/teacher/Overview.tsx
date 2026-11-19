@@ -1,106 +1,87 @@
+// Tổng quan — the counts behind the three work cards, read from GET /admin/overview
+// (Frame 5). The sidebar badge "Chờ duyệt (n)" reads the same review_count.
 import { useQuery } from "@tanstack/react-query";
-import { fetchReleaseStatus, listRecords, type CanonicalRecord } from "@/lib/adminApi";
 import { Link } from "react-router-dom";
+import { AdminApiError, fetchReleaseStatus } from "@/lib/adminApi";
+import { fetchAdminOverview } from "@/lib/adminOpsApi";
+import type { ApiFailure } from "@/lib/apiError";
+import { ExceptionBar } from "@/components/ui-kit/ExceptionBar";
+import { OVERDUE_LABEL, StatusPill } from "@/components/ui-kit/StatusPill";
 
-/**
- * Ticket T09 — "Tổng quan": the three work cards from 05 §4.1 plus the
- * release line that tells the teacher which information the bot is serving.
- */
+function failureOf(error: unknown): ApiFailure | null {
+  return error instanceof AdminApiError ? error.failure : null;
+}
+
 const Overview = () => {
-
-  const review = useQuery({
-    queryKey: ["admin", "records", { status: "review" }],
-    queryFn: () => listRecords(null, { status: "review" }),
+  const overview = useQuery({
+    queryKey: ["admin", "overview"],
+    queryFn: () => fetchAdminOverview(null),
     retry: false,
   });
-
-  const published = useQuery({
-    queryKey: ["admin", "records", { status: "published" }],
-    queryFn: () => listRecords(null, { status: "published" }),
-    retry: false,
-  });
-
   const release = useQuery({
     queryKey: ["admin", "releases"],
     queryFn: () => fetchReleaseStatus(null),
     retry: false,
   });
 
-  const isExpiring = (record: CanonicalRecord) => {
-    if (!record.effective_to) return false;
-    const end = new Date(record.effective_to);
-    const limit = new Date();
-    limit.setDate(limit.getDate() + 30);
-    return end.getTime() <= limit.getTime();
-  };
-
-  const pendingCount = review.data?.records.length ?? 0;
-  const expiringCount =
-    published.data?.records.filter(isExpiring).length ?? 0;
-  const empty = pendingCount === 0 && expiringCount === 0;
-
-  if (review.isPending || published.isPending || release.isPending) {
-    return (
-      <p role="status" aria-live="polite" className="note">
-        <span aria-hidden="true">⏳</span> Đang lấy danh sách việc cần làm…
-      </p>
-    );
-  }
-
-  if (review.isError || published.isError || release.isError) {
-    return (
-      <div role="alert" className="note bad">
-        <span aria-hidden="true">⚠</span> Chưa lấy được danh sách việc cần
-        làm. Kiểm tra kết nối mạng rồi thử lại.
-      </div>
-    );
-  }
-
-  const botLine =
-    release.data?.active?.created_at ?? release.data?.active_release_id;
+  const overviewFailure = failureOf(overview.error);
+  const releaseFailure = failureOf(release.error);
+  const counts = overview.data;
+  const noActiveRelease = releaseFailure?.kind === "unavailable" && releaseFailure.code === "NO_ACTIVE_RELEASE";
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-zinc-900">Việc cần làm hôm nay</h1>
+    <section data-workarea="" aria-labelledby="overview-title" className="space-y-6">
+      <h1 id="overview-title" className="text-2xl font-bold text-[#143980]">
+        Tổng quan
+      </h1>
 
-      {botLine ? (
-        <p role="status" className="note ok">
-          <span aria-hidden="true">✓</span> Bot đang trả lời theo thông tin
-          cập nhật lúc {new Date(botLine).toLocaleString("vi-VN")}.
-        </p>
+      {noActiveRelease ? (
+        <ExceptionBar
+          severity="warning"
+          title="Chưa có bản phát hành đang hoạt động"
+          detail="Bot chưa phục vụ thông tin nào. Kiểm tra lại mục Lịch sử & khôi phục."
+        />
+      ) : null}
+      {overviewFailure ? (
+        <ExceptionBar title="Không tải được số liệu tổng quan" detail={overviewFailure.message} />
+      ) : null}
+      {overview.isPending ? <p className="text-base">Đang tải...</p> : null}
+
+      {counts ? (
+        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <li className="space-y-2 rounded-md border border-zinc-400 p-4">
+            <h2 className="text-lg font-semibold">Chờ duyệt</h2>
+            <p className="text-3xl font-bold">{counts.review_count}</p>
+            <Link className="text-base font-medium text-[#3730A3] underline" to="/quan-ly/cho-duyet">
+              Mở hàng chờ duyệt
+            </Link>
+          </li>
+          <li className="space-y-2 rounded-md border border-zinc-400 p-4">
+            <h2 className="text-lg font-semibold">Câu hỏi bot chưa trả lời</h2>
+            <p className="text-3xl font-bold">{counts.unanswered_open_count}</p>
+            {counts.unanswered_overdue_count > 0 ? (
+              <StatusPill tone="overdue" label={`${OVERDUE_LABEL}: ${counts.unanswered_overdue_count}`} />
+            ) : null}
+            <Link className="text-base font-medium text-[#3730A3] underline" to="/quan-ly/cau-hoi">
+              Xem câu hỏi
+            </Link>
+          </li>
+          <li className="space-y-2 rounded-md border border-zinc-400 p-4">
+            <h2 className="text-lg font-semibold">Mâu thuẫn chưa phân xử</h2>
+            <p className="text-3xl font-bold">{counts.open_blocker_count}</p>
+            <Link className="text-base font-medium text-[#3730A3] underline" to="/quan-ly/cho-duyet">
+              Xem mâu thuẫn
+            </Link>
+          </li>
+        </ul>
       ) : null}
 
-      {empty ? (
-        <p role="status" className="note ok">
-          <span aria-hidden="true">✓</span> Không có việc cần làm. Bot đang
-          hoạt động bình thường.
+      {release.data && !noActiveRelease ? (
+        <p className="text-base">
+          Bản đang phục vụ: <span className="font-semibold">{release.data.active_release_id ?? "chưa có"}</span>
         </p>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="card">
-            <div className="num">{pendingCount}</div>
-            <p>thông tin chờ thầy duyệt</p>
-            <Link to="/quan-ly/cho-duyet" className="btn btn-primary">
-              Duyệt ngay
-            </Link>
-          </div>
-          <div className="card">
-            <div className="num">{release.data?.problems.length ?? 0}</div>
-            <p>vấn đề cần kỹ thuật xem</p>
-            <Link to="/quan-ly/lich-su" className="btn">
-              Xem
-            </Link>
-          </div>
-          <div className="card">
-            <div className="num">{expiringCount}</div>
-            <p>thông tin hết hạn trong 30 ngày tới</p>
-            <Link to="/quan-ly/kho" className="btn">
-              Xem
-            </Link>
-          </div>
-        </div>
-      )}
-    </div>
+      ) : null}
+    </section>
   );
 };
 
