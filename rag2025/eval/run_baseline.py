@@ -201,17 +201,23 @@ def _sample_chunks(lancedb_dir: Path) -> list[str]:
     return texts[:SAMPLE_SIZE]
 
 
+class _TokenDriftUnavailable(Exception):
+    """The tokenizers cannot be loaded here; the run records null plus the reason."""
+
+
 def _token_drift(texts: list[str]) -> dict:
     try:
         import tiktoken
         from transformers import AutoTokenizer
     except ImportError as exc:
-        return {"value": None, "reason": f"not_computed: missing dependency: {exc}"}
+        raise _TokenDriftUnavailable(f"not_computed: missing dependency: {exc}") from exc
     if not texts:
-        return {"value": None, "reason": "not_computed: no chunk texts sampled"}
-
-    enc = tiktoken.get_encoding("cl100k_base")
-    qwen = AutoTokenizer.from_pretrained(QWEN_TOKENIZER)
+        raise _TokenDriftUnavailable("not_computed: no chunk texts sampled")
+    try:
+        enc = tiktoken.get_encoding("cl100k_base")
+        qwen = AutoTokenizer.from_pretrained(QWEN_TOKENIZER)
+    except Exception as exc:  # e.g. OSError on an offline HF cache miss
+        raise _TokenDriftUnavailable(f"not_computed: {exc}") from exc
     cl_counts = [len(enc.encode(t)) for t in texts]
     qwen_counts = [len(qwen.encode(t, add_special_tokens=False)) for t in texts]
     drifts = [abs(q - c) / c for q, c in zip(qwen_counts, cl_counts) if c]
@@ -288,7 +294,11 @@ def main(argv: list[str] | None = None) -> int:
     retrieval = _measure(
         seed, retriever, vectors, _doc_ids(args.lancedb_dir), settings.RAG_CONF_THRESHOLD
     )
-    drift = _token_drift(_sample_chunks(args.lancedb_dir))
+    token_drift, token_drift_reason = None, None
+    try:
+        token_drift = _token_drift(_sample_chunks(args.lancedb_dir))
+    except _TokenDriftUnavailable as exc:
+        token_drift_reason = str(exc)
     chunk_stats = _chunk_stats(args.source_pdf_dir)
 
     result = {
@@ -297,7 +307,8 @@ def main(argv: list[str] | None = None) -> int:
         "citation_precision": retrieval["citation_precision"],
         "abstention_rate": retrieval["abstention_rate"],
         "chunk_stats": chunk_stats,
-        "token_drift": drift,
+        "token_drift": token_drift,
+        "token_drift_reason": token_drift_reason,
         "detail": retrieval["detail"],
         "definitions": {
             "recall_at_k": "matched expected coordinate keys / expected keys, micro over in_scope rows, top-k chunks",
