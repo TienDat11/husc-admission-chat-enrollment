@@ -2,12 +2,16 @@
 
 Skipped when the PDFs are absent (``needs_source_pdf``).
 
-TTS colocation: a major-code block runs from its code to the next code. A block
-has a combination when it holds a code-form combination (``A00``) or at least two
-subject names (a named combination such as "Ngữ văn, Toán, Vật lí"). The block
-counts as colocated when the chunk holding its code also holds a combination.
-Measured on this text: 86 blocks carry a combination, 84 are colocated. The spec's
-target of 95 of 111 is not reached, and the denominator 111 cannot be reproduced.
+TTS "mã+tổ hợp cùng chunk" (CHUNKING_RESEARCH_2026-10-28.md §2): for every
+7-digit code ``\\b7\\d{6}\\b``, take the first line starting with ``1.`` within
+300 characters after the code. The code counts as colocated when some chunk
+holds both the code and the first 14 characters of that line. The denominator
+is the number of codes that have such a line (111 on this text). This is the
+document's heuristic, not a ground truth.
+
+Measured with ``_pack_units_greedily`` at the spec's TTS target of 350: 92 of 111.
+The research doc's 95/111 belongs to a semchunk split that cuts blocks, which
+PL-6.5 forbids. Target 400 reaches 100/111; the spec keeps 350.
 """
 
 from __future__ import annotations
@@ -26,22 +30,14 @@ ENC = tiktoken.get_encoding("cl100k_base")
 TT06 = "Thông tư 06_2026_BGD-ĐT_Quy chế tuyển sinh ĐH năm 2026.pdf"
 TTS = "THONG_TIN_TUYEN_SINH_202611.pdf"
 
-MAJOR_OCCURRENCE = re.compile(r"\b7\d{6}\b")
-CODE_COMBO = re.compile(r"(?<![0-9A-Za-z])[A-Z]\d{2}(?![0-9A-Za-z])")
-SUBJECT_NAME = re.compile(
-    r"(Ngữ văn|Toán|Lịch sử|Địa lí|Vật lí|Hóa học|Sinh học|GDCD|Tiếng Anh|"
-    r"Tiếng Pháp|Tiếng Trung|Tiếng Nhật|Tiếng Hàn|Tiếng Đức|Tiếng Nga|Năng khiếu)"
-)
+TTS_CODE = re.compile(r"\b7\d{6}\b")
+TTS_COMBO_LINE = re.compile(r"^1\.", re.M)
 DIEU_ONLY = re.compile(r"Điều\s+\d+")
 # A chunk opens on a capital, a digit, a list marker, or the "a)" sub-item.
 OPENING_OK = re.compile(r"^(?:[A-ZĐ0-9(\"“\-–•]|a\))")
 
-TTS_COLOCATION_FLOOR = 84
-TTS_COLOCATION_DENOMINATOR_FLOOR = 86
-
-
-def _has_combination(text: str) -> bool:
-    return bool(CODE_COMBO.search(text)) or len(SUBJECT_NAME.findall(text)) >= 2
+TTS_DENOMINATOR = 111
+TTS_COLOCATION_FLOOR = 92
 
 
 def _nfc_text(path) -> str:
@@ -70,6 +66,28 @@ def _short_chunks_end_their_dieu(chunks, toks) -> bool:
     return True
 
 
+def _colocation(text: str, chunks) -> tuple[int, int]:
+    """Return (colocated, denominator) for the TTS mã+tổ hợp metric."""
+    texts = [chunk.text for chunk in chunks]
+    colocated = 0
+    denominator = 0
+    for code_match in TTS_CODE.finditer(text):
+        combo = TTS_COMBO_LINE.search(
+            text, code_match.end(), code_match.end() + 300
+        )
+        if combo is None:
+            continue
+        denominator += 1
+        line_start = text.rfind("\n", 0, combo.start()) + 1
+        line_end = text.find("\n", combo.start())
+        line = text[line_start: line_end if line_end != -1 else len(text)]
+        key = line[:14]
+        code = code_match.group(0)
+        if any(code in t and key in t for t in texts):
+            colocated += 1
+    return colocated, denominator
+
+
 @pytest.mark.needs_source_pdf
 def test_tt06_meets_the_legal_budget(source_pdf):
     chunks = _pack(_nfc_text(source_pdf(TT06)))
@@ -93,17 +111,6 @@ def test_tts_stays_under_the_hard_cap_and_colocates_major_codes(source_pdf):
     assert max(toks) <= 512
     assert not any(_is_label_only(chunk.text) for chunk in chunks)
 
-    starts = [m.start() for m in MAJOR_OCCURRENCE.finditer(text)]
-    with_combination = 0
-    colocated = 0
-    for index, start in enumerate(starts):
-        block_end = starts[index + 1] if index + 1 < len(starts) else len(text)
-        if not _has_combination(text[start:block_end]):
-            continue
-        with_combination += 1
-        chunk = next(c for c in chunks if c.start <= start < c.end)
-        if _has_combination(chunk.text):
-            colocated += 1
-
-    assert with_combination >= TTS_COLOCATION_DENOMINATOR_FLOOR, with_combination
-    assert colocated >= TTS_COLOCATION_FLOOR, (colocated, with_combination)
+    colocated, denominator = _colocation(text, chunks)
+    assert denominator == TTS_DENOMINATOR, denominator
+    assert colocated >= TTS_COLOCATION_FLOOR, (colocated, denominator)
