@@ -9,10 +9,13 @@ multipart in, the report out, and the typed 4xx/415/409 mapping.
 from __future__ import annotations
 
 import asyncio
+import json
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, computed_field
+from sqlalchemy import text
 
 from src.domain.admin_identity import AdminAction, Identity
 from src.routers.admin_auth import current_identity, require_action
@@ -87,8 +90,37 @@ class UploadParseReport(BaseModel):
 
 
 def _parse_job_id(sha256: str) -> str:
-    """Deterministic id of the parse job for these bytes; a retry names the same job."""
-    return f"parse-{sha256[:32]}"
+    """Deterministic UUID of the parse job for these bytes; a retry names the same job."""
+    return str(uuid.uuid5(uuid.NAMESPACE_OID, f"parse:{sha256}"))
+
+
+_UPSERT_PARSE_JOB_SQL = text(
+    """
+INSERT INTO ingestion_jobs (job_id, kind, payload, state, priority, attempt, max_attempts,
+                            progress, idempotency_key, created_by)
+VALUES (CAST(:job_id AS uuid), 'parse', CAST(:payload AS jsonb), 'completed', 100, 1, 3,
+        CAST(:progress AS jsonb), :idempotency_key, :actor_id)
+ON CONFLICT (job_id) DO UPDATE SET state = EXCLUDED.state, progress = EXCLUDED.progress,
+                                   updated_at = now()
+"""
+)
+
+
+async def _record_parse_job(engine, result: UploadResult, *, actor_id: str) -> None:
+    """Persist the parse job so ``GET /admin/jobs/{parse_job_id}`` answers after upload."""
+    payload = {"document_id": result.document_id, "sha256": result.sha256, "kind": result.kind}
+    progress = {"done": result.page_count, "total": result.page_count, "stage": "parsed"}
+    async with engine.begin() as conn:
+        await conn.execute(
+            _UPSERT_PARSE_JOB_SQL,
+            {
+                "job_id": _parse_job_id(result.sha256),
+                "payload": json.dumps(payload),
+                "progress": json.dumps(progress),
+                "idempotency_key": result.sha256,
+                "actor_id": actor_id,
+            },
+        )
 
 
 def _view(result: UploadResult) -> UploadReport:
@@ -155,4 +187,7 @@ async def upload_source_document(
     except SourceDocumentError as exc:
         status = _UPLOAD_ERRORS.get(type(exc), 400)
         raise HTTPException(status_code=status, detail=str(exc)) from exc
+    engine = getattr(request.app.state, "db_engine", None)
+    if engine is not None:
+        await _record_parse_job(engine, result, actor_id=identity.actor_id)
     return _view(result)
