@@ -3,6 +3,22 @@
 import type { ClaimCitation, components, GraphStats, RouterInfo, SourceChip } from './api-types';
 
 // ─────────────────────────────────────────────────────────────────────────
+// X-Student-Session (Frame 12 / §PL-7.2). The useStudentProfile hook owns the
+// session UUID v4 and calls setStudentSessionId() whenever a profile exists
+// or is cleared. api.ts attaches the header to /v2/query and /v2/query/stream
+// requests and never logs the session id together with query text.
+let _studentSessionId: string | null = null;
+
+/** Called by useStudentProfile when a profile is saved or removed. */
+export function setStudentSessionId(id: string | null): void {
+  _studentSessionId = id;
+}
+
+function _studentHeaders(): Record<string, string> {
+  return _studentSessionId ? { 'X-Student-Session': _studentSessionId } : {};
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // QueryError — typed error surface for the FE resilience layer
 //
 // Plan §3.2 / §4. Mirrors the BE 503 contract: warming is retryable, 5xx
@@ -14,6 +30,7 @@ import type { ClaimCitation, components, GraphStats, RouterInfo, SourceChip } fr
 export type QueryErrorKind =
   | 'network'
   | 'warming'
+  | 'no_active_release'
   | 'unauthorized'
   | 'server'
   | 'unknown';
@@ -92,6 +109,18 @@ export function classifyFetchError(err: unknown): QueryError {
     const headers =
       (err as { headers?: Headers | Record<string, string> | null }).headers ?? undefined;
     if (status === 503) {
+      // 503 NO_ACTIVE_RELEASE: BE has no active admission release. This is
+      // not fixed by retrying — surface a dedicated non-retryable kind so
+      // the FE can show a Vietnamese "no active release" banner instead of
+      // a white screen. Any other 503 is warming (backend still starting).
+      const beMsg = err instanceof Error ? err.message : '';
+      if (/NO_ACTIVE_RELEASE/i.test(beMsg)) {
+        return {
+          kind: 'no_active_release',
+          retryable: false,
+          message: 'Chưa có đợt tuyển sinh đang hoạt động.',
+        };
+      }
       return {
         kind: 'warming',
         retryable: true,
@@ -175,7 +204,11 @@ async function queryStreamOnce(
 ): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/v2/query/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      ..._studentHeaders(),
+    },
     body: JSON.stringify({
       query,
       ...(history && history.length > 0 ? { history } : {}),
@@ -343,7 +376,7 @@ async function sendChatMessageOnce(
 ): Promise<QueryResponse> {
   const response = await fetch(`${API_BASE_URL}/v2/query`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ..._studentHeaders() },
     body: JSON.stringify({
       query,
       ...(history && history.length > 0 ? { history } : {}),
@@ -440,6 +473,18 @@ export interface QueryResponse {
   // Ticket 40: set only when reranking was skipped (e.g. model load failed);
   // null/absent on the happy path, so it must stay optional.
   rerank_skipped_reason?: string | null;
+  // Frame 12: attached when the request carried a valid X-Student-Session and
+  // the BE has a non-expired profile for that session.
+  student_profile?: {
+    student_session_id: string;
+    raw_score?: number | null;
+    method?: string | null;
+    to_hop?: string | null;
+    uu_tien_kv?: string | null;
+    uu_tien_dt?: string | null;
+    target_majors?: string[];
+    admission_year?: number | null;
+  } | null;
   // Ticket 17: the provenance of the answer text. The BE sets it to
   // "evidence-policy:<reason>" when abstention/conflict policy overrode the
   // generator (Main's measured wire). The FE keys abstain/conflict states off
@@ -687,6 +732,10 @@ export interface RecommendRequest {
   score: number;
   to_hop?: string;
   uu_tien?: number;
+  // Frame 12: TT06 priority inputs from the student profile. When provided,
+  // the BE uses compute_priority() instead of the legacy score + uu_tien.
+  kv?: string | null;
+  dt?: string | null;
 }
 
 export type RecommendLabel = 'an_toan' | 'can_nhac' | 'mao_hiem';
@@ -717,6 +766,8 @@ export interface WhatIfRequest {
   major_code: string;
   to_hop?: string;
   uu_tien?: number;
+  kv?: string | null;
+  dt?: string | null;
 }
 
 export interface WhatIfResponse {

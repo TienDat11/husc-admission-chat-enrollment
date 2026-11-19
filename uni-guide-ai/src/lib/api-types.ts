@@ -1132,6 +1132,23 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/v2/admission-roadmap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admission Roadmap */
+        get: operations["get_admission_roadmap_v2_admission_roadmap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/compare": {
         parameters: {
             query?: never;
@@ -1297,6 +1314,25 @@ export type paths = {
          */
         post: operations["post_recommend_v2_recommend_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/student-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Student Profile */
+        get: operations["get_student_profile_v2_student_profile_get"];
+        /** Put Student Profile */
+        put: operations["put_student_profile_v2_student_profile_put"];
+        post?: never;
+        /** Delete Student Profile */
+        delete: operations["delete_student_profile_v2_student_profile_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2915,6 +2951,70 @@ export type components = {
             updated_at: string;
             /** Updated By */
             updated_by: string;
+        };
+        /** StudentProfileOut */
+        StudentProfileOut: {
+            /** Admission Year */
+            admission_year: number | null;
+            /** Created At */
+            created_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Method */
+            method: string | null;
+            /** Raw Score */
+            raw_score: number | null;
+            /** Student Session Id */
+            student_session_id: string;
+            /** Target Majors */
+            target_majors: string[];
+            /** To Hop */
+            to_hop: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /** Uu Tien Dt */
+            uu_tien_dt: string | null;
+            /** Uu Tien Kv */
+            uu_tien_kv: string | null;
+        };
+        /** StudentProfileUpsert */
+        StudentProfileUpsert: {
+            /**
+             * Admission Year
+             * @description Năm tuyển sinh
+             */
+            admission_year?: number | null;
+            /**
+             * Method
+             * @description Phương thức xét tuyển
+             */
+            method?: string | null;
+            /**
+             * Raw Score
+             * @description Điểm thi tốt nghiệp thang 30 (0–30)
+             */
+            raw_score?: number | string | null;
+            /**
+             * Target Majors
+             * @description Danh sách mã ngành mục tiêu
+             * @default []
+             */
+            target_majors: string[];
+            /**
+             * To Hop
+             * @description Tổ hợp môn
+             */
+            to_hop?: string | null;
+            /**
+             * Uu Tien Dt
+             * @description Ưu tiên đối tượng
+             */
+            uu_tien_dt?: string | null;
+            /**
+             * Uu Tien Kv
+             * @description Ưu tiên khu vực
+             */
+            uu_tien_kv?: string | null;
         };
         /**
          * TransitionRequest
@@ -4848,6 +4948,26 @@ export interface operations {
             };
         };
     };
+    get_admission_roadmap_v2_admission_roadmap_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     compare_v2_compare_post: {
         parameters: {
             query?: never;
@@ -5067,6 +5187,77 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_student_profile_v2_student_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentProfileOut"];
+                };
+            };
+        };
+    };
+    put_student_profile_v2_student_profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentProfileUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_student_profile_v2_student_profile_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

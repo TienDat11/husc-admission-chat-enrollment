@@ -3244,6 +3244,226 @@
         "title": "SourceDocumentView",
         "type": "object"
       },
+      "StudentProfileOut": {
+        "properties": {
+          "admission_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admission Year"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "raw_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Score"
+          },
+          "student_session_id": {
+            "title": "Student Session Id",
+            "type": "string"
+          },
+          "target_majors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Majors",
+            "type": "array"
+          },
+          "to_hop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Hop"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "uu_tien_dt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uu Tien Dt"
+          },
+          "uu_tien_kv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uu Tien Kv"
+          }
+        },
+        "required": [
+          "student_session_id",
+          "raw_score",
+          "method",
+          "to_hop",
+          "uu_tien_kv",
+          "uu_tien_dt",
+          "target_majors",
+          "admission_year",
+          "created_at",
+          "updated_at",
+          "expires_at"
+        ],
+        "title": "StudentProfileOut",
+        "type": "object"
+      },
+      "StudentProfileUpsert": {
+        "properties": {
+          "admission_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Năm tuyển sinh",
+            "title": "Admission Year"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Phương thức xét tuyển",
+            "title": "Method"
+          },
+          "raw_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Điểm thi tốt nghiệp thang 30 (0–30)",
+            "title": "Raw Score"
+          },
+          "target_majors": {
+            "default": [],
+            "description": "Danh sách mã ngành mục tiêu",
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Majors",
+            "type": "array"
+          },
+          "to_hop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tổ hợp môn",
+            "title": "To Hop"
+          },
+          "uu_tien_dt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ưu tiên đối tượng",
+            "title": "Uu Tien Dt"
+          },
+          "uu_tien_kv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ưu tiên khu vực",
+            "title": "Uu Tien Kv"
+          }
+        },
+        "title": "StudentProfileUpsert",
+        "type": "object"
+      },
       "TransitionRequest": {
         "description": "Body for POST /admin/records/{record_id}/transitions.",
         "properties": {
@@ -6837,6 +7057,25 @@
         "summary": "Query"
       }
     },
+    "/v2/admission-roadmap": {
+      "get": {
+        "operationId": "get_admission_roadmap_v2_admission_roadmap_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Admission Roadmap",
+        "tags": [
+          "student-profile"
+        ]
+      }
+    },
     "/v2/compare": {
       "post": {
         "description": "Build a same-year comparison table for several majors.\n\nThe comparison contract lives in :class:`ComparisonResponse`; read its\ndocstring for the three guarantees (same effective year, per-cell\nprovenance, missing cells marked not inferred).",
@@ -7111,6 +7350,78 @@
         "summary": "Post Recommend",
         "tags": [
           "recommender"
+        ]
+      }
+    },
+    "/v2/student-profile": {
+      "delete": {
+        "operationId": "delete_student_profile_v2_student_profile_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete Student Profile",
+        "tags": [
+          "student-profile"
+        ]
+      },
+      "get": {
+        "operationId": "get_student_profile_v2_student_profile_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Student Profile",
+        "tags": [
+          "student-profile"
+        ]
+      },
+      "put": {
+        "operationId": "put_student_profile_v2_student_profile_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentProfileUpsert"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Student Profile",
+        "tags": [
+          "student-profile"
         ]
       }
     },
