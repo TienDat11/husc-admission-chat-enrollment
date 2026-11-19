@@ -25,7 +25,7 @@ import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Awaitable, Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
@@ -64,8 +64,38 @@ def _sla_due(asked_at: datetime) -> datetime:
     return asked_at + timedelta(hours=_SLA_HOURS)
 
 
+class _CompletedResult:
+    """Mixin for file-mode results, which are complete when returned.
+
+    Synchronous callers use the value directly. ``await`` and ``asyncio.run``
+    also accept it, as they accept SQL-mode coroutines: it implements the
+    coroutine protocol and completes at once with itself.
+    """
+
+    def __await__(self):
+        yield from ()
+        return self
+
+    def send(self, _value: Any) -> None:
+        raise StopIteration(self)
+
+    def throw(self, typ: Any, val: Any = None, tb: Any = None) -> None:
+        raise val if val is not None else typ
+
+    def close(self) -> None:
+        return None
+
+
+class _AwaitableList(_CompletedResult, list):
+    """File-mode list result: usable directly, and awaitable like SQL results."""
+
+
+class _AwaitableDict(_CompletedResult, dict):
+    """File-mode dict result: usable directly, and awaitable like SQL results."""
+
+
 @dataclass
-class Item:
+class Item(_CompletedResult):
     """One unanswered question plus its resolution state.
 
     ``question`` is already redacted at write time — never the raw user text.
@@ -431,7 +461,10 @@ class UnansweredQueueService:
         os.replace(tmp, path)
 
     # ------------------------------------------------------------- dispatch --
-    async def push(self, question: str, trace_id: str, route: str, status_code: str) -> Item:
+    # Calls are synchronous. SQL mode returns the coroutine that does the work;
+    # file mode does the work now and returns an awaitable result, so callers
+    # may either ``await`` the result or use it directly.
+    def push(self, question: str, trace_id: str, route: str, status_code: str) -> Item | Awaitable[Item]:
         """Queue an unanswered question.
 
         Redacts ``question`` through ``redact_pii`` before persisting. In SQL
@@ -442,7 +475,7 @@ class UnansweredQueueService:
         if not trace_id.strip():
             raise ValueError("trace_id must not be empty")
         if self._sql:
-            return await self._sql_push(question, trace_id, route, status_code)
+            return self._sql_push(question, trace_id, route, status_code)
         with self._lock:
             rows = self._read_lines(self._queue_path)
             for row in rows:
@@ -461,10 +494,10 @@ class UnansweredQueueService:
             self._write_lines(self._queue_path, rows)
             return item
 
-    async def resolve(self, trace_id: str, resolved_by_record_id: str) -> Item:
+    def resolve(self, trace_id: str, resolved_by_record_id: str) -> Item | Awaitable[Item]:
         """Mark an item as resolved. Raises ``ItemNotFoundError`` if unknown."""
         if self._sql:
-            return await self._sql_resolve(trace_id, resolved_by_record_id)
+            return self._sql_resolve(trace_id, resolved_by_record_id)
         with self._lock:
             rows = self._read_lines(self._queue_path)
             for row in rows:
@@ -475,10 +508,10 @@ class UnansweredQueueService:
                     return Item.from_dict(row)
             raise ItemNotFoundError(f"no unanswered item with trace_id {trace_id!r}")
 
-    async def mark_out_of_scope(self, trace_id: str, out_of_scope: bool = True) -> Item:
+    def mark_out_of_scope(self, trace_id: str, out_of_scope: bool = True) -> Item | Awaitable[Item]:
         """Flag an item as out of scope. Raises ``ItemNotFoundError`` if unknown."""
         if self._sql:
-            return await self._sql_mark_out_of_scope(trace_id, out_of_scope)
+            return self._sql_mark_out_of_scope(trace_id, out_of_scope)
         with self._lock:
             rows = self._read_lines(self._queue_path)
             for row in rows:
@@ -488,20 +521,20 @@ class UnansweredQueueService:
                     return Item.from_dict(row)
             raise ItemNotFoundError(f"no unanswered item with trace_id {trace_id!r}")
 
-    async def items(self) -> list[Item]:
+    def items(self) -> _AwaitableList | Awaitable[list[Item]]:
         """All items ever queued, newest first."""
         if self._sql:
-            return await self._sql_items()
+            return self._sql_items()
         with self._lock:
-            return [Item.from_dict(row) for row in self._read_lines(self._queue_path)]
+            return _AwaitableList(Item.from_dict(row) for row in self._read_lines(self._queue_path))
 
-    async def unanswered(self) -> list[Item]:
+    def unanswered(self) -> _AwaitableList | Awaitable[list[Item]]:
         """Open items still waiting for review, newest first."""
         if self._sql:
-            return await self._sql_unanswered()
-        return [item for item in await self.items() if not item.resolved]
+            return self._sql_unanswered()
+        return _AwaitableList(item for item in self.items() if not item.resolved)
 
-    async def feedback(
+    def feedback(
         self,
         trace_id: str,
         helpful: bool,
@@ -510,7 +543,7 @@ class UnansweredQueueService:
         question: str | None = None,
         route: str = "served",
         status_code: str = "SUCCESS",
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | Awaitable[dict[str, Any]]:
         """Record a student's feedback on a served answer.
 
         Redacts ``reason`` through ``redact_pii`` before persisting to
@@ -525,14 +558,14 @@ class UnansweredQueueService:
         if len(clean_reason) > 4096:
             raise ValueError(f"reason exceeds 4096 characters (got {len(clean_reason)})")
         if self._sql:
-            return await self._sql_feedback(
+            return self._sql_feedback(
                 trace_id, helpful, clean_reason, question, route, status_code
             )
         with self._lock:
             feedback_rows = self._read_lines(self._feedback_path)
             for row in feedback_rows:
                 if str(row["trace_id"]) == trace_id:
-                    return dict(row)
+                    return _AwaitableDict(row)
             queue_rows = self._read_lines(self._queue_path)
             matched = next(
                 (row for row in queue_rows if str(row["trace_id"]) == trace_id),
@@ -578,4 +611,4 @@ class UnansweredQueueService:
             }
             feedback_rows.append(record)
             self._write_lines(self._feedback_path, feedback_rows)
-            return record
+            return _AwaitableDict(record)

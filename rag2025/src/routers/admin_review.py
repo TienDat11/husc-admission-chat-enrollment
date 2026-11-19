@@ -66,6 +66,11 @@ _DECISION_VERDICT = {
 }
 
 
+def _candidate(row: dict[str, Any]) -> SupersessionCandidate:
+    """Build a response row; psycopg returns the candidate uuid as a ``UUID``."""
+    return SupersessionCandidate(**{**row, "candidate_id": str(row["candidate_id"])})
+
+
 def _require_pg_store(request: Request) -> SqlRecordStore:
     store = getattr(request.app.state, "record_store", None) or getattr(
         request.app.state, "canonical_record_store", None
@@ -86,7 +91,7 @@ async def retrieval_preview(payload: RetrievalPreviewRequest, request: Request, 
         if record_ids:
             rows = conn.execute(
                 "SELECT query_id, text, query_embedding, embedding_model, record_type, major_codes, admission_year "
-                "FROM golden_queries WHERE record_id = ANY(%s)",
+                "FROM golden_queries WHERE expected_coordinate_keys ?| %s::text[]",
                 [record_ids],
             ).fetchall()
         else:
@@ -139,7 +144,7 @@ async def list_supersession_candidates(
             "SELECT candidate_id, old_record_id, old_record_version, new_record_id, new_record_version, decision, status FROM supersession_candidates WHERE status = %s ORDER BY created_at DESC",
             [status],
         ).fetchall()
-    return [SupersessionCandidate(**dict(r)) for r in rows]
+    return [_candidate(r) for r in rows]
 
 
 @router.post("/supersession-candidates/{candidate_id}/decision", response_model=SupersessionCandidate, dependencies=[Depends(require_action(AdminAction.RECORDS_APPROVE))])
@@ -177,4 +182,4 @@ async def decide_supersession(candidate_id: str, payload: DecisionRequest, reque
             "SELECT candidate_id, old_record_id, old_record_version, new_record_id, new_record_version, decision, status FROM supersession_candidates WHERE candidate_id = %s",
             [candidate_id],
         ).fetchone()
-    return SupersessionCandidate(**dict(row))
+    return _candidate(row)
