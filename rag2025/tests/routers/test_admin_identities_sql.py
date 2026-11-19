@@ -5,11 +5,13 @@ Skipped without DATABASE_URL (see ``tests.pg_fixtures``).
 from __future__ import annotations
 
 import threading
-import uuid
+import time
+
+import psycopg
 
 from src.domain.admin_identity import Role
-from src.infrastructure.identity_store import IdentityEntry, hash_password
-from src.infrastructure.sql_identity_repo import LastAdminError, SqlIdentityRepository
+from src.infrastructure.sql_identity_repo import SqlIdentityRepository
+from src.infrastructure.sql_record_store import _conninfo
 from tests.pg_fixtures import ADMIN_ACTOR, ADMIN_TOKEN, fresh_db, sql_admin_client  # noqa: F401
 
 ADMIN_HEADERS = {"X-Admin-Token": ADMIN_TOKEN}
@@ -71,11 +73,11 @@ def test_admin_cannot_change_own_role_or_disable_self_without_four_eyes(fresh_db
     with sql_admin_client(fresh_db, tmp_path, monkeypatch) as client:
         own = _subject_of(client, ADMIN_ACTOR)
         role_change = _patch(client, own, role="editor")
-        assert role_change.status_code == 403
-        assert "SELF_ROLE_CHANGE_FORBIDDEN" in role_change.text
+        assert role_change.status_code == 409
+        assert role_change.json()["code"] == "SELF_ROLE_CHANGE_FORBIDDEN"
         disable = _patch(client, own, disabled=True)
-        assert disable.status_code == 403
-        assert "SELF_ROLE_CHANGE_FORBIDDEN" in disable.text
+        assert disable.status_code == 409
+        assert disable.json()["code"] == "SELF_ROLE_CHANGE_FORBIDDEN"
 
 
 def test_disabling_an_identity_refuses_its_live_session_with_session_expired(fresh_db, tmp_path, monkeypatch):  # noqa: F811
@@ -114,38 +116,85 @@ def test_disabled_header_identity_is_403_account_disabled(fresh_db, tmp_path, mo
         assert "ACCOUNT_DISABLED" in resp.text
 
 
-def test_concurrent_demotions_of_the_two_remaining_admins_leave_one(fresh_db, tmp_path, monkeypatch):  # noqa: F811
+def _wait_for_lock_waiters(database_url: str, count: int, timeout: float = 15.0) -> None:
+    deadline = time.monotonic() + timeout
+    with psycopg.connect(_conninfo(database_url), autocommit=True) as watcher:
+        while time.monotonic() < deadline:
+            waiting = watcher.execute(
+                "SELECT count(*) FROM pg_stat_activity "
+                "WHERE wait_event_type = 'Lock' AND datname = current_database()"
+            ).fetchone()[0]
+            if waiting >= count:
+                return
+            time.sleep(0.05)
+    raise AssertionError(f"expected {count} requests waiting on the admin row lock")
+
+
+def test_header_admin_demotes_the_other_admin_then_cannot_demote_self(fresh_db, tmp_path, monkeypatch):  # noqa: F811
     with sql_admin_client(fresh_db, tmp_path, monkeypatch) as client:
+        created = _create(client, "cb.quan-tri-2", role="admin", issue_header_token=True)
+        assert created.status_code == 200, created.text
+        second_subject = created.json()["subject_id"]
+        second_headers = {"X-Admin-Token": created.json()["header_token"]}
         first_subject = _subject_of(client, ADMIN_ACTOR)
 
-    repo = SqlIdentityRepository(fresh_db)
-    second = repo.add(
-        IdentityEntry(
-            subject_id=str(uuid.uuid4()),
-            actor_id="cb.quan-tri-2",
-            role=Role.ADMIN,
-            password_hash=hash_password(PASSWORD),
-        ),
-        created_by="test",
-    )
+        demoted = client.patch(
+            f"/admin/identities/{first_subject}",
+            json={"reason": "U10 test", "role": "editor"},
+            headers=second_headers,
+        )
+        assert demoted.status_code == 200, demoted.text
 
-    barrier = threading.Barrier(2)
-    outcomes: list[str] = []
+        own = client.patch(
+            f"/admin/identities/{second_subject}",
+            json={"reason": "U10 test", "role": "viewer"},
+            headers=second_headers,
+        )
+        assert own.status_code == 409
+        assert own.json()["code"] == "SELF_ROLE_CHANGE_FORBIDDEN"
 
-    def demote(subject_id: str) -> None:
-        barrier.wait()
+
+def test_cross_demotion_over_http_refuses_the_second_with_last_admin(fresh_db, tmp_path, monkeypatch):  # noqa: F811
+    with sql_admin_client(fresh_db, tmp_path, monkeypatch) as client:
+        created = _create(client, "cb.quan-tri-2", role="admin", issue_header_token=True)
+        assert created.status_code == 200, created.text
+        second_subject = created.json()["subject_id"]
+        second_headers = {"X-Admin-Token": created.json()["header_token"]}
+        first_subject = _subject_of(client, ADMIN_ACTOR)
+
+        results: list[tuple[int, dict]] = []
+
+        def demote(headers: dict[str, str], subject_id: str) -> None:
+            resp = client.patch(
+                f"/admin/identities/{subject_id}",
+                json={"reason": "U10 test", "role": "editor"},
+                headers=headers,
+            )
+            results.append((resp.status_code, resp.json()))
+
+        # Hold the admin rows: both PATCHes authenticate (plain reads), then queue on the row lock.
+        holder = psycopg.connect(_conninfo(fresh_db))
         try:
-            repo.update(subject_id, role=Role.EDITOR, disabled=None, password=None)
-            outcomes.append("ok")
-        except LastAdminError:
-            outcomes.append("last-admin")
+            holder.execute("SELECT subject_id FROM admin_identities WHERE role = 'admin' FOR UPDATE").fetchall()
+            threads = [
+                threading.Thread(target=demote, args=(second_headers, first_subject)),
+                threading.Thread(target=demote, args=(ADMIN_HEADERS, second_subject)),
+            ]
+            for thread in threads:
+                thread.start()
+            _wait_for_lock_waiters(fresh_db, 2)
+            holder.rollback()
+            for thread in threads:
+                thread.join(timeout=30)
+        finally:
+            holder.close()
 
-    threads = [threading.Thread(target=demote, args=(s,)) for s in (first_subject, second.subject_id)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=30)
-
-    assert sorted(outcomes) == ["last-admin", "ok"]
-    admins = [entry for entry in repo.entries() if entry.role is Role.ADMIN and not entry.disabled]
+    assert sorted(status for status, _ in results) == [200, 409]
+    refused = next(body for status, body in results if status == 409)
+    assert refused["code"] == "LAST_ADMIN"
+    admins = [
+        entry
+        for entry in SqlIdentityRepository(fresh_db).entries()
+        if entry.role is Role.ADMIN and not entry.disabled
+    ]
     assert len(admins) == 1

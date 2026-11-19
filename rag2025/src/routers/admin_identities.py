@@ -184,10 +184,10 @@ def _refuse_self_change(
     disables = payload.disabled is True and not target.disabled
     if changes_role or disables:
         raise HTTPException(
-            status_code=403,
+            status_code=409,
             detail={
                 "code": "SELF_ROLE_CHANGE_FORBIDDEN",
-                "message": "you cannot change your own role or disable your own account",
+                "message": "Không thể tự thay đổi vai trò hoặc tự vô hiệu hóa tài khoản của chính mình.",
             },
         )
 

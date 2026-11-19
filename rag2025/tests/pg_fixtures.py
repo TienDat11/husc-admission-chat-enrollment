@@ -59,6 +59,7 @@ def sql_admin_client(database_url, tmp_path, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
+    from src.api.errors import install_error_handling
     from src.app.lifecycle import configure_canonical_record_store
     from src.routers.admin import router
     from src.routers.admin_session import router as session_router
@@ -71,6 +72,7 @@ def sql_admin_client(database_url, tmp_path, monkeypatch):
     monkeypatch.delenv("ADMIN_API_TOKEN", raising=False)
     monkeypatch.setenv("ADMIN_FOUR_EYES", "0")
     app = FastAPI()
+    install_error_handling(app)
     app.include_router(router)
     app.include_router(session_router)
     configure_canonical_record_store(
