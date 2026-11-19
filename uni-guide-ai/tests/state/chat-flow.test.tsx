@@ -20,6 +20,7 @@ import userEvent from '@testing-library/user-event';
 const mockSendChatMessage = vi.fn();
 
 vi.mock('@/lib/api', () => ({
+  setStudentSessionId: vi.fn(),
   sendChatMessage: (...args: unknown[]) => mockSendChatMessage(...args),
   checkHealth: vi.fn(),
   getApiBaseUrl: () => 'http://localhost:8000',
@@ -43,13 +44,16 @@ vi.mock('@/hooks/useBackendReadiness', () => ({
 // Import after mock
 import { ChatLayout } from '@/components/chat/ChatLayout';
 import { ThemeProvider } from '@/hooks/useTheme';
+import { StudentProfileProvider } from '@/hooks/useStudentProfile';
 
 // ChatLayout renders ThemeToggle (which uses useTheme). Wrap in ThemeProvider.
 function renderChatLayout() {
   return render(
-    <ThemeProvider>
-      <ChatLayout />
-    </ThemeProvider>
+    <StudentProfileProvider>
+      <ThemeProvider>
+        <ChatLayout />
+      </ThemeProvider>
+    </StudentProfileProvider>
   );
 }
 

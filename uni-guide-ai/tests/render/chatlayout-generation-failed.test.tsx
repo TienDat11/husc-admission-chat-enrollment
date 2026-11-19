@@ -28,6 +28,7 @@ const mockSendChatMessage = vi.fn();
 const mockQueryStream = vi.fn();
 
 vi.mock('@/lib/api', () => ({
+  setStudentSessionId: vi.fn(),
   sendChatMessage: (...args: unknown[]) => mockSendChatMessage(...args),
   queryStream: (...args: unknown[]) => mockQueryStream(...args),
   checkHealth: vi.fn(),
@@ -50,6 +51,7 @@ vi.mock('@/hooks/useBackendReadiness', () => ({
 
 import { ChatLayout } from '@/components/chat/ChatLayout';
 import { ThemeProvider } from '@/hooks/useTheme';
+import { StudentProfileProvider } from '@/hooks/useStudentProfile';
 import { GENERATION_FAILED_STATUS } from '@/lib/chat-helpers';
 
 const QUESTION = 'Điểm chuẩn CNTT 2024?';
@@ -61,9 +63,11 @@ const BE_FALLBACK_ANSWER =
 
 function renderChatLayout() {
   return render(
-    <ThemeProvider>
-      <ChatLayout />
-    </ThemeProvider>,
+    <StudentProfileProvider>
+      <ThemeProvider>
+        <ChatLayout />
+      </ThemeProvider>
+    </StudentProfileProvider>,
   );
 }
 

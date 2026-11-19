@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ThemeProvider } from '@/hooks/useTheme';
+import { StudentProfileProvider } from '@/hooks/useStudentProfile';
 import { ChatLayout } from '@/components/chat/ChatLayout';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { ChatMessages } from '@/components/chat/ChatMessages';
@@ -27,7 +28,7 @@ import { useBackendReadiness } from '@/hooks/useBackendReadiness';
 const mockReadiness = vi.mocked(useBackendReadiness);
 
 function wrapLayout(el: React.ReactElement) {
-  return render(<ThemeProvider>{el}</ThemeProvider>);
+  return render(<StudentProfileProvider><ThemeProvider>{el}</ThemeProvider></StudentProfileProvider>);
 }
 
 // ---------------------------------------------------------------------------
