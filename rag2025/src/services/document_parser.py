@@ -75,6 +75,10 @@ class DocumentParseResult:
     refused: bool = False
     error: str | None = None
     warnings: tuple[str, ...] = ()
+    #: Per-page text in page order: the decomposer's input for PDFs.
+    pages: tuple[str, ...] = ()
+    #: Atomic-gate blockers from the PDF worker; any blocker refuses drafts.
+    blockers: tuple[str, ...] = ()
 
 
 def parse_document(
@@ -188,6 +192,8 @@ def _read_worker_result(
             refused=bool(payload.get("refused", False)),
             error=payload.get("error"),
             warnings=tuple(str(w) for w in payload.get("warnings", ())),
+            pages=tuple(str(p.get("text", "")) for p in payload.get("pages", ())),
+            blockers=tuple(str(b.get("code", "")) for b in payload.get("blockers", ())),
         )
     if process.returncode == 0:
         return _error_result(

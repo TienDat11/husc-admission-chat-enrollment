@@ -70,10 +70,13 @@ def _parse_pdf(document: Path, cap_mb: int) -> dict:
         from pypdf import PdfReader
     except ImportError as exc:
         raise RuntimeError("Missing dependency pypdf. Please install requirements.") from exc
+    from src.services.atomic_gate import atomic_gate
+    from src.services.page_router import count_ruling_ops, route_pages
+    from src.services.pdf_pipeline import docling_pages
 
     reader = PdfReader(str(document))
     pages_text: list[str] = []
-    scan_pages: list[int] = []
+    ruling_ops: list[int] = []
     decompressed = 0
     limit = cap_mb * 1024 * 1024
     for index, page in enumerate(reader.pages):
@@ -83,12 +86,29 @@ def _parse_pdf(document: Path, cap_mb: int) -> dict:
                 f"decompressed content exceeds {cap_mb} MB cap at page "
                 f"{index + 1} (decompression bomb refused)"
             )
-        text = unicodedata.normalize("NFC", (page.extract_text() or "").strip())
-        pages_text.append(text)
-        if len(text) < SCAN_PAGE_CHAR_THRESHOLD:
-            scan_pages.append(index + 1)
+        pages_text.append(unicodedata.normalize("NFC", (page.extract_text() or "").strip()))
+        ruling_ops.append(count_ruling_ops(page))
 
-    text = "\n\n".join(part for part in pages_text if part)
+    routing = route_pages(pages_text, ruling_ops)
+    table_pages = list(routing.table_pages)
+    docling_text: dict[int, str] = {}
+    docling_error: str | None = None
+    if table_pages:
+        try:
+            result = docling_pages(document, table_pages, ocr=False)
+            docling_text = {int(page): text for page, text in result.page_texts}
+        except RuntimeError as exc:
+            docling_error = str(exc)
+    blockers = atomic_gate(pages_text, table_pages, docling_text)
+
+    # Docling replaces pypdf only on table pages, and only when the gate passes.
+    use_docling = not blockers and bool(docling_text)
+    final_pages = [
+        docling_text[index + 1] if use_docling and (index + 1) in docling_text else text
+        for index, text in enumerate(pages_text)
+    ]
+    scan_pages = [i + 1 for i, text in enumerate(pages_text) if len(text) < SCAN_PAGE_CHAR_THRESHOLD]
+    text = "\n\n".join(part for part in final_pages if part)
     page_count = len(reader.pages)
     table_count = _pdf_table_count(reader)
     warnings: list[str] = []
@@ -98,19 +118,22 @@ def _parse_pdf(document: Path, cap_mb: int) -> dict:
             f"chỉ có ảnh, không đọc được văn bản "
             f"(trang {', '.join(str(p) for p in scan_pages)})"
         )
+    if docling_error is not None:
+        warnings.append(f"bảng chưa đọc được bằng Docling: {docling_error}")
+    if blockers:
+        codes = ", ".join(sorted({b.code for b in blockers}))
+        warnings.append(f"cổng nguyên tử chặn bản nháp: {codes}")
     return _nfc_deep({
         "text": text,
         "page_count": page_count,
         "chars_per_page": (len(text) / page_count) if page_count else 0.0,
-        "parser": "pypdf",
+        "parser": "pypdf+docling" if use_docling else "pypdf",
         "scan_pages": scan_pages,
         "pii_detected": pii_detected(text),
         "table_count": table_count,
         "warnings": warnings,
-        "pages": [
-            {"page": index + 1, "text": pages_text[index]}
-            for index in range(page_count)
-        ],
+        "pages": [{"page": i + 1, "text": t} for i, t in enumerate(final_pages)],
+        "blockers": [{"code": b.code, "page": b.page} for b in blockers],
         "error": None,
     })
 

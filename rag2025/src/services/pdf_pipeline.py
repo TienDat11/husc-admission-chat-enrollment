@@ -1,16 +1,18 @@
 """Three-tier PDF router: pypdf, Docling, then Docling+RapidOCR.
 
-Results cache by SHA-256 file bytes plus ``PARSER_VERSION``. ``pypdf`` is not
-listed in requirements.txt (only ``neo4j>=5.14.0``) and is unavailable in the
-active environment; lazy import preserves module import and raises the same
-RuntimeError as ``rag2025/src/normalize_data.py:174`` when invoked. Docling
-CPU baseline is about 2.1 seconds per page, suitable for offline ingest.
+Results cache by SHA-256 file bytes plus ``PARSER_VERSION``. ``pypdf`` is the
+text tier and is pinned in requirements.txt. Docling runs only on the pages a
+caller selects (``page_range`` / ``docling_pages``), one conversion per page, so
+a table page never triggers a whole-file conversion. Docling is imported lazily
+and raises RuntimeError when it is missing; callers treat that as a fail-closed
+blocker, not a silent fallback.
 """
 from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass
+from collections.abc import Iterable, Sequence
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -22,9 +24,10 @@ class ParseResult:
     parser: Literal["pypdf", "docling", "docling-ocr"]
     page_count: int
     needs_review: bool
+    page_texts: list = field(default_factory=list)
 
 
-PARSER_VERSION = "m2-v1"
+PARSER_VERSION = "m2-v2"
 
 
 def _cache_key(path: Path) -> str:
@@ -62,34 +65,41 @@ def _tier0_pypdf(path: Path) -> ParseResult:
     )
 
 
-def _tier1_docling(path: Path, ocr: bool) -> ParseResult:
-    from docling.document_converter import DocumentConverter
-
-    result = DocumentConverter().convert(str(path))
-    document = result.document
-    page_count = len(document.pages) if hasattr(document, "pages") else 0
+def docling_pages(path: Path, pages: Iterable[int], ocr: bool) -> ParseResult:
+    """Docling text for the given 1-based pages, converted one page at a time."""
+    try:
+        from docling.document_converter import DocumentConverter
+    except ImportError as exc:
+        raise RuntimeError("Missing dependency docling; table pages cannot be parsed") from exc
+    converter = DocumentConverter()
+    page_texts: list[tuple[int, str]] = []
+    for page in pages:
+        document = converter.convert(str(path), page_range=(page, page)).document
+        page_texts.append((page, document.export_to_markdown()))
     return ParseResult(
-        text=document.export_to_markdown(),
+        text="\n\n".join(text for _, text in page_texts if text),
         tables_md=[],
-        parser="docling",
-        page_count=page_count,
+        parser="docling-ocr" if ocr else "docling",
+        page_count=len(page_texts),
         needs_review=False,
+        page_texts=page_texts,
     )
 
 
-def _tier2_docling(path: Path, ocr: bool) -> ParseResult:
-    from docling.document_converter import DocumentConverter
+def _all_pages(path: Path) -> list[int]:
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:
+        raise RuntimeError("Missing dependency pypdf. Please install requirements.") from exc
+    return list(range(1, len(PdfReader(str(path)).pages) + 1))
 
-    result = DocumentConverter().convert(str(path))
-    document = result.document
-    page_count = len(document.pages) if hasattr(document, "pages") else 0
-    return ParseResult(
-        text=document.export_to_markdown(),
-        tables_md=[],
-        parser="docling-ocr",
-        page_count=page_count,
-        needs_review=False,
-    )
+
+def _tier1_docling(path: Path, ocr: bool, pages: Sequence[int] | None = None) -> ParseResult:
+    return docling_pages(path, pages if pages is not None else _all_pages(path), ocr=False)
+
+
+def _tier2_docling(path: Path, ocr: bool, pages: Sequence[int] | None = None) -> ParseResult:
+    return docling_pages(path, pages if pages is not None else _all_pages(path), ocr=True)
 
 
 def _needs_escalation(result: ParseResult) -> bool:
@@ -100,8 +110,33 @@ def _needs_ocr(result: ParseResult) -> bool:
     return result.page_count > 0 and len(result.text) / result.page_count < 50
 
 
-def parse_pdf(path: Path, cache_dir: Path, force: str | None = None) -> ParseResult:
+def parse_pdf(
+    path: Path,
+    cache_dir: Path,
+    force: str | None = None,
+    page_range: Sequence[int] | None = None,
+) -> ParseResult:
+    """Parse ``path``. ``page_range`` lists the 1-based pages to read.
+
+    When given, only those pages go to Docling and the pypdf/escalation tiers are
+    skipped; ``page_texts`` holds the ``(page, text)`` pairs.
+    """
     key = _cache_key(path)
+    if page_range is not None:
+        pages = list(page_range)
+        if not pages or min(pages) < 1:
+            raise ValueError(f"invalid page_range {page_range!r}")
+        pages_digest = hashlib.sha256(",".join(map(str, pages)).encode("utf-8")).hexdigest()[:16]
+        key = f"{key}_pages{pages_digest}"
+        cached = _cache_get(cache_dir, key)
+        if cached is not None:
+            return cached
+        if force == "docling-ocr":
+            result = _tier2_docling(path, ocr=True, pages=pages)
+        else:
+            result = _tier1_docling(path, ocr=False, pages=pages)
+        _cache_put(cache_dir, key, result)
+        return result
     if force is None:
         cached = _cache_get(cache_dir, key)
         if cached is not None:
