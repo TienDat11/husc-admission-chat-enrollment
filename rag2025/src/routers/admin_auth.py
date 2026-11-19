@@ -84,9 +84,12 @@ def identity_store_for(request: Request) -> IdentityStore | None:
     if existing is not None:
         return existing
     record_store = getattr(request.app.state, "canonical_record_store", None)
-    if record_store is None:
+    # A store without a file root (SqlRecordStore under postgres) has nowhere
+    # to put identities here; lifecycle attaches the file-backed store itself.
+    root = getattr(record_store, "root", None)
+    if root is None:
         return None
-    store = IdentityStore(record_store.root)
+    store = IdentityStore(root)
     request.app.state.identity_store = store
     return store
 

@@ -32,7 +32,6 @@ from pydantic import BaseModel, Field
 from src.domain.admin_identity import AdminAction, Identity
 from src.domain.canonical.record import RecordStatus
 from src.domain.source_document import classify_document_id
-from src.infrastructure.canonical_record_store import CanonicalRecordStore
 from src.infrastructure.source_document_registry import (
     RegistryPathError,
     SourceDocumentRegistry,
@@ -200,7 +199,12 @@ def _source_document_service(request: Request) -> SourceDocumentService:
     if isinstance(service, SourceDocumentService):
         return service
     store = getattr(request.app.state, "canonical_record_store", None)
-    if not isinstance(store, CanonicalRecordStore):
+    # Duck-typed: SqlRecordStore has no file root, and the registry is file-backed
+    # under the same root either way, so the root comes from the registry lifecycle
+    # built (or, for a hand-wired app, from a file store's own root).
+    state_registry = getattr(request.app.state, "source_document_registry", None)
+    root = state_registry.root if state_registry is not None else getattr(store, "root", None)
+    if store is None or root is None:
         raise HTTPException(
             status_code=503,
             detail="canonical record store not configured",
@@ -208,7 +212,7 @@ def _source_document_service(request: Request) -> SourceDocumentService:
     ledger = getattr(request.app.state, "audit_ledger", None)
     repo_root = getattr(request.app.state, "source_document_repo_root", None)
     registry = SourceDocumentRegistry(
-        store.root, Path(repo_root) if repo_root else REPO_ROOT
+        root, Path(repo_root) if repo_root else REPO_ROOT
     )
     return SourceDocumentService(registry, store, ledger)
 

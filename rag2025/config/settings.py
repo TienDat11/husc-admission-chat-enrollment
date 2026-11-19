@@ -32,6 +32,12 @@ class RAGSettings(BaseSettings):
     LOG_LEVEL: Literal["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO", description="Application log level for loguru/uvicorn"
     )
+    STORE_BACKEND: Literal["file", "postgres"] = Field(
+        default="file", description="Admin/record store backend (file cutover, U3)"
+    )
+    WRITE_FREEZE: bool = Field(
+        default=False, description="Operator write freeze: admin writes answer 503 WRITES_FROZEN at startup"
+    )
 
     # ========== Paths ==========
     INDEX_DIR: Path = Field(default=Path("./index"), description="Vector index storage directory")

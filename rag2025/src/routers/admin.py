@@ -30,6 +30,10 @@ from src.domain.canonical.lifecycle import (
 from src.domain.canonical.record import AuthorityLevel, CanonicalRecord, RecordStatus
 from src.domain.canonical.semantic_units import structured_payload
 from src.infrastructure.canonical_record_store import CanonicalRecordStore
+from src.infrastructure.sql_record_store import (
+    RecordStoreUnavailableError,
+    SourceDocumentNotRegisteredError,
+)
 from src.routers.admin_auth import current_identity, enforce, require_action
 from src.routers.admin_rate_limit import admin_rate_limit
 from src.routers.idempotency_guard import IdempotencyGuard
@@ -809,6 +813,16 @@ class _lifecycle_errors:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         if isinstance(exc, RecordNotFound):
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if isinstance(exc, SourceDocumentNotRegisteredError):
+            # 409: the record cites a source document only the file registry holds.
+            # The SQL store is not relaxed or written through; the runbook says how to load it.
+            raise HTTPException(
+                status_code=409,
+                detail="source document is not registered in the SQL store; see cutover runbook",
+            ) from exc
+        if isinstance(exc, RecordStoreUnavailableError):
+            # 503 without the driver detail: the database is down, not the request.
+            raise HTTPException(status_code=503, detail="record store is unavailable") from exc
         return False
 
 

@@ -495,16 +495,21 @@ install_error_handling(app)
 
 
 async def _check_schema_head_at_startup() -> None:
-    """Startup: DATABASE_URL set -> compare alembic_version with head (see infrastructure/db.py)."""
-    if not os.getenv("DATABASE_URL", "").strip():
-        return
-    from infrastructure.db import assert_schema_head, create_db_engine
+    """Startup: DATABASE_URL set -> compare alembic_version with head (see infrastructure/db.py).
 
-    engine = create_db_engine()
-    try:
-        await assert_schema_head(engine)
-    finally:
-        await engine.dispose()
+    WRITE_FREEZE=true engages the operator freeze after the schema check, so the
+    schema guard can never release it.
+    """
+    from infrastructure.db import WRITE_FREEZE, assert_schema_head, create_db_engine
+
+    if os.getenv("DATABASE_URL", "").strip():
+        engine = create_db_engine()
+        try:
+            await assert_schema_head(engine)
+        finally:
+            await engine.dispose()
+    if settings.WRITE_FREEZE:
+        WRITE_FREEZE.engage("operator", {})
 
 
 # CORS middleware - restricted allowlist. Policy and the ENV allow-list live in
