@@ -44,7 +44,9 @@
           "supersede",
           "withdraw",
           "revoke_supersession",
-          "claim"
+          "claim",
+          "job_retry",
+          "job_cancel"
         ],
         "title": "AuditAction",
         "type": "string"
@@ -535,6 +537,22 @@
             ],
             "title": "Last Hash"
           },
+          "legacy_checked": {
+            "default": 0,
+            "title": "Legacy Checked",
+            "type": "integer"
+          },
+          "legacy_last_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legacy Last Hash"
+          },
           "ok": {
             "title": "Ok",
             "type": "boolean"
@@ -549,6 +567,11 @@
               }
             ],
             "title": "Reason"
+          },
+          "skipped_legacy_rows": {
+            "default": 0,
+            "title": "Skipped Legacy Rows",
+            "type": "integer"
           }
         },
         "required": [
@@ -1583,15 +1606,27 @@
         "type": "object"
       },
       "IdentityCreateRequest": {
-        "description": "Body for ``POST /admin/identities``.\n\nThe credential is supplied by the caller rather than generated here: this\nsurface hands an existing secret to a named person, and inventing one in a\nresponse body would put a live credential in a place logs read.",
+        "description": "Body for ``POST /admin/identities``.\n\nFile store: the caller supplies the credential, as before, so an existing\nsecret can be handed to a named person. PostgreSQL store: the server issues\nthe header token (``issue_header_token``) and returns it exactly once.",
         "properties": {
           "actor_id": {
             "title": "Actor Id",
             "type": "string"
           },
           "credential": {
-            "title": "Credential",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential"
+          },
+          "issue_header_token": {
+            "default": false,
+            "title": "Issue Header Token",
+            "type": "boolean"
           },
           "password": {
             "anyOf": [
@@ -1626,7 +1661,6 @@
         "required": [
           "actor_id",
           "role",
-          "credential",
           "reason"
         ],
         "title": "IdentityCreateRequest",
@@ -1686,12 +1720,42 @@
             "type": "string"
           },
           "credential": {
-            "title": "Credential",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential"
           },
           "disabled": {
             "title": "Disabled",
             "type": "boolean"
+          },
+          "header_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Header Token"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
           },
           "role": {
             "$ref": "#/components/schemas/Role"
@@ -1705,8 +1769,7 @@
           "subject_id",
           "actor_id",
           "role",
-          "disabled",
-          "credential"
+          "disabled"
         ],
         "title": "IdentityView",
         "type": "object"
