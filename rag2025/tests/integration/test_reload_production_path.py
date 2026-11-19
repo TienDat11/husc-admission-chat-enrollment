@@ -180,7 +180,7 @@ def test_reload_requires_a_permitted_credential(client):
     """No credential -> refused, and nothing swapped."""
     assert client.post(
         "/admin/reload-table", json={"table_name": "husc_v2026_swapped"}
-    ).status_code in {403, 422}
+    ).status_code in {400, 403}
     assert client.post(
         "/admin/reload-table",
         json={"table_name": "husc_v2026_swapped"},

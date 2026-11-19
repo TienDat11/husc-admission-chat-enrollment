@@ -63,10 +63,10 @@ def test_query_endpoint_schema_when_available(client):
 
 def test_query_endpoint_validation(client):
     response = client.post("/query", json={"query": ""})
-    assert response.status_code == 422
+    assert response.status_code == 400
 
     response = client.post("/query", json={"query": "a" * 1001})
-    assert response.status_code == 422
+    assert response.status_code == 400
 
 
 def test_metrics_endpoint(client):

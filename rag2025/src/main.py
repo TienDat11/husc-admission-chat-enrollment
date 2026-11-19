@@ -29,6 +29,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from api.errors import install_error_handling
 from fastapi.responses import StreamingResponse
 from loguru import logger
 import numpy as np
@@ -233,9 +234,19 @@ logger.add(
     format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>",
 )
 
-# Initialize FastAPI app
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Shared DB engine (app.state.db_engine) wraps the warmup lifespan."""
+    from infrastructure.db import db_engine_lifespan
+
+    async with db_engine_lifespan(app):
+        async with _warmup_lifespan(app):
+            yield
+
+
+# Initialize FastAPI app
+@asynccontextmanager
+async def _warmup_lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown.
 
     Phase-1 (SLICE-WARMUP-UX.PHASE1): core warmups run in PARALLEL via
@@ -244,6 +255,7 @@ async def lifespan(app: FastAPI):
     'warming' → 'ready' on success, 'failed' on any exception.
     """
     # ---- startup ----
+    await _check_schema_head_at_startup()
     global query_enhancer_service, lancedb_retriever_service, llm_generator_service, embedding_service, unified_pipeline, reranker_service, query_cache, guardrail_service, hybrid_search_service
 
     logger.info("=" * 60)
@@ -477,54 +489,31 @@ async def _track_in_flight_requests(request: Request, call_next):
         return await call_next(request)
 
 
-@app.exception_handler(HTTPException)
-async def _http_exception_handler(request: Request, exc: HTTPException):  # noqa: D401
-    """Phase-1 (SLICE-WARMUP-UX): enrich the 503 warming gate with a
-    `retry_after_ms` field in the body so the FE retry layer can use
-    sub-second backoff without parsing just the header."""
-    from fastapi.responses import JSONResponse
+# Error contract (PL-7) + X-Request-ID + admin write freeze. Replaces the former
+# phase-1 HTTPException handler; `retry_after_ms` and `detail` are still returned.
+install_error_handling(app)
 
-    detail = exc.detail
-    retry_after_seconds: int = 0
-    extra_headers = dict(getattr(exc, "headers", None) or {})
 
-    if isinstance(extra_headers, dict):
-        ra = extra_headers.get("Retry-After") or extra_headers.get("retry-after")
-        if ra is not None:
-            try:
-                retry_after_seconds = int(ra)
-            except (TypeError, ValueError):
-                retry_after_seconds = 0
+async def _check_schema_head_at_startup() -> None:
+    """Startup: DATABASE_URL set -> compare alembic_version with head (see infrastructure/db.py)."""
+    if not os.getenv("DATABASE_URL", "").strip():
+        return
+    from infrastructure.db import assert_schema_head, create_db_engine
 
-    if exc.status_code == 503:
-        body: Dict[str, Any] = {
-            "detail": detail,
-            "retry_after_ms": retry_after_seconds * 1000 if retry_after_seconds else 2000,
-        }
-    else:
-        body = {"detail": detail}
+    engine = create_db_engine()
+    try:
+        await assert_schema_head(engine)
+    finally:
+        await engine.dispose()
 
-    return JSONResponse(status_code=exc.status_code, content=body, headers=extra_headers)
 
-# CORS middleware - restricted allowlist
-raw_allowed_origins = os.getenv("ALLOWED_ORIGINS", "").strip()
-if raw_allowed_origins:
-    allowed_origins = [origin.strip() for origin in raw_allowed_origins.split(",") if origin.strip()]
-else:
-    allowed_origins = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-    ]
+# CORS middleware - restricted allowlist. Policy and the ENV allow-list live in
+# src/api/cors.py: dev-like ENV gets localhost (any port, for Vite); prod/staging
+# must set ALLOWED_ORIGINS; unknown ENV and "*" refuse to start.
+from src.api.cors import resolve_cors_settings  # noqa: E402
 
-# Any localhost/127.0.0.1 port is allowed in dev so the Vite dev server works
-# regardless of which port it lands on (8080 default, auto-increments to 8081+
-# when busy). Production should set ALLOWED_ORIGINS explicitly; when set, the
-# regex is disabled so only the configured origins are accepted.
-_localhost_origin_regex = (
-    None if raw_allowed_origins
-    else r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+allowed_origins, _localhost_origin_regex = resolve_cors_settings(
+    os.getenv("ENV", ""), os.getenv("ALLOWED_ORIGINS", "")
 )
 
 app.add_middleware(
@@ -532,8 +521,9 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_origin_regex=_localhost_origin_regex,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "x-admin-token", "Idempotency-Key"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "x-admin-token", "Idempotency-Key", "X-Student-Session", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
 )
 
 # Mount the /api/meta router (admission-year banner + data-freshness for the FE
@@ -596,6 +586,8 @@ app.include_router(comparison_router)
 # real answer path; it never writes the production table, graph, or cache.
 from routers.admin_preview import router as admin_preview_router
 app.include_router(admin_preview_router)
+from routers.admin_jobs import router as admin_jobs_router
+app.include_router(admin_jobs_router)
 
 # Identity + RBAC (ticket 13). One dependency for every admin-authenticated
 # route in the process, including POST /v2/graph/update below, which used to
