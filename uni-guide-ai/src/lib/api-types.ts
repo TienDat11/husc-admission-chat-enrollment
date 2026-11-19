@@ -1022,7 +1022,8 @@ export type paths = {
          * Preview Chunks
          * @description Preview chunking results without saving to disk
          *
-         *     This endpoint is useful for UAT and testing chunking quality
+         *     Runs the canonical chunker, the one path that builds the corpus, so the
+         *     preview is the chunking the index would receive.
          */
         post: operations["preview_chunks_debug_preview_chunks_post"];
         delete?: never;
@@ -1638,14 +1639,9 @@ export type components = {
             char_count: number;
             /**
              * Chunk Id
-             * @description Chunk index
+             * @description Content hash of the chunk text (sha256, first 16 hex)
              */
-            chunk_id: number;
-            /**
-             * Sparse Terms Count
-             * @description Number of BM25 sparse terms extracted
-             */
-            sparse_terms_count: number;
+            chunk_id: string;
             /**
              * Text
              * @description Chunk text
@@ -1662,13 +1658,6 @@ export type components = {
          * @description Chunk preview request model
          */
         ChunkPreviewRequest: {
-            /**
-             * Profile
-             * @description Chunking profile to use
-             * @default auto
-             * @example auto
-             */
-            profile: string;
             /**
              * Text
              * @description Text to chunk (minimum 10 characters)
@@ -1691,18 +1680,6 @@ export type components = {
              * @description List of chunk previews
              */
             chunks: components["schemas"]["ChunkPreview"][];
-            /**
-             * Profile Config
-             * @description Profile configuration details
-             */
-            profile_config: {
-                [key: string]: unknown;
-            };
-            /**
-             * Profile Used
-             * @description Chunking profile used
-             */
-            profile_used: string;
             /**
              * Text Length
              * @description Original text length in characters

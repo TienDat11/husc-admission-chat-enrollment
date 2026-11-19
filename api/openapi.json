@@ -48,7 +48,7 @@
           "job_retry",
           "job_cancel",
           "account_locked"
-         ],
+        ],
         "title": "AuditAction",
         "type": "string"
       },
@@ -591,14 +591,9 @@
             "type": "integer"
           },
           "chunk_id": {
-            "description": "Chunk index",
+            "description": "Content hash of the chunk text (sha256, first 16 hex)",
             "title": "Chunk Id",
-            "type": "integer"
-          },
-          "sparse_terms_count": {
-            "description": "Number of BM25 sparse terms extracted",
-            "title": "Sparse Terms Count",
-            "type": "integer"
+            "type": "string"
           },
           "text": {
             "description": "Chunk text",
@@ -615,8 +610,7 @@
           "chunk_id",
           "text",
           "token_count",
-          "char_count",
-          "sparse_terms_count"
+          "char_count"
         ],
         "title": "ChunkPreview",
         "type": "object"
@@ -624,14 +618,6 @@
       "ChunkPreviewRequest": {
         "description": "Chunk preview request model",
         "properties": {
-          "profile": {
-            "default": "auto",
-            "description": "Chunking profile to use",
-            "example": "auto",
-            "pattern": "^(auto|faq|policy)$",
-            "title": "Profile",
-            "type": "string"
-          },
           "text": {
             "description": "Text to chunk (minimum 10 characters)",
             "example": "Trong công tác tuyển sinh năm 2025, Bộ GDĐT quy định tất cả thí sinh phải đăng ký xét tuyển trực tuyến.",
@@ -662,17 +648,6 @@
             "title": "Chunks",
             "type": "array"
           },
-          "profile_config": {
-            "additionalProperties": true,
-            "description": "Profile configuration details",
-            "title": "Profile Config",
-            "type": "object"
-          },
-          "profile_used": {
-            "description": "Chunking profile used",
-            "title": "Profile Used",
-            "type": "string"
-          },
           "text_length": {
             "description": "Original text length in characters",
             "title": "Text Length",
@@ -691,8 +666,6 @@
         },
         "required": [
           "text_length",
-          "profile_used",
-          "profile_config",
           "chunks",
           "total_chunks",
           "total_tokens",
@@ -6722,7 +6695,7 @@
     },
     "/debug/preview-chunks": {
       "post": {
-        "description": "Preview chunking results without saving to disk\n\nThis endpoint is useful for UAT and testing chunking quality",
+        "description": "Preview chunking results without saving to disk\n\nRuns the canonical chunker, the one path that builds the corpus, so the\npreview is the chunking the index would receive.",
         "operationId": "preview_chunks_debug_preview_chunks_post",
         "requestBody": {
           "content": {
