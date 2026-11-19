@@ -38,6 +38,7 @@ import json
 import os
 from typing import Any
 
+from config.settings import settings
 from src.domain.admin_identity import Identity, Role
 
 # The header a caller presents its credential in. Reusing the header the admin
@@ -169,5 +170,7 @@ def four_eyes_enabled() -> bool:
     blank variable keeps the control, so a deployment that forgets to configure
     it gets the safe behaviour rather than the permissive one.
     """
+    if not settings.ADMIN_REQUIRE_FOUR_EYES:
+        return False
     raw = (os.environ.get(FOUR_EYES_ENV) or "").strip().lower()
     return raw not in _DISABLED_VALUES

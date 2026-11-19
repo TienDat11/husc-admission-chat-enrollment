@@ -52,6 +52,20 @@ _CACHE_MTIME: Optional[float] = None
 _CACHE_BY_KEY: Dict[str, list] = {}        # (major_code, method) → sorted list of (year, diem_chuan)
 _CACHE_LATEST: Dict[str, tuple] = {}        # (major_code, method) → (year, diem_chuan)  # the freshest
 
+# ---- Snapshot injection (U8: serving reads RAM, not data/major_codes/*.json) --
+_SNAPSHOT: Any = None   # ReleaseSnapshot | None — set by the release reconciler
+
+
+def set_snapshot(snapshot: Any) -> None:
+    """Inject a ReleaseSnapshot so serving reads from RAM, never disk.
+
+    Called by the release reconciler after each hot-swap. When set, ``recommend``
+    and ``whatif_probability`` read ``recommender_snapshot`` instead of opening
+    ``data/major_codes/*.json``.
+    """
+    global _SNAPSHOT
+    _SNAPSHOT = snapshot
+
 
 @dataclass
 class Recommendation:
@@ -85,8 +99,37 @@ def _load_history() -> List[dict]:
     Returns the (cached) raw entries list for callers that want name
     metadata; the hot path in ``recommend``/``whatif_probability`` uses
     the derived ``_CACHE_LATEST`` / ``_CACHE_BY_KEY`` views instead.
+
+    When a ReleaseSnapshot has been injected (U8), its ``recommender_snapshot``
+    dict is used instead of touching ``data/major_codes/*.json``.
     """
     global _CACHE_MTIME, _CACHE_BY_KEY, _CACHE_LATEST, _cache_entries_cache
+
+    # Snapshot takes precedence: serving reads RAM, never disk.
+    if _SNAPSHOT is not None:
+        snap = _SNAPSHOT.recommender_snapshot or {}
+        entries = snap.get("entries", []) if isinstance(snap, dict) else []
+        by_key: Dict[str, list] = {}
+        latest: Dict[str, tuple] = {}
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            code = e.get("major_code")
+            method = e.get("method")
+            year = e.get("year")
+            score = e.get("diem_chuan")
+            if not code or not method or year is None or score is None:
+                continue
+            key = f"{code}::{method}"
+            by_key.setdefault(key, []).append((int(year), float(score)))
+            cur = latest.get(key)
+            if cur is None or int(year) > cur[0]:
+                latest[key] = (int(year), float(score))
+        _CACHE_BY_KEY = by_key
+        _CACHE_LATEST = latest
+        _cache_entries_cache = list(entries)
+        return list(entries)
+
     if not _HISTORY_PATH.exists():
         return []
     try:
@@ -116,11 +159,9 @@ def _load_history() -> List[dict]:
         cur = latest.get(key)
         if cur is None or int(year) > cur[0]:
             latest[key] = (int(year), float(score))
-    for k in by_key:
-        by_key[k].sort(key=lambda t: -t[0])
+    _CACHE_MTIME = mtime
     _CACHE_BY_KEY = by_key
     _CACHE_LATEST = latest
-    _CACHE_MTIME = mtime
     _cache_entries_cache = list(entries)
     return list(entries)
 
@@ -183,20 +224,15 @@ def recommend(
     """
     if not isinstance(score, (int, float)) or math.isnan(score) or score < 0:
         return []
-    # Warm cache
+    # Warm cache (uses snapshot when injected, otherwise disk).
     _load_history()
     if not _CACHE_LATEST:
         return []
 
-    # We need friendly names + to_hop, re-derive from A1 entries
-    # to avoid re-reading the JSON a second time. Use a quick read
-    # of the entries (mtime-guarded via _load_history side channel).
-    try:
-        doc = json.loads(_HISTORY_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        doc = {"entries": []}
+    # Friendly names + to_hop from the entries already loaded by _load_history
+    # (snapshot-backed when injected — never touches data/major_codes/*.json).
     by_code_meta: Dict[str, dict] = {}
-    for e in doc.get("entries", []):
+    for e in _cache_entries_cache:
         if not isinstance(e, dict):
             continue
         code = e.get("major_code")

@@ -190,7 +190,7 @@ async def list_conflicts(request: Request) -> ConflictQueueResponse:
 @router.post(
     "/{conflict_id}/resolve",
     response_model=ConflictItemView,
-    dependencies=[Depends(require_action(AdminAction.RECORDS_OVERRIDE))],
+    dependencies=[Depends(require_action(AdminAction.RECORDS_APPROVE))],
 )
 async def resolve_conflict(
     conflict_id: str,

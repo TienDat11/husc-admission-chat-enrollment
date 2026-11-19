@@ -19,6 +19,146 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/admin/admin/records/batch-transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Transition
+         * @description Apply many record transitions in one transaction.
+         */
+        post: operations["batch_transition_admin_admin_records_batch_transition_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admin/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Releases */
+        get: operations["list_releases_admin_admin_releases_get"];
+        put?: never;
+        /** Create Release */
+        post: operations["create_release_admin_admin_releases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admin/releases/{release_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Release */
+        get: operations["get_release_admin_admin_releases__release_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admin/releases/{release_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Release */
+        post: operations["activate_release_admin_admin_releases__release_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admin/releases/{release_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rollback Release */
+        post: operations["rollback_release_admin_admin_releases__release_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admin/retrieval-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retrieval Preview */
+        post: operations["retrieval_preview_admin_admin_retrieval_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admin/supersession-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Supersession Candidates */
+        get: operations["list_supersession_candidates_admin_admin_supersession_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admin/supersession-candidates/{candidate_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Supersession */
+        post: operations["decide_supersession_admin_admin_supersession_candidates__candidate_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/audit/events": {
         parameters: {
             query?: never;
@@ -1457,6 +1597,68 @@ export type components = {
                 [key: string]: number;
             };
         };
+        /** BatchItem */
+        BatchItem: {
+            /** Action */
+            action: string;
+            /** Expected Version */
+            expected_version?: number | null;
+            /** Reason */
+            reason?: string | null;
+            /** Record Id */
+            record_id: string;
+        };
+        /** BatchItemResult */
+        BatchItemResult: {
+            /** Action */
+            action: string;
+            /** Record Id */
+            record_id: string;
+            /** Version */
+            version?: number | null;
+        };
+        /** BatchRejectedItem */
+        BatchRejectedItem: {
+            /** Action */
+            action: string;
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Record Id */
+            record_id: string;
+        };
+        /** BatchSkippedItem */
+        BatchSkippedItem: {
+            /** Action */
+            action: string;
+            /**
+             * Code
+             * @default ALREADY_IN_TARGET_STATE
+             */
+            code: string;
+            /**
+             * Message
+             * @default record already in target state
+             */
+            message: string;
+            /** Record Id */
+            record_id: string;
+        };
+        /** BatchTransitionRequest */
+        BatchTransitionRequest: {
+            /** Items */
+            items?: components["schemas"]["BatchItem"][];
+        };
+        /** BatchTransitionResponse */
+        BatchTransitionResponse: {
+            /** Applied */
+            applied: components["schemas"]["BatchItemResult"][];
+            /** Rejected */
+            rejected: components["schemas"]["BatchRejectedItem"][];
+            /** Skipped */
+            skipped: components["schemas"]["BatchSkippedItem"][];
+        };
         /** BlindCitationItemView */
         BlindCitationItemView: {
             /** Kind */
@@ -2009,6 +2211,13 @@ export type components = {
          */
         CreateRecordRequest: {
             record: components["schemas"]["CanonicalRecord"];
+        };
+        /** DecisionRequest */
+        DecisionRequest: {
+            /** Decision */
+            decision: string;
+            /** Expected Version */
+            expected_version: number;
         };
         /**
          * EditRecordRequest
@@ -2632,6 +2841,18 @@ export type components = {
             /** Notes */
             notes?: string | null;
         };
+        /** ReleaseCreateRequest */
+        ReleaseCreateRequest: {
+            /** Corpus Stamp */
+            corpus_stamp?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Status
+             * @default building
+             */
+            status: string;
+        };
         /**
          * ReleaseStatusResponse
          * @description GET /admin/releases — the active release and the one behind it.
@@ -2650,6 +2871,21 @@ export type components = {
             previous_release_id: string | null;
             /** Problems */
             problems: string[];
+        };
+        /** ReleaseView */
+        ReleaseView: {
+            /** Corpus Stamp */
+            corpus_stamp?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Golden Report */
+            golden_report?: {
+                [key: string]: unknown;
+            } | null;
+            /** Release Id */
+            release_id: string;
+            /** Status */
+            status: string;
         };
         /**
          * ReleaseViewResponse
@@ -2740,6 +2976,30 @@ export type components = {
             /** Reason */
             reason: string;
         };
+        /** RetrievalPreviewRequest */
+        RetrievalPreviewRequest: {
+            /**
+             * K
+             * @default 5
+             */
+            k: number;
+            /** Record Ids */
+            record_ids?: string[];
+        };
+        /** RetrievalPreviewResponse */
+        RetrievalPreviewResponse: {
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /** Queries */
+            queries: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Status
+             * @default ok
+             */
+            status: string;
+        };
         /**
          * RetryStepResponse
          * @description One step of retrying a failed job, and whether this process can run it.
@@ -2760,37 +3020,6 @@ export type components = {
          * @enum {string}
          */
         Role: "viewer" | "editor" | "reviewer" | "publisher" | "reviewer_publisher" | "admin" | "ops";
-        /**
-         * RollbackRequest
-         * @description Body for POST /admin/rollback.
-         *
-         *     ``reason`` is mandatory and non-blank. The event the rollback emits refuses
-         *     to exist without one (``AuditAction.ROLLBACK`` is in ``REASON_REQUIRED``),
-         *     so a blank reason is refused here — 422, before any store, pointer or table
-         *     is touched.
-         *
-         *     ``target_release_id`` is optional. Without it the target is the previous
-         *     release in the lineage (``parent_release_id``, walked back from the active
-         *     one); with it, a rollback can go further back than one release.
-         *
-         *     ``force_while_in_flight`` is the emergency override for the drain gate. A
-         *     rollback whose drain times out is refused with 409 like a reload is; this
-         *     flag is how an operator says "roll back anyway, knowing a request still
-         *     reading the release I am rolling away from may fail". It is a separate,
-         *     explicitly-named decision — never a meaning read into the timeout.
-         */
-        RollbackRequest: {
-            /**
-             * Force While In Flight
-             * @description Emergency override: roll back even though the drain timed out. A request already reading the old release may then fail; the response reports ``forced_while_in_flight``.
-             * @default false
-             */
-            force_while_in_flight: boolean;
-            /** Reason */
-            reason: string;
-            /** Target Release Id */
-            target_release_id?: string | null;
-        };
         /**
          * RollbackResponse
          * @description What the rollback did, per level, plus the audit event it emitted.
@@ -2915,6 +3144,23 @@ export type components = {
             updated_at: string;
             /** Updated By */
             updated_by: string;
+        };
+        /** SupersessionCandidate */
+        SupersessionCandidate: {
+            /** Candidate Id */
+            candidate_id: string;
+            /** Decision */
+            decision: string | null;
+            /** New Record Id */
+            new_record_id: string | null;
+            /** New Record Version */
+            new_record_version: number | null;
+            /** Old Record Id */
+            old_record_id: string;
+            /** Old Record Version */
+            old_record_version: number;
+            /** Status */
+            status: string;
         };
         /**
          * TransitionRequest
@@ -3246,6 +3492,42 @@ export type components = {
             /** Worker Id */
             worker_id: string;
         };
+        /**
+         * RollbackRequest
+         * @description Body for POST /admin/rollback.
+         *
+         *     ``reason`` is mandatory and non-blank. The event the rollback emits refuses
+         *     to exist without one (``AuditAction.ROLLBACK`` is in ``REASON_REQUIRED``),
+         *     so a blank reason is refused here — 422, before any store, pointer or table
+         *     is touched.
+         *
+         *     ``target_release_id`` is optional. Without it the target is the previous
+         *     release in the lineage (``parent_release_id``, walked back from the active
+         *     one); with it, a rollback can go further back than one release.
+         *
+         *     ``force_while_in_flight`` is the emergency override for the drain gate. A
+         *     rollback whose drain times out is refused with 409 like a reload is; this
+         *     flag is how an operator says "roll back anyway, knowing a request still
+         *     reading the release I am rolling away from may fail". It is a separate,
+         *     explicitly-named decision — never a meaning read into the timeout.
+         */
+        routers__admin__RollbackRequest: {
+            /**
+             * Force While In Flight
+             * @description Emergency override: roll back even though the drain timed out. A request already reading the old release may then fail; the response reports ``forced_while_in_flight``.
+             * @default false
+             */
+            force_while_in_flight: boolean;
+            /** Reason */
+            reason: string;
+            /** Target Release Id */
+            target_release_id?: string | null;
+        };
+        /** RollbackRequest */
+        src__routers__admin_releases__RollbackRequest: {
+            /** Reason */
+            reason: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -3273,6 +3555,315 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    batch_transition_admin_admin_records_batch_transition_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchTransitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchTransitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_releases_admin_admin_releases_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_release_admin_admin_releases_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_release_admin_admin_releases__release_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_release_admin_admin_releases__release_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollback_release_admin_admin_releases__release_id__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["src__routers__admin_releases__RollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retrieval_preview_admin_admin_retrieval_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetrievalPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetrievalPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_supersession_candidates_admin_admin_supersession_candidates_get: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupersessionCandidate"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_supersession_admin_admin_supersession_candidates__candidate_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupersessionCandidate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4267,7 +4858,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RollbackRequest"];
+                "application/json": components["schemas"]["routers__admin__RollbackRequest"];
             };
         };
         responses: {

@@ -67,6 +67,21 @@ class GuardrailDecision:
     pii_detected: bool = False
 
 
+# ---- Snapshot injection (U8: serving reads RAM, not data/major_codes/*.json) --
+_SNAPSHOT_ALLOWED: Optional[Set[str]] = None
+
+
+def set_snapshot_allowed(allowed: Optional[Set[str]]) -> None:
+    """Inject the active release's major whitelist so guardrail reads RAM.
+
+    Called by the release reconciler after each hot-swap. When set,
+    ``_load_major_scope`` returns this instead of opening
+    ``data/major_codes/*.json``.
+    """
+    global _SNAPSHOT_ALLOWED
+    _SNAPSHOT_ALLOWED = allowed
+
+
 class GuardrailService:
     # ADMISSION_KEYWORDS drives the deterministic fast-path. It is intentionally
     # generic so legitimate HUSC questions short-circuit without an LLM call.
@@ -350,13 +365,18 @@ class GuardrailService:
         """Load the dynamic allowlist from disk, cached by file mtime.
 
         Resolution order:
-          1. ``husc_majors_current.json`` (crawler-writable) — reloaded when
+          1. ReleaseSnapshot-injected whitelist (U8 serving: RAM, no disk).
+          2. ``husc_majors_current.json`` (crawler-writable) — reloaded when
              mtime changes so a 2027 new major added by the crawler is
              picked up automatically.
-          2. Canonical ``husc_tuition_2026_official.json`` (offline seed).
-          3. Embedded hard-coded seed (last-resort).
+          3. Canonical ``husc_tuition_2026_official.json`` (offline seed).
+          4. Embedded hard-coded seed (last-resort).
         NEVER raises.
         """
+        # Snapshot takes precedence: serving reads RAM, never disk.
+        if _SNAPSHOT_ALLOWED is not None:
+            return set(_SNAPSHOT_ALLOWED)
+
         primary = cls.MAJOR_SCOPE_FILE
         try:
             if primary.exists():

@@ -174,7 +174,13 @@ class PublishedMaterializer:
         return self._store
 
     def materialize(
-        self, release_id: str, output_dir: str | Path
+        self,
+        release_id: str,
+        output_dir: str | Path,
+        *,
+        recommender_snapshots: dict | None = None,
+        whitelist: list[str] | None = None,
+        tuition: dict[str, float] | None = None,
     ) -> MaterializationResult:
         """Write the release's live published records to ``output_dir``.
 
@@ -230,6 +236,9 @@ class PublishedMaterializer:
             admitted=admitted,
             excluded=excluded,
             stored_record_count=stored,
+            recommender_snapshots=recommender_snapshots,
+            whitelist=whitelist,
+            tuition=tuition,
         )
 
         records_path = output / RECORDS_FILENAME
@@ -298,6 +307,9 @@ class PublishedMaterializer:
         admitted: list[CanonicalRecord],
         excluded: list[ExcludedRecord],
         stored_record_count: int,
+        recommender_snapshots: dict | None = None,
+        whitelist: list[str] | None = None,
+        tuition: dict[str, float] | None = None,
     ) -> dict:
         counts = {reason: 0 for reason in EXCLUSION_REASONS}
         for item in excluded:
@@ -320,6 +332,9 @@ class PublishedMaterializer:
                     excluded, key=lambda item: (item.record_id, item.version)
                 )
             ],
+            "recommender_snapshots": recommender_snapshots or {},
+            "whitelist": whitelist or [],
+            "tuition": tuition or {},
         }
 
     @staticmethod

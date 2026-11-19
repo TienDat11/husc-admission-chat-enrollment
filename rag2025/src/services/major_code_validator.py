@@ -99,20 +99,36 @@ _CODE_IN_TEXT_RX = re.compile(r"\b7\d{6}(?:[A-Z]{2})?\b")
 _MAJOR_CODES_DIR = Path(__file__).resolve().parents[2] / "data" / "major_codes"
 _WHITELIST_CACHE: dict[int, frozenset[str]] = {}
 _LEGACY_DEFAULT_YEAR = 2026
+# Injected by the release reconciler so serving reads the active release's
+# whitelist from RAM (ReleaseSnapshot) instead of data/major_codes/*.json.
+_SNAPSHOT_WHITELIST: frozenset[str] | None = None
+
+
+def set_snapshot_whitelist(codes: frozenset[str] | None) -> None:
+    """Override the whitelist served from RAM (ReleaseSnapshot.major_whitelist).
+
+    When set, ``get_whitelist`` returns this instead of touching disk — the
+    serving path never opens ``data/major_codes/*.json``.
+    """
+    global _SNAPSHOT_WHITELIST
+    _SNAPSHOT_WHITELIST = codes
 
 
 def get_whitelist(year: Optional[int] = None) -> frozenset[str]:
     """Return the canonical major-code whitelist for a given admission year.
 
     Resolution order:
-      1. If ``year`` is None, resolve via ``get_current_admission_year()``;
+      1. The reconciler-injected snapshot whitelist (serving path: RAM, no disk).
+      2. If ``year`` is None, resolve via ``get_current_admission_year()``;
          if that import/call fails for any reason, default to 2026.
-      2. Load ``data/major_codes/<year>.json`` if present and well-formed.
-      3. If the file is missing/malformed, fall back to the legacy
+      3. Load ``data/major_codes/<year>.json`` if present and well-formed.
+      4. If the file is missing/malformed, fall back to the legacy
          ``WHITELIST_2026`` frozenset. **Never raises.**
 
     The result is memoized per-year; subsequent calls return the same frozenset.
     """
+    if _SNAPSHOT_WHITELIST is not None:
+        return _SNAPSHOT_WHITELIST
     if year is None:
         try:
             from services.temporal_authority import get_current_admission_year

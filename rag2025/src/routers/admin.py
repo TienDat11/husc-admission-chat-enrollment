@@ -1411,3 +1411,18 @@ router.include_router(url_ingest_router)
 from src.routers.admin_overview import router as overview_router  # noqa: E402
 
 router.include_router(overview_router)
+
+# U8: batch record transitions (ticket A8).
+from src.routers.admin_batch import router as batch_router  # noqa: E402
+
+router.include_router(batch_router)
+
+# U8: release lifecycle (activate/rollback).
+from src.routers.admin_releases import router as releases_router  # noqa: E402
+
+router.include_router(releases_router)
+
+# U8: review + retrieval sandbox + supersession candidates.
+from src.routers.admin_review import router as review_router  # noqa: E402
+
+router.include_router(review_router)

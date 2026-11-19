@@ -1,0 +1,139 @@
+"""Review + retrieval sandbox — U8 §PL-6.3 & §PL-7.1.
+
+``POST /admin/retrieval-preview`` → ``RECORDS_READ``, calls ``retrieval_sandbox``.
+``GET /admin/supersession-candidates?status=open`` → ``RECORDS_READ``.
+``POST /admin/supersession-candidates/{id}/decision`` → ``RECORDS_APPROVE``,
+body ``{decision: "confirm"|"reject", expected_version: int}``.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+
+from src.domain.admin_identity import AdminAction, Identity
+from src.infrastructure.sql_record_store import SqlRecordStore
+from src.routers.admin_auth import current_identity, require_action
+from src.services.retrieval_sandbox import Chunk, Query, compute_diff
+
+router = APIRouter(prefix="/admin", tags=["admin-review"])
+
+
+class RetrievalPreviewRequest(BaseModel):
+    record_ids: list[str] = Field(default_factory=list)
+    k: int = Field(default=5, ge=1, le=50)
+
+
+class RetrievalPreviewResponse(BaseModel):
+    queries: list[dict[str, Any]]
+    elapsed_ms: float
+    status: str = "ok"
+
+
+class SupersessionCandidate(BaseModel):
+    candidate_id: str
+    old_record_id: str
+    old_record_version: int
+    new_record_id: str | None
+    new_record_version: int | None
+    decision: str | None
+    status: str
+
+
+class DecisionRequest(BaseModel):
+    decision: str = Field(min_length=1)
+    expected_version: int
+
+
+def _require_pg_store(request: Request) -> SqlRecordStore:
+    store = getattr(request.app.state, "record_store", None)
+    if not isinstance(store, SqlRecordStore):
+        raise HTTPException(status_code=503, detail="record store is not PostgreSQL-backed")
+    return store
+
+
+@router.post("/retrieval-preview", response_model=RetrievalPreviewResponse, dependencies=[Depends(require_action(AdminAction.RECORDS_READ))])
+async def retrieval_preview(payload: RetrievalPreviewRequest, request: Request, identity: Identity = Depends(current_identity)) -> RetrievalPreviewResponse:
+    store = _require_pg_store(request)
+    k = min(payload.k, 50)
+    record_ids = payload.record_ids
+    queries: list[Query] = []
+    status = "ok"
+    with store._connect() as conn:
+        if record_ids:
+            rows = conn.execute(
+                "SELECT query_id, text, query_embedding, embedding_model, record_type, major_codes, admission_year "
+                "FROM golden_queries WHERE record_id = ANY(%s)",
+                [record_ids],
+            ).mappings().all()
+        else:
+            rows = []
+        if not rows:
+            status = "insufficient_fixture"
+            for record_id in record_ids:
+                queries.append(Query(query_id=f"fallback:{record_id}", text=f"{record_id} {record_id} 2026"))
+        else:
+            for row in rows:
+                embedding = None
+                if row["query_embedding"] is not None:
+                    try:
+                        embedding = list(bytes(row["query_embedding"]))
+                    except Exception:
+                        embedding = None
+                queries.append(Query(query_id=row["query_id"], text=row["text"] or "", embedding=embedding))
+    # Build before/after chunk sets from chunk_preview_items for the records.
+    before_chunks: list[Chunk] = []
+    after_chunks: list[Chunk] = []
+    with store._connect() as conn:
+        if record_ids:
+            rows = conn.execute(
+                "SELECT chunk_id, record_id, record_version, text, embedding, embedding_model FROM chunk_preview_items WHERE record_id = ANY(%s)",
+                [record_ids],
+            ).mappings().all()
+            for row in rows:
+                emb = None
+                if row["embedding"] is not None:
+                    try:
+                        emb = list(bytes(row["embedding"]))
+                    except Exception:
+                        emb = None
+                chunk = Chunk(chunk_id=row["chunk_id"], text=row["text"] or "", embedding=emb, record_id=row["record_id"])
+                before_chunks.append(chunk)
+                after_chunks.append(chunk)
+    result = compute_diff(queries, before_chunks, after_chunks, k)
+    return RetrievalPreviewResponse(queries=[q.__dict__ for q in result.queries], elapsed_ms=result.elapsed_ms, status=status)
+
+
+@router.get("/supersession-candidates", response_model=list[SupersessionCandidate], dependencies=[Depends(require_action(AdminAction.RECORDS_READ))])
+async def list_supersession_candidates(
+    request: Request,
+    status: str = "open",
+    identity: Identity = Depends(current_identity),
+) -> list[SupersessionCandidate]:
+    store = _require_pg_store(request)
+    with store._connect() as conn:
+        rows = conn.execute(
+            "SELECT candidate_id, old_record_id, old_record_version, new_record_id, new_record_version, decision, status FROM supersession_candidates WHERE status = %s ORDER BY created_at DESC",
+            [status],
+        ).mappings().all()
+    return [SupersessionCandidate(**dict(r)) for r in rows]
+
+
+@router.post("/supersession-candidates/{candidate_id}/decision", response_model=SupersessionCandidate, dependencies=[Depends(require_action(AdminAction.RECORDS_APPROVE))])
+async def decide_supersession(candidate_id: str, payload: DecisionRequest, request: Request, identity: Identity = Depends(current_identity)) -> SupersessionCandidate:
+    store = _require_pg_store(request)
+    with store._connect() as conn:
+        row = conn.execute("SELECT candidate_id, expected_version, status, decision FROM supersession_candidates WHERE candidate_id = %s FOR UPDATE", [candidate_id]).mappings().first()
+        if row is None:
+            raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "không tìm thấy ứng viên"})
+        if row["status"] != "pending_review":
+            raise HTTPException(status_code=409, detail={"code": "VERSION_CONFLICT", "message": "ứng viên đã được phân xử"})
+        if row["expected_version"] is not None and row["expected_version"] != payload.expected_version:
+            raise HTTPException(status_code=409, detail={"code": "VERSION_CONFLICT", "message": "phiên bản không khớp", "current_version": row["expected_version"]})
+        conn.execute("UPDATE supersession_candidates SET decision = %s, status = 'accepted', decided_by = %s, decided_at = now() WHERE candidate_id = %s", [payload.decision, identity.actor_id, candidate_id])
+    row = conn_fetch = None
+    with store._connect() as conn2:
+        row = conn2.execute("SELECT candidate_id, old_record_id, old_record_version, new_record_id, new_record_version, decision, status FROM supersession_candidates WHERE candidate_id = %s", [candidate_id]).mappings().first()
+    return SupersessionCandidate(**dict(row))
