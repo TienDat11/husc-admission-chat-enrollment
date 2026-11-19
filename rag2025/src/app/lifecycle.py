@@ -273,6 +273,7 @@ def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None
 
     store = _build_record_store(resolved, root, CanonicalRecordStore)
     app.state.canonical_record_store = store
+    app.state.record_store = store
     if resolved.STORE_BACKEND == "postgres":
         _attach_postgres_state(app, root)
 

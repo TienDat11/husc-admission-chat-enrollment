@@ -4653,6 +4653,18 @@
             ],
             "title": "Status Reason"
           },
+          "student_profile": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Profile"
+          },
           "trace_id": {
             "title": "Trace Id",
             "type": "string"

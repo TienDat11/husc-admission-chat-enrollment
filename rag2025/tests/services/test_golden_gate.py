@@ -388,26 +388,30 @@ def test_cli_invocation(tmp_path, monkeypatch):
 def test_gate_failed_release_cannot_be_activated(monkeypatch, tmp_path):
     from src.routers.admin import router as admin_router
 
-    app = _app_with_activate_route(monkeypatch, tmp_path)
-    client = TestClient(app)
-
-    # Flip the existing release to gate_failed via PG, then attempt activation.
-    import os
-    import psycopg
-
     monkeypatch.setenv(
         "ADMIN_IDENTITIES",
         __import__("json").dumps(
             [{"token": "tok-admin-sql-1", "actor_id": "admin@husc", "role": "admin"}]
         ),
     )
+    app = _app_with_activate_route(monkeypatch, tmp_path)
+    client = TestClient(app)
+
+    # Seed e2e-release as gate_failed via PG (inserted when absent), then attempt activation.
+    import psycopg
+
     headers = {"X-Admin-Token": "tok-admin-sql-1"}
 
     database_url = "postgresql://rag:rag@127.0.0.1:5432/husc"
     with psycopg.connect(database_url, autocommit=True) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE releases SET status='gate_failed' WHERE release_id='e2e-release'"
+                "INSERT INTO releases (release_id, parent_release_id, corpus_stamp, lancedb_table, "
+                "lancedb_version, manifest, golden_report, status, created_by) "
+                "VALUES ('e2e-release', NULL, '[]'::jsonb, 'husc_chunks', 0, '{}'::jsonb, "
+                "'{\"verdict\": \"fail\"}'::jsonb, 'gate_failed', 'test') "
+                "ON CONFLICT (release_id) DO UPDATE SET status='gate_failed', "
+                "golden_report='{\"verdict\": \"fail\"}'::jsonb"
             )
 
     try:

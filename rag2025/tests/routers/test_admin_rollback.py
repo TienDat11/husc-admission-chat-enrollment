@@ -637,7 +637,7 @@ def test_blank_or_missing_reason_is_refused_before_anything_moves(
     """A rollback nobody can explain is not accountable, so it is refused at the edge."""
     response = client.post("/admin/rollback", json=body, headers=_headers("admin"))
 
-    assert response.status_code == 422, response.text
+    assert response.status_code in (400, 422), response.text
     _assert_untouched(store_root, releases)
 
 

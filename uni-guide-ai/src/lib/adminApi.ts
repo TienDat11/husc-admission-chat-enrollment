@@ -563,7 +563,7 @@ export interface IndexJobsStatus {
 /** How often the job screen re-reads its state. Polling, not a page reload. */
 export const INDEX_JOBS_REFETCH_MS = 5000;
 
-/** What `POST /admin/releases/previous/rollback` answers. */
+/** What `POST /admin/releases/{release_id}/rollback` answers. */
 export interface RollbackResult {
   release_id: string;
   previous_release_id: string;
@@ -592,7 +592,8 @@ export async function rollbackRelease(
   body: { reason: string; target_release_id?: string },
   options: { idempotencyKey?: string } = {},
 ): Promise<RollbackResult> {
-  return adminRequest<RollbackResult>(token, "/admin/releases/previous/rollback", {
+  const releaseId = body.target_release_id ?? "previous";
+  return adminRequest<RollbackResult>(token, `/admin/releases/${encodeURIComponent(releaseId)}/rollback`, {
     method: "POST",
     body: JSON.stringify(body),
     ...(options.idempotencyKey

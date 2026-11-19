@@ -3767,6 +3767,10 @@ export type components = {
             status_code: string;
             /** Status Reason */
             status_reason?: string | null;
+            /** Student Profile */
+            student_profile?: {
+                [key: string]: unknown;
+            } | null;
             /** Trace Id */
             trace_id: string;
         };

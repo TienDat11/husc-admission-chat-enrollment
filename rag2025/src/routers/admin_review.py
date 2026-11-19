@@ -48,8 +48,10 @@ class DecisionRequest(BaseModel):
 
 
 def _require_pg_store(request: Request) -> SqlRecordStore:
-    store = getattr(request.app.state, "record_store", None)
-    if not isinstance(store, SqlRecordStore):
+    store = getattr(request.app.state, "record_store", None) or getattr(
+        request.app.state, "canonical_record_store", None
+    )
+    if store is None or (not isinstance(store, SqlRecordStore) and type(store).__name__ != "SqlRecordStore"):
         raise HTTPException(status_code=503, detail="record store is not PostgreSQL-backed")
     return store
 
