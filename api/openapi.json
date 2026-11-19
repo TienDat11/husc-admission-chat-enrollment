@@ -168,6 +168,179 @@
         "title": "BackfillView",
         "type": "object"
       },
+      "BatchItem": {
+        "properties": {
+          "action": {
+            "minLength": 1,
+            "title": "Action",
+            "type": "string"
+          },
+          "expected_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "record_id": {
+            "minLength": 1,
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "action"
+        ],
+        "title": "BatchItem",
+        "type": "object"
+      },
+      "BatchItemResult": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "record_id",
+          "action"
+        ],
+        "title": "BatchItemResult",
+        "type": "object"
+      },
+      "BatchRejectedItem": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "action",
+          "code",
+          "message"
+        ],
+        "title": "BatchRejectedItem",
+        "type": "object"
+      },
+      "BatchSkippedItem": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "code": {
+            "default": "ALREADY_IN_TARGET_STATE",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "default": "record already in target state",
+            "title": "Message",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "action"
+        ],
+        "title": "BatchSkippedItem",
+        "type": "object"
+      },
+      "BatchTransitionRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItem"
+            },
+            "maxItems": 110,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "BatchTransitionRequest",
+        "type": "object"
+      },
+      "BatchTransitionResponse": {
+        "properties": {
+          "applied": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItemResult"
+            },
+            "title": "Applied",
+            "type": "array"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/BatchRejectedItem"
+            },
+            "title": "Rejected",
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/BatchSkippedItem"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "applied",
+          "rejected",
+          "skipped"
+        ],
+        "title": "BatchTransitionResponse",
+        "type": "object"
+      },
       "BlindCitationItemView": {
         "properties": {
           "kind": {
@@ -1227,6 +1400,25 @@
           "record"
         ],
         "title": "CreateRecordRequest",
+        "type": "object"
+      },
+      "DecisionRequest": {
+        "properties": {
+          "decision": {
+            "minLength": 1,
+            "title": "Decision",
+            "type": "string"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "decision",
+          "expected_version"
+        ],
+        "title": "DecisionRequest",
         "type": "object"
       },
       "EditRecordRequest": {
@@ -2637,6 +2829,25 @@
         "title": "RegistrationRequest",
         "type": "object"
       },
+      "ReleaseCreateRequest": {
+        "properties": {
+          "corpus_stamp": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Corpus Stamp",
+            "type": "array"
+          },
+          "status": {
+            "default": "building",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "ReleaseCreateRequest",
+        "type": "object"
+      },
       "ReleaseStatusResponse": {
         "description": "GET /admin/releases — the active release and the one behind it.\n\n``active_release_id`` is what the serving path reads (the pointer) and is\npresent even when the release it names cannot be read; ``active``/``previous``\nare the manifest-backed views. ``problems`` carries anything that could not\nbe read, so an unreadable pointer is never rendered as \"nothing published\".",
         "properties": {
@@ -2698,6 +2909,51 @@
           "problems"
         ],
         "title": "ReleaseStatusResponse",
+        "type": "object"
+      },
+      "ReleaseView": {
+        "properties": {
+          "corpus_stamp": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corpus Stamp"
+          },
+          "golden_report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Golden Report"
+          },
+          "release_id": {
+            "title": "Release Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release_id",
+          "status"
+        ],
+        "title": "ReleaseView",
         "type": "object"
       },
       "ReleaseViewResponse": {
@@ -2887,6 +3143,53 @@
         "title": "RetireRequest",
         "type": "object"
       },
+      "RetrievalPreviewRequest": {
+        "properties": {
+          "k": {
+            "default": 5,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "K",
+            "type": "integer"
+          },
+          "record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Record Ids",
+            "type": "array"
+          }
+        },
+        "title": "RetrievalPreviewRequest",
+        "type": "object"
+      },
+      "RetrievalPreviewResponse": {
+        "properties": {
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "number"
+          },
+          "queries": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Queries",
+            "type": "array"
+          },
+          "status": {
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "queries",
+          "elapsed_ms"
+        ],
+        "title": "RetrievalPreviewResponse",
+        "type": "object"
+      },
       "RetryStepResponse": {
         "description": "One step of retrying a failed job, and whether this process can run it.",
         "properties": {
@@ -2943,40 +3246,6 @@
         ],
         "title": "Role",
         "type": "string"
-      },
-      "RollbackRequest": {
-        "description": "Body for POST /admin/rollback.\n\n``reason`` is mandatory and non-blank. The event the rollback emits refuses\nto exist without one (``AuditAction.ROLLBACK`` is in ``REASON_REQUIRED``),\nso a blank reason is refused here — 422, before any store, pointer or table\nis touched.\n\n``target_release_id`` is optional. Without it the target is the previous\nrelease in the lineage (``parent_release_id``, walked back from the active\none); with it, a rollback can go further back than one release.\n\n``force_while_in_flight`` is the emergency override for the drain gate. A\nrollback whose drain times out is refused with 409 like a reload is; this\nflag is how an operator says \"roll back anyway, knowing a request still\nreading the release I am rolling away from may fail\". It is a separate,\nexplicitly-named decision — never a meaning read into the timeout.",
-        "properties": {
-          "force_while_in_flight": {
-            "default": false,
-            "description": "Emergency override: roll back even though the drain timed out. A request already reading the old release may then fail; the response reports ``forced_while_in_flight``.",
-            "title": "Force While In Flight",
-            "type": "boolean"
-          },
-          "reason": {
-            "maxLength": 2000,
-            "minLength": 1,
-            "title": "Reason",
-            "type": "string"
-          },
-          "target_release_id": {
-            "anyOf": [
-              {
-                "maxLength": 128,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Release Id"
-          }
-        },
-        "required": [
-          "reason"
-        ],
-        "title": "RollbackRequest",
-        "type": "object"
       },
       "RollbackResponse": {
         "description": "What the rollback did, per level, plus the audit event it emitted.",
@@ -3242,6 +3511,70 @@
           "notes"
         ],
         "title": "SourceDocumentView",
+        "type": "object"
+      },
+      "SupersessionCandidate": {
+        "properties": {
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          },
+          "new_record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Record Id"
+          },
+          "new_record_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Record Version"
+          },
+          "old_record_id": {
+            "title": "Old Record Id",
+            "type": "string"
+          },
+          "old_record_version": {
+            "title": "Old Record Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "old_record_id",
+          "old_record_version",
+          "new_record_id",
+          "new_record_version",
+          "decision",
+          "status"
+        ],
+        "title": "SupersessionCandidate",
         "type": "object"
       },
       "TransitionRequest": {
@@ -4024,6 +4357,54 @@
         ],
         "title": "WorkerStatus",
         "type": "object"
+      },
+      "routers__admin__RollbackRequest": {
+        "description": "Body for POST /admin/rollback.\n\n``reason`` is mandatory and non-blank. The event the rollback emits refuses\nto exist without one (``AuditAction.ROLLBACK`` is in ``REASON_REQUIRED``),\nso a blank reason is refused here — 422, before any store, pointer or table\nis touched.\n\n``target_release_id`` is optional. Without it the target is the previous\nrelease in the lineage (``parent_release_id``, walked back from the active\none); with it, a rollback can go further back than one release.\n\n``force_while_in_flight`` is the emergency override for the drain gate. A\nrollback whose drain times out is refused with 409 like a reload is; this\nflag is how an operator says \"roll back anyway, knowing a request still\nreading the release I am rolling away from may fail\". It is a separate,\nexplicitly-named decision — never a meaning read into the timeout.",
+        "properties": {
+          "force_while_in_flight": {
+            "default": false,
+            "description": "Emergency override: roll back even though the drain timed out. A request already reading the old release may then fail; the response reports ``forced_while_in_flight``.",
+            "title": "Force While In Flight",
+            "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "target_release_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Release Id"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RollbackRequest",
+        "type": "object"
+      },
+      "src__routers__admin_releases__RollbackRequest": {
+        "properties": {
+          "reason": {
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RollbackRequest",
+        "type": "object"
       }
     }
   },
@@ -4053,6 +4434,559 @@
           }
         },
         "summary": "Root"
+      }
+    },
+    "/admin/admin/records/batch-transition": {
+      "post": {
+        "description": "Apply many record transitions in one transaction.",
+        "operationId": "batch_transition_admin_admin_records_batch_transition_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchTransitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Batch Transition",
+        "tags": [
+          "admin",
+          "admin-batch"
+        ]
+      }
+    },
+    "/admin/admin/releases": {
+      "get": {
+        "operationId": "list_releases_admin_admin_releases_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReleaseView"
+                  },
+                  "title": "Response List Releases Admin Admin Releases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Releases",
+        "tags": [
+          "admin",
+          "admin-releases"
+        ]
+      },
+      "post": {
+        "operationId": "create_release_admin_admin_releases_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Release",
+        "tags": [
+          "admin",
+          "admin-releases"
+        ]
+      }
+    },
+    "/admin/admin/releases/{release_id}": {
+      "get": {
+        "operationId": "get_release_admin_admin_releases__release_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Release",
+        "tags": [
+          "admin",
+          "admin-releases"
+        ]
+      }
+    },
+    "/admin/admin/releases/{release_id}/activate": {
+      "post": {
+        "operationId": "activate_release_admin_admin_releases__release_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Release",
+        "tags": [
+          "admin",
+          "admin-releases"
+        ]
+      }
+    },
+    "/admin/admin/releases/{release_id}/rollback": {
+      "post": {
+        "operationId": "rollback_release_admin_admin_releases__release_id__rollback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/src__routers__admin_releases__RollbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Release",
+        "tags": [
+          "admin",
+          "admin-releases"
+        ]
+      }
+    },
+    "/admin/admin/retrieval-preview": {
+      "post": {
+        "operationId": "retrieval_preview_admin_admin_retrieval_preview_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrievalPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetrievalPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retrieval Preview",
+        "tags": [
+          "admin",
+          "admin-review"
+        ]
+      }
+    },
+    "/admin/admin/supersession-candidates": {
+      "get": {
+        "operationId": "list_supersession_candidates_admin_admin_supersession_candidates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SupersessionCandidate"
+                  },
+                  "title": "Response List Supersession Candidates Admin Admin Supersession Candidates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Supersession Candidates",
+        "tags": [
+          "admin",
+          "admin-review"
+        ]
+      }
+    },
+    "/admin/admin/supersession-candidates/{candidate_id}/decision": {
+      "post": {
+        "operationId": "decide_supersession_admin_admin_supersession_candidates__candidate_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupersessionCandidate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Supersession",
+        "tags": [
+          "admin",
+          "admin-review"
+        ]
       }
     },
     "/admin/audit/events": {
@@ -5907,7 +6841,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RollbackRequest"
+                "$ref": "#/components/schemas/routers__admin__RollbackRequest"
               }
             }
           },

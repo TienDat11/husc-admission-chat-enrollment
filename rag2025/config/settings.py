@@ -38,6 +38,16 @@ class RAGSettings(BaseSettings):
     WRITE_FREEZE: bool = Field(
         default=False, description="Operator write freeze: admin writes answer 503 WRITES_FROZEN at startup"
     )
+    ADMIN_REQUIRE_FOUR_EYES: bool = Field(
+        default=True,
+        description="Four-eyes: an approver must differ from the version's author (U8 §PL-7.1)"
+    )
+    DIFF_SANDBOX_VECTOR_WEIGHT: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Retrieval diff sandbox: weight on the cosine term (U8 §PL-6.3)"
+    )
 
     # ========== Paths ==========
     INDEX_DIR: Path = Field(default=Path("./index"), description="Vector index storage directory")

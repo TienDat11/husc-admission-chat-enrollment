@@ -721,3 +721,187 @@ export async function createPreview(
     body: JSON.stringify(body),
   });
 }
+
+// U8: batch record transitions
+// ---------------------------------------------------------------------------
+
+export interface BatchTransitionItem {
+  record_id: string;
+  action: "submit" | "approve" | "reject" | "publish";
+  expected_version?: number;
+  reason?: string;
+}
+
+export interface BatchRejectedItem {
+  record_id: string;
+  action: string;
+  code: string;
+  message: string;
+}
+
+export interface BatchSkippedItem {
+  record_id: string;
+  action: string;
+  code?: string;
+  message: string;
+}
+
+export interface BatchTransitionResult {
+  record_id: string;
+  action: string;
+  version?: number;
+}
+
+export interface BatchTransitionResponse {
+  applied: BatchTransitionResult[];
+  rejected: BatchRejectedItem[];
+  skipped: BatchSkippedItem[];
+}
+
+export async function batchTransition(
+  token: string | null,
+  body: { items: BatchTransitionItem[] },
+): Promise<BatchTransitionResponse> {
+  return adminRequest<BatchTransitionResponse>(
+    token,
+    "/admin/records/batch-transition",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// U8: release lifecycle
+// ---------------------------------------------------------------------------
+
+export interface ReleaseCreateRequest {
+  corpus_stamp?: Record<string, unknown>[];
+}
+
+export interface ReleaseView {
+  release_id: string;
+  status: string;
+  corpus_stamp?: Record<string, unknown>[];
+  golden_report?: { verdict: string } | null;
+  created_at?: string;
+}
+
+export interface ReleaseListResponse {
+  releases: ReleaseView[];
+}
+
+export async function fetchReleases(
+  token: string | null,
+): Promise<ReleaseListResponse> {
+  return adminRequest<ReleaseListResponse>(token, "/admin/releases");
+}
+
+export async function fetchReleaseById(
+  token: string | null,
+  releaseId: string,
+): Promise<ReleaseView> {
+  return adminRequest<ReleaseView>(token, `/admin/releases/${releaseId}`);
+}
+
+export async function activateRelease(
+  token: string | null,
+  releaseId: string,
+): Promise<ReleaseView> {
+  return adminRequest<ReleaseView>(
+    token,
+    `/admin/releases/${releaseId}/activate`,
+    { method: "POST" },
+  );
+}
+
+export interface RollbackReleaseRequest {
+  reason: string;
+}
+
+export async function rollbackReleaseTo(
+  token: string | null,
+  releaseId: string,
+  body: RollbackReleaseRequest,
+): Promise<ReleaseView> {
+  return adminRequest<ReleaseView>(
+    token,
+    `/admin/releases/${releaseId}/rollback`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// U8: supersession candidates
+// ---------------------------------------------------------------------------
+
+export interface SupersessionCandidate {
+  candidate_id: string;
+  record_id: string;
+  status: string;
+  decision: string | null;
+}
+
+export async function fetchSupersessionCandidates(
+  token: string | null,
+  status: string = "open",
+): Promise<SupersessionCandidate[]> {
+  return adminRequest<SupersessionCandidate[]>(
+    token,
+    `/admin/supersession-candidates?status=${encodeURIComponent(status)}`,
+  );
+}
+
+export interface SupersessionDecision {
+  decision: "confirm" | "reject";
+  expected_version: number;
+}
+
+export async function decideSupersessionCandidate(
+  token: string | null,
+  candidateId: string,
+  body: SupersessionDecision,
+): Promise<void> {
+  return adminRequest<void>(
+    token,
+    `/admin/supersession-candidates/${candidateId}/decision`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// U8: retrieval diff sandbox
+// ---------------------------------------------------------------------------
+
+export interface RetrievalPreviewRequest {
+  record_ids: string[];
+  k?: number;
+}
+
+export interface RankDeltaEntry {
+  [chunk_id: string]: number;
+}
+
+export interface QueryDiffView {
+  query_id: string;
+  before_top_k: string[];
+  after_top_k: string[];
+  entered: string[];
+  left: string[];
+  rank_delta: RankDeltaEntry;
+}
+
+export interface RetrievalPreviewResponse {
+  queries: QueryDiffView[];
+  elapsed_ms: number;
+  status: string;
+}
+
+export async function retrievalPreview(
+  token: string | null,
+  body: RetrievalPreviewRequest,
+): Promise<RetrievalPreviewResponse> {
+  return adminRequest<RetrievalPreviewResponse>(
+    token,
+    "/admin/retrieval-preview",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
