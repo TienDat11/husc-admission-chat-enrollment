@@ -9,9 +9,10 @@ holds both the code and the first 14 characters of that line. The denominator
 is the number of codes that have such a line (111 on this text). This is the
 document's heuristic, not a ground truth.
 
-Measured with ``_pack_units_greedily`` at the spec's TTS target of 350: 92 of 111.
-The research doc's 95/111 belongs to a semchunk split that cuts blocks, which
-PL-6.5 forbids. Target 400 reaches 100/111; the spec keeps 350.
+Measured with ``_pack_units_greedily`` at the spec's TTS target of 350: 104 of 111.
+A major-code block with no ``1.`` line of its own may grow to the 512 cap, so its
+combination line (in the next block) stays in the same chunk. Without that rule
+the count is 92.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ DIEU_ONLY = re.compile(r"Điều\s+\d+")
 OPENING_OK = re.compile(r"^(?:[A-ZĐ0-9(\"“\-–•]|a\))")
 
 TTS_DENOMINATOR = 111
-TTS_COLOCATION_FLOOR = 92
+TTS_COLOCATION_FLOOR = 95
 
 
 def _nfc_text(path) -> str:

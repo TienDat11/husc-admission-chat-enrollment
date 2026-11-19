@@ -430,6 +430,8 @@ _TITLE_END = (".", ";", ":", "?", "!")
 #: A chapter or section heading. It closes the ``Điều`` body before it, so the
 #: heading line never joins the preceding article's text.
 _CHAPTER_HEADING_RE = re.compile(r"^\s*(?:Chương\s+[IVXLCDM]+\b|Mục\s+\d+\b)", re.M)
+#: A major code's combination line: ``1. <subjects>`` at the start of a line.
+_TTS_COMBO_LINE_RE = re.compile(r"^1\.", re.M)
 
 
 @dataclass(frozen=True)
@@ -455,6 +457,8 @@ class _Scope:
     cuts: tuple[int, ...]
     prefix_for: Callable[[int], str | None]
     label: str | None
+    #: A chunk ending at this position may grow to the hard cap, not the target.
+    may_overflow: Callable[[int], bool] | None = None
 
 
 def _no_prefix(_position: int) -> None:
@@ -547,7 +551,13 @@ def _code_scope(text: str, majors: Sequence[re.Match[str]], hard: int, enc) -> _
             return None
         return code_lines[index]
 
-    return _Scope(0, len(text), tuple(sorted(cuts)), prefix_for, None)
+    lacks_combo = [_TTS_COMBO_LINE_RE.search(text, s, e) is None for s, e in zip(starts, ends)]
+
+    def may_overflow(end: int) -> bool:
+        index = bisect_right(starts, end - 1) - 1
+        return index >= 0 and lacks_combo[index]
+
+    return _Scope(0, len(text), tuple(sorted(cuts)), prefix_for, None, may_overflow)
 
 
 def _scopes(text: str, hard: int, enc) -> list[_Scope]:
@@ -630,7 +640,8 @@ def _pack_scope(
     ranges: list[tuple[int, int]] = []
     cur_start, cur_end = pieces[0]
     for piece_start, piece_end in pieces[1:]:
-        if tokens(cur_start, piece_end) <= target:
+        limit = hard if scope.may_overflow and scope.may_overflow(cur_end) else target
+        if tokens(cur_start, piece_end) <= limit:
             cur_end = piece_end
         else:
             ranges.append((cur_start, cur_end))
