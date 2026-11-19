@@ -46,7 +46,8 @@
           "revoke_supersession",
           "claim",
           "job_retry",
-          "job_cancel"
+          "job_cancel",
+          "account_locked"
         ],
         "title": "AuditAction",
         "type": "string"

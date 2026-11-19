@@ -1375,7 +1375,7 @@ export type components = {
          * @description What happened. An action outside this enum is not recordable.
          * @enum {string}
          */
-        AuditAction: "publish" | "rollback" | "permission_change" | "source_document_change" | "conflict_override" | "create" | "edit" | "submit" | "approve" | "reject" | "supersede" | "withdraw" | "revoke_supersession" | "claim" | "job_retry" | "job_cancel";
+        AuditAction: "publish" | "rollback" | "permission_change" | "source_document_change" | "conflict_override" | "create" | "edit" | "submit" | "approve" | "reject" | "supersede" | "withdraw" | "revoke_supersession" | "claim" | "job_retry" | "job_cancel" | "account_locked";
         /**
          * AuditEventList
          * @description Newest-first page of the ledger.
