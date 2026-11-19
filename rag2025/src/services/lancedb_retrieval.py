@@ -42,7 +42,7 @@ def _current_as_of_int() -> int:
 
 
 def _drop_by_effectiveness(row: Dict[str, Any], meta: Dict[str, Any],
-                           as_of: int) -> bool:
+                           as_of: int, *, allow_superseded: bool = False) -> bool:
     """T15 effectiveness law (D1 R03): a served row is current and
     inside its effective window.
 
@@ -56,7 +56,8 @@ def _drop_by_effectiveness(row: Dict[str, Any], meta: Dict[str, Any],
     """
     _status = row.get("status")
     if _status is not None and _status != "current":
-        return True
+        if not (allow_superseded and _status == "superseded"):
+            return True
     _meta_status = meta.get("status")
     if _meta_status in ("draft", "review", "approved", "archived"):
         return True
@@ -412,7 +413,7 @@ class LanceDBRetriever:
             # T15 effectiveness law (D1 R03): status + effective window.
             # Unconditional (not gated on hard_exclude_active) so the legacy
             # soft path (query=None) obeys the same law. NULL/absent = KEEP.
-            if _drop_by_effectiveness(row, meta, as_of):
+            if _drop_by_effectiveness(row, meta, as_of, allow_superseded=is_historical_query):
                 continue
 
             # Rule 2: Exclude superseded chunks (unless historical query)

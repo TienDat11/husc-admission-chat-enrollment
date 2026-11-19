@@ -40,7 +40,6 @@ for _path in (ROOT, ROOT / "src"):
         sys.path.insert(0, str(_path))
 
 GOLDEN_SEED = ROOT / "tests" / "eval" / "fixtures" / "golden_seed.jsonl"
-CHUNK_PROFILES = ROOT / "config" / "chunk_profiles.yaml"
 QWEN_TOKENIZER = "Qwen/Qwen3-Embedding-0.6B"
 TABLE = "husc_chunks"
 TOP_K = 10
@@ -235,9 +234,7 @@ def _chunk_stats(pdf_dir: Path) -> dict:
     from pypdf import PdfReader
     import tiktoken
 
-    from src.chunker import ChunkConfig, Chunker
-
-    chunker = Chunker(ChunkConfig(CHUNK_PROFILES))
+    from src.domain.canonical.semantic_units import _pack_units_greedily
     enc = tiktoken.get_encoding("cl100k_base")
     stats: dict[str, object] = {}
     for label, name in (("tt06", TT06_PDF), ("tts", TTS_PDF)):
@@ -246,14 +243,13 @@ def _chunk_stats(pdf_dir: Path) -> dict:
             stats[label] = f"not_computed: source PDF missing: {path}"
             continue
         text = "\n".join(page.extract_text() or "" for page in PdfReader(str(path)).pages)
-        doc = {"id": label, "text": text, "metadata": {"source_file": name, "data_year": 2026}}
-        chunks = chunker.chunk_document(doc, profile_name="auto")
+        chunks = _pack_units_greedily(text, enc=enc)
         tokens = sorted(len(enc.encode(c.text)) for c in chunks)
         n = len(tokens)
         stats[label] = {
             "source": name,
             "extractor": "pypdf",
-            "chunker": "src/chunker.py Chunker.chunk_document(profile=auto)",
+            "chunker": "semantic_units._pack_units_greedily (cl100k_base, target 350, hard max 512)",
             "n_chunks": n,
             "tokens_p50": statistics.median(tokens) if tokens else None,
             "tokens_max": tokens[-1] if tokens else None,
@@ -315,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
             "key_match": "chunk program code (program_code/major_code or 7-digit code in doc_id) == subject[:7] AND data_year == key year",
             "citation_precision": "top-5 chunks of in_scope rows that match >=1 expected key / top-5 chunks returned; document_id level, no page column",
             "abstention_rate": "out_of_scope rows whose top-1 retrieval score < settings.RAG_CONF_THRESHOLD / out_of_scope rows",
-            "chunk_stats": "current src/chunker.py run on pypdf text of the TT06 and TTS source PDFs",
+            "chunk_stats": "current packer (src/domain/canonical/semantic_units.py) on pypdf text of the TT06 and TTS source PDFs",
         },
         "seed": {"path": str(args.seed.relative_to(ROOT)).replace("\\", "/"), "rows": len(seed)},
         "embedder": {

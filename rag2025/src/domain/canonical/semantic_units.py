@@ -48,11 +48,14 @@ both are deterministic, so a unit set never depends on which one was installed.
 from __future__ import annotations
 
 import re
+import unicodedata
+from bisect import bisect_right
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Mapping, Sequence
 
 from src.domain.canonical.record import CanonicalRecord
+from src.services.vn_legal_structure import RX_DIEU, RX_KHOAN
 
 #: Bumped when the *rules below* change (a new atomic shape, a different slot
 #: scheme). It is not a content hash and not a timestamp; the chunking code's
@@ -69,6 +72,11 @@ SEP = "|"
 #: default target (``config.settings.CHUNK_SIZE_TOKENS``) without importing it —
 #: the domain layer must not depend on application settings.
 DEFAULT_UNIT_TOKEN_BUDGET = 350
+#: A chunk under this many tokens is merged with its neighbour, unless it is the
+#: last chunk of its ``Điều`` (PL-6.5).
+MIN_CHUNK_TOKENS = 50
+#: No chunk, heading prefix included, may exceed this many cl100k tokens (PL-6.5).
+HARD_MAX_CHUNK_TOKENS = 512
 
 # ── atomic shapes ──────────────────────────────────────────────────────────
 
@@ -197,6 +205,7 @@ def find_atomic_spans(text: str) -> tuple[AtomicSpan, ...]:
     code share no shape), but the resolver is explicit so adding a pattern later
     cannot silently produce two spans over one range.
     """
+    text = unicodedata.normalize("NFC", text)
     candidates: list[AtomicSpan] = []
     for kind, pattern in _ATOM_PATTERNS:
         for match in pattern.finditer(text):
@@ -408,6 +417,280 @@ def split_text_units(
                     )
                 )
     return tuple(units)
+
+
+# ── legal-boundary packing (PL-6.5) ─────────────────────────────────────────
+
+#: Opens a major-code block in a document with no ``Điều`` (the TTS shape).
+_MAJOR_LINE_RE = re.compile(r"^[^\n]*\b7\d{6}\b", re.M)
+_NEWLINE_RE = re.compile(r"\n")
+#: A ``Điều`` heading's title: the text after the number and an optional dot.
+_DIEU_HEADING_RE = re.compile(r"^\s*Điều[ \t]+\d{1,3}[a-zđ]?[ \t]*[.．:]?[ \t]*(.*)", re.S)
+_TITLE_END = (".", ";", ":", "?", "!")
+#: A chapter or section heading. It closes the ``Điều`` body before it, so the
+#: heading line never joins the preceding article's text.
+_CHAPTER_HEADING_RE = re.compile(r"^\s*(?:Chương\s+[IVXLCDM]+\b|Mục\s+\d+\b)", re.M)
+
+
+@dataclass(frozen=True)
+class PackedChunk:
+    """One chunk: its rendered text, the source span of its body, and its legal label."""
+
+    text: str
+    start: int
+    end: int
+    label: str | None
+
+
+@dataclass(frozen=True)
+class _Scope:
+    """A run of text packed on its own.
+
+    ``cuts`` are interior piece boundaries; ``prefix_for`` gives the heading a
+    chunk starting at a position carries (None for prose).
+    """
+
+    start: int
+    end: int
+    cuts: tuple[int, ...]
+    prefix_for: Callable[[int], str | None]
+    label: str | None
+
+
+def _no_prefix(_position: int) -> None:
+    return None
+
+
+def _constant_prefix(prefix: str) -> Callable[[int], str | None]:
+    def prefix_for(_position: int) -> str:
+        return prefix
+
+    return prefix_for
+
+
+def _paragraph_cuts(text: str, start: int, end: int) -> list[int]:
+    return [m.end() for m in _PARAGRAPH_BREAK_RE.finditer(text, start, end)]
+
+
+def _line_cuts(text: str, start: int, end: int) -> list[int]:
+    return [m.end() for m in _NEWLINE_RE.finditer(text, start, end)]
+
+
+def _line_end(text: str, start: int) -> int:
+    newline = text.find("\n", start)
+    return len(text) if newline < 0 else newline
+
+
+def _heading_end(text: str, start: int) -> int:
+    """End of a ``Điều`` heading: its line, extended over a title that wraps.
+
+    A line without closing punctuation, followed by a line that starts
+    lowercase, is the title continuing, not body text.
+    """
+    end = _line_end(text, start)
+    while end < len(text) and not text[start:end].rstrip().endswith(_TITLE_END):
+        following = end + 1
+        next_line = text[following : _line_end(text, following)].lstrip()
+        if not next_line or not next_line[0].islower():
+            break
+        end = _line_end(text, following)
+    return end
+
+
+def _render_chunk(text: str, start: int, end: int, prefix_for: Callable[[int], str | None]) -> str:
+    body = text[start:end].strip()
+    prefix = prefix_for(start)
+    return f"{prefix}\n{body}" if prefix else body
+
+
+def _legal_scopes(text: str, heads: Sequence[re.Match[str]]) -> list[_Scope]:
+    """One scope per ``Điều`` (its body runs to the next heading), preamble first."""
+    scopes: list[_Scope] = []
+    first = heads[0].start()
+    if first > 0:
+        scopes.append(_Scope(0, first, tuple(_paragraph_cuts(text, 0, first)), _no_prefix, None))
+    for index, head in enumerate(heads):
+        heading_start = text.index("Điều", head.start())
+        heading_end = _heading_end(text, heading_start)
+        number = head.group(1)
+        title_match = _DIEU_HEADING_RE.match(text[heading_start:heading_end])
+        title = " ".join(title_match.group(1).split()) if title_match else ""
+        prefix = f"Điều {number}. {title}" if title else f"Điều {number}."
+        next_head = heads[index + 1].start() if index + 1 < len(heads) else len(text)
+        chapter = _CHAPTER_HEADING_RE.search(text, heading_end, next_head)
+        body_end = chapter.start() if chapter else next_head
+        cuts = tuple(m.start() for m in RX_KHOAN.finditer(text, heading_end, body_end))
+        scopes.append(
+            _Scope(heading_end, body_end, cuts, _constant_prefix(prefix), f"Điều {number}")
+        )
+    return scopes
+
+
+def _code_scope(text: str, majors: Sequence[re.Match[str]], hard: int, enc) -> _Scope:
+    """The whole text as one scope; blocks run from one major-code line to the next.
+
+    A block over the hard cap is cut at its lines, and each later piece of it
+    carries the block's code line as its prefix.
+    """
+    starts = [m.start() for m in majors]
+    ends = starts[1:] + [len(text)]
+    code_lines = [text[s : _line_end(text, s)].strip() for s in starts]
+    cuts = set(_paragraph_cuts(text, 0, starts[0]))
+    cuts.update(starts)
+    for start, end in zip(starts, ends):
+        if _count_tokens(text[start:end], enc) > hard:
+            cuts.update(_line_cuts(text, start, end))
+
+    def prefix_for(position: int) -> str | None:
+        index = bisect_right(starts, position) - 1
+        if index < 0 or position == starts[index]:
+            return None
+        return code_lines[index]
+
+    return _Scope(0, len(text), tuple(sorted(cuts)), prefix_for, None)
+
+
+def _scopes(text: str, hard: int, enc) -> list[_Scope]:
+    heads = list(RX_DIEU.finditer(text))
+    if heads:
+        return _legal_scopes(text, heads)
+    majors = list(_MAJOR_LINE_RE.finditer(text))
+    if majors:
+        return [_code_scope(text, majors, hard, enc)]
+    return [_Scope(0, len(text), tuple(_paragraph_cuts(text, 0, len(text))), _no_prefix, None)]
+
+
+def _fit_piece(
+    text: str,
+    start: int,
+    end: int,
+    prefix_for: Callable[[int], str | None],
+    hard: int,
+    spans: Sequence[AtomicSpan],
+    enc,
+) -> list[tuple[int, int]]:
+    """Cut one piece into pieces whose rendered form fits the hard cap.
+
+    Sentence boundaries first (snapped off atomic shapes), then word boundaries.
+    """
+    if _count_tokens(_render_chunk(text, start, end, prefix_for), enc) <= hard:
+        return [(start, end)]
+    prefix = prefix_for(start)
+    budget = hard - (_count_tokens(f"{prefix}\n", enc) if prefix else 0)
+    breaks = [start + m.end() for m in _SENTENCE_BREAK_RE.finditer(text[start:end])]
+    bounds = [start, *_snap_boundaries(breaks, spans, end), end]
+    pieces: list[tuple[int, int]] = []
+    for piece_start, piece_end in zip(bounds, bounds[1:]):
+        if _count_tokens(_render_chunk(text, piece_start, piece_end, prefix_for), enc) <= hard:
+            pieces.append((piece_start, piece_end))
+        else:
+            pieces.extend(
+                _split_oversized(text, piece_start, piece_end, spans, budget, enc)
+            )
+    return pieces
+
+
+def _pack_scope(
+    text: str,
+    scope: _Scope,
+    *,
+    min_tokens: int,
+    target: int,
+    hard: int,
+    enc,
+    spans: Sequence[AtomicSpan],
+) -> list[tuple[int, int]]:
+    """The chunk ranges of one scope.
+
+    A scope that fits the hard cap is one chunk. Otherwise its pieces are packed
+    greedily to ``target``, and a chunk under ``min_tokens`` absorbs its neighbour
+    while the result stays within ``hard``.
+    """
+    if scope.end <= scope.start:
+        return []
+
+    def tokens(start: int, end: int) -> int:
+        return _count_tokens(_render_chunk(text, start, end, scope.prefix_for), enc)
+
+    if tokens(scope.start, scope.end) <= hard:
+        return [(scope.start, scope.end)]
+    bounds = [
+        scope.start,
+        *sorted({c for c in scope.cuts if scope.start < c < scope.end}),
+        scope.end,
+    ]
+    pieces: list[tuple[int, int]] = []
+    for piece_start, piece_end in zip(bounds, bounds[1:]):
+        pieces.extend(
+            _fit_piece(text, piece_start, piece_end, scope.prefix_for, hard, spans, enc)
+        )
+    if not pieces:
+        return []
+
+    ranges: list[tuple[int, int]] = []
+    cur_start, cur_end = pieces[0]
+    for piece_start, piece_end in pieces[1:]:
+        if tokens(cur_start, piece_end) <= target:
+            cur_end = piece_end
+        else:
+            ranges.append((cur_start, cur_end))
+            cur_start, cur_end = piece_start, piece_end
+    ranges.append((cur_start, cur_end))
+
+    merged: list[tuple[int, int]] = []
+    for start, end in ranges:
+        if merged and tokens(*merged[-1]) < min_tokens and tokens(merged[-1][0], end) <= hard:
+            merged[-1] = (merged[-1][0], end)
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _pack_units_greedily(
+    text: str,
+    *,
+    min_tokens: int = MIN_CHUNK_TOKENS,
+    target_tokens: int = DEFAULT_UNIT_TOKEN_BUDGET,
+    hard_max_tokens: int = HARD_MAX_CHUNK_TOKENS,
+    enc=None,
+) -> tuple[PackedChunk, ...]:
+    """Chunk ``text`` at legal boundaries, greedily, under a hard token cap.
+
+    Each ``Điều`` is packed on its own and every chunk of it carries the
+    ``Điều N. <tiêu đề>`` heading. A document with no ``Điều`` but with major-code
+    lines (TTS) packs whole code blocks, never splitting one that fits the cap.
+    Other text packs by paragraph. Text is NFC-normalised first, so the returned
+    body spans index the normalised text.
+    """
+    text = unicodedata.normalize("NFC", text)
+    if enc is None:
+        enc = _encoder()
+    spans = find_atomic_spans(text)
+    chunks: list[PackedChunk] = []
+    for scope in _scopes(text, hard_max_tokens, enc):
+        for start, end in _pack_scope(
+            text,
+            scope,
+            min_tokens=min_tokens,
+            target=target_tokens,
+            hard=hard_max_tokens,
+            enc=enc,
+            spans=spans,
+        ):
+            body = text[start:end]
+            if not body.strip():
+                continue
+            lead = len(body) - len(body.lstrip())
+            trail = len(body) - len(body.rstrip())
+            chunks.append(
+                PackedChunk(
+                    text=_render_chunk(text, start, end, scope.prefix_for),
+                    start=start + lead,
+                    end=end - trail,
+                    label=scope.label,
+                )
+            )
+    return tuple(chunks)
 
 
 # ── structured fields ──────────────────────────────────────────────────────

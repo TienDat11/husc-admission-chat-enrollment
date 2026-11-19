@@ -19,7 +19,12 @@ RX_DOC_LOCAL = re.compile(
 )
 RX_CHUONG = re.compile(r"^\s*Chương\s+([IVXLCDM]+)\b", re.M)
 RX_MUC = re.compile(r"^\s*Mục\s+(\d+)\b", re.M)
-RX_DIEU = re.compile(r"^\s*Điều\s+(\d{1,3}[a-zđ]?)\s*[.．:]", re.M)
+# Uppercase Vietnamese letters only: the title after an unpunctuated "Điều N"
+# must start capitalised, so a lowercase mid-sentence reference never matches.
+_VN_UPPER = "".join(ch for ch in map(chr, range(0xC0, 0x1F00)) if ch.isupper())
+RX_DIEU = re.compile(
+    rf"^\s*Điều[ \t]+(\d{{1,3}}[a-zđ]?)(?:[ \t]*[.．:]|[ \t]+(?=[A-Z{_VN_UPPER}]))", re.M
+)
 RX_KHOAN = re.compile(r"^\s*(\d{1,2})\s*[.．]\s+(?=[A-ZĐÀ-Ỹ“\"])", re.M)
 RX_DIEM = re.compile(r"^\s*([a-zđăâêôơư])\s*\)\s+", re.M)
 

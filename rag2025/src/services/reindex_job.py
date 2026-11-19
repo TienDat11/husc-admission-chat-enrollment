@@ -604,20 +604,29 @@ class ReindexJob:
         """Affected records re-cut; every other record's chunks carried over.
 
         A record that is affected but no longer among the published records
-        (archived, superseded away, deleted) contributes nothing, so its chunks
-        drop out of the corpus — which is the other half of "only what changed".
+        (archived, superseded away, deleted) keeps its old chunks as tombstones
+        (``is_tombstone=True``). They leave the served set, but the corpus still
+        records that they existed, so a rollback or audit can see what was removed.
         """
         affected_set = set(affected)
         old_chunks, _, _ = _read_serving_corpus(self._corpus_dir)
         carried = [c for c in old_chunks if c["metadata"]["record_id"] not in affected_set]
 
+        published_ids = {r.record_id for r in records}
+        tombstones = [
+            {**c, "is_tombstone": True, "metadata": {**c["metadata"], "is_tombstone": True}}
+            for c in old_chunks
+            if c["metadata"]["record_id"] in affected_set
+            and c["metadata"]["record_id"] not in published_ids
+        ]
+
         fresh_records = [r for r in records if r.record_id in affected_set]
         if not fresh_records:
-            return sorted(carried, key=_chunk_sort_key)
+            return sorted(carried + tombstones, key=_chunk_sort_key)
         fresh = list(
             build_chunk_index(fresh_records, staged / "chunk_build", self._release_id).chunks
         )
-        return sorted(carried + fresh, key=_chunk_sort_key)
+        return sorted(carried + fresh + tombstones, key=_chunk_sort_key)
 
     def _vectors_for(
         self,
