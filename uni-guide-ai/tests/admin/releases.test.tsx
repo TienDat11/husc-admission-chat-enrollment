@@ -422,7 +422,7 @@ describe("Rollback from the release screen", () => {
     expect(call?.body).toEqual({ reason: "khôi phục sau sự cố dữ liệu" });
     expect(call?.headers["Idempotency-Key"]).toBeTruthy();
     expect(call?.headers["X-Admin-Token"]).toBeUndefined();
-    expect(call?.credentials).toBe("same-origin");
+    expect(call?.credentials).toBe("include");
 
     expect(await screen.findByText(/Đã rollback về R-2026-08-01/)).toBeInTheDocument();
   });

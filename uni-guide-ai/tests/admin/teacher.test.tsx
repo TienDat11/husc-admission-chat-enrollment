@@ -43,6 +43,12 @@ const EDITOR: AdminIdentity = {
   actions: ["records.read", "records.create", "records.edit", "records.submit"],
 };
 
+const VIEWER: AdminIdentity = {
+  actor_id: "cb.xem",
+  role: "viewer",
+  actions: ["records.read"],
+};
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -181,28 +187,31 @@ describe("Gate wiring — every teacher screen sits behind the credential gate",
 });
 
 describe("Tổng quan", () => {
-  it("shows the empty state when there is nothing to do", async () => {
-    renderScreen("/quan-ly", REVIEWER, <Overview />, defaultHandler);
-    expect(await screen.findByText(/Không có việc cần làm/)).toBeInTheDocument();
-  });
-
-  it("shows the three work cards when there is pending work", async () => {
-    const withWork = (url: string) => {
-      if (url.includes("/admin/records") && url.includes("status=review"))
+  const overviewHandler =
+    (counts: Record<string, number>) =>
+    (url: string): Response => {
+      if (url.includes("/admin/overview"))
         return json({
-          records: [{ record_id: "R1", status: "review" }],
-          total: 1,
-        });
-      if (url.includes("/admin/releases"))
-        return json({
-          ...emptyRelease,
-          active: { created_at: "2026-10-06T09:12:00Z", release_id: "R-1" },
+          review_count: 0,
+          unanswered_open_count: 0,
+          unanswered_overdue_count: 0,
+          open_blocker_count: 0,
+          active_release_id: null,
+          ...counts,
         });
       return defaultHandler(url);
     };
-    renderScreen("/quan-ly", REVIEWER, <Overview />, withWork);
-    expect(await screen.findByText("Việc cần làm hôm nay")).toBeInTheDocument();
-    expect(screen.getByText("Duyệt ngay")).toBeInTheDocument();
+
+  it("shows the counts from GET /admin/overview", async () => {
+    renderScreen("/quan-ly", REVIEWER, <Overview />, overviewHandler({ review_count: 3, unanswered_open_count: 2, open_blocker_count: 1 }));
+    expect(await screen.findByText("Chờ duyệt")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("Mâu thuẫn chưa phân xử")).toBeInTheDocument();
+  });
+
+  it("marks overdue unanswered questions with text, not colour alone", async () => {
+    renderScreen("/quan-ly", REVIEWER, <Overview />, overviewHandler({ unanswered_open_count: 2, unanswered_overdue_count: 2 }));
+    expect(await screen.findByText("Quá hạn: 2")).toBeInTheDocument();
   });
 
   it("shows the error state on network failure", async () => {
@@ -213,17 +222,17 @@ describe("Tổng quan", () => {
   });
 });
 
-describe("Thêm thông tin (4-step flow)", () => {
-  it("renders step 1 with the drop zone and metadata selects", async () => {
-    renderScreen("/quan-ly/them", EDITOR, <AddInfo />, defaultHandler);
-    expect(await screen.findByText(/Kéo tệp vào đây/)).toBeInTheDocument();
-    expect(screen.getByText("Năm tuyển sinh")).toBeInTheDocument();
+describe("Thêm thông tin (tải tài liệu)", () => {
+  it("viewer: shows the read-only note and no file input", async () => {
+    renderScreen("/quan-ly/them", VIEWER, <AddInfo />, defaultHandler);
+    expect(await screen.findByText(/Bạn chỉ có quyền xem/)).toBeInTheDocument();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
   });
 
-  it("the Kiểm tra button is enabled once a filename is present", async () => {
+  it("editor: shows the file input and a disabled Tải lên until a file is chosen", async () => {
     renderScreen("/quan-ly/them", EDITOR, <AddInfo />, defaultHandler);
-    const nextButton = await screen.findByText(/Tiếp tục/);
-    expect(nextButton).toBeEnabled();
+    expect(await screen.findByLabelText(/Chọn tệp PDF/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tải lên" })).toBeDisabled();
   });
 });
 

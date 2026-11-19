@@ -48,7 +48,7 @@
           "job_retry",
           "job_cancel",
           "account_locked"
-        ],
+         ],
         "title": "AuditAction",
         "type": "string"
       },
@@ -2166,6 +2166,47 @@
         "title": "MetaResponse",
         "type": "object"
       },
+      "OverviewResponse": {
+        "description": "Counts behind the sidebar badges and the Frame 5 cards.",
+        "properties": {
+          "active_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Release Id"
+          },
+          "open_blocker_count": {
+            "title": "Open Blocker Count",
+            "type": "integer"
+          },
+          "review_count": {
+            "title": "Review Count",
+            "type": "integer"
+          },
+          "unanswered_open_count": {
+            "title": "Unanswered Open Count",
+            "type": "integer"
+          },
+          "unanswered_overdue_count": {
+            "title": "Unanswered Overdue Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "review_count",
+          "open_blocker_count",
+          "unanswered_open_count",
+          "unanswered_overdue_count",
+          "active_release_id"
+        ],
+        "title": "OverviewResponse",
+        "type": "object"
+      },
       "PreviewRequest": {
         "properties": {
           "query": {
@@ -3629,6 +3670,10 @@
             "title": "Kind",
             "type": "string"
           },
+          "parse_job_id": {
+            "title": "Parse Job Id",
+            "type": "string"
+          },
           "report": {
             "$ref": "#/components/schemas/UploadParseReport"
           },
@@ -3649,6 +3694,7 @@
           "sha256",
           "kind",
           "report",
+          "parse_job_id",
           "draft_record_id"
         ],
         "title": "UploadReport",
@@ -5063,6 +5109,57 @@
         ]
       }
     },
+    "/admin/overview": {
+      "get": {
+        "description": "The overview counts. Absent wiring is a 503, never a zeroed dashboard.",
+        "operationId": "get_overview_admin_overview_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Overview",
+        "tags": [
+          "admin",
+          "admin-overview"
+        ]
+      }
+    },
     "/admin/records": {
       "get": {
         "description": "Every stored record's latest version, filtered by ngành / năm / trạng thái.\n\nFilters combine with AND; an absent filter matches everything. Newest\nadmission year first, then ``record_id`` — a total order, so the same store\nlists in the same order on every call.",
@@ -6452,7 +6549,7 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {

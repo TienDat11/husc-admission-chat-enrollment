@@ -212,6 +212,11 @@ const FIXTURE = (urlPath) => {
         ],
       },
     };
+  if (urlPath.startsWith("/admin/overview"))
+    return {
+      status: 200,
+      body: { review_count: 2, unanswered_open_count: 3, unanswered_overdue_count: 1, open_blocker_count: 0, active_release_id: "R-1" },
+    };
   if (urlPath.startsWith("/v2/query"))
     return {
       status: 200,
@@ -235,8 +240,8 @@ const browser = await puppeteer.default.launch({
 // records CRUD (list, create, edit, review+preview), the release
 // screen and the three ComingSoon placeholders.
 const ROUTES = [
-  { path: "/quan-ly", wait: "Việc cần làm hôm nay", seed: true },
-  { path: "/quan-ly/them", wait: "Thêm tài liệu" },
+  { path: "/quan-ly", wait: "Tổng quan", seed: true },
+  { path: "/quan-ly/them", wait: "Thêm thông tin" },
   { path: "/quan-ly/them/qa", wait: "Gõ hỏi–đáp trực tiếp" },
   { path: "/quan-ly/cho-duyet", wait: "Chờ duyệt" },
   { path: "/quan-ly/kho", wait: "Kho thông tin" },

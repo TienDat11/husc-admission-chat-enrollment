@@ -508,7 +508,7 @@ describe("Source document citations — ticket T05 (preview provenance)", () => 
     expect(contentCall).toBeDefined();
     expect(contentCall?.url).toContain("document_id=de-an-tuyen-sinh-2026");
     expect(contentCall?.headers).not.toHaveProperty("X-Admin-Token");
-    expect(contentCall?.credentials).toBe("same-origin");
+    expect(contentCall?.credentials).toBe("include");
     expect(contentCall?.method).toBe("GET");
   });
 

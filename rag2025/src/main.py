@@ -530,7 +530,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "x-admin-token", "Idempotency-Key", "X-Student-Session", "X-Request-ID"],
-    expose_headers=["X-Request-ID"],
+    expose_headers=["X-Request-ID", "Retry-After"],
 )
 
 # Mount the /api/meta router (admission-year banner + data-freshness for the FE

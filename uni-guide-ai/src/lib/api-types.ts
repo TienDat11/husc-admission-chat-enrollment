@@ -365,6 +365,26 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/admin/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview
+         * @description The overview counts. Absent wiring is a 503, never a zeroed dashboard.
+         */
+        get: operations["get_overview_admin_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/records": {
         parameters: {
             query?: never;
@@ -2405,6 +2425,22 @@ export type components = {
             /** Total Notifications */
             total_notifications: number | null;
         };
+        /**
+         * OverviewResponse
+         * @description Counts behind the sidebar badges and the Frame 5 cards.
+         */
+        OverviewResponse: {
+            /** Active Release Id */
+            active_release_id: string | null;
+            /** Open Blocker Count */
+            open_blocker_count: number;
+            /** Review Count */
+            review_count: number;
+            /** Unanswered Open Count */
+            unanswered_open_count: number;
+            /** Unanswered Overdue Count */
+            unanswered_overdue_count: number;
+        };
         /** PreviewRequest */
         PreviewRequest: {
             /** Query */
@@ -3078,6 +3114,8 @@ export type components = {
             draft_record_ids?: string[];
             /** Kind */
             kind: string;
+            /** Parse Job Id */
+            parse_job_id: string;
             report: components["schemas"]["UploadParseReport"];
             /** Sha256 */
             sha256: string;
@@ -3805,6 +3843,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkerStatus"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_overview_admin_overview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4568,7 +4637,7 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
