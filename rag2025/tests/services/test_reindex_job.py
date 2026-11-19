@@ -512,9 +512,11 @@ def test_a_record_that_is_no_longer_published_leaves_the_corpus(
     ).run()
 
     assert result.plan.mode is ReindexMode.INCREMENTAL
-    assert {c["metadata"]["record_id"] for c in _chunks(corpus_dir)} == {RECORD_B}
+    live = {c["metadata"]["record_id"] for c in _chunks(corpus_dir) if not c.get("is_tombstone")}
+    assert live == {RECORD_B}
     assert result.removed_chunk_ids
-    assert _lines_for_records(corpus_dir, {RECORD_A}) == []
+    orphan = [c for c in _chunks(corpus_dir) if c["metadata"]["record_id"] == RECORD_A]
+    assert orphan and all(c.get("is_tombstone") for c in orphan)
 
 # ── graph edges ────────────────────────────────────────────────────────────
 

@@ -561,8 +561,9 @@ class ReindexJob:
         old_chunks, old_vectors, old_edge_lines = _read_serving_corpus(self._corpus_dir)
         old_vectors_by_id = {v["chunk_id"]: v for v in old_vectors}
 
-        kept_ids = {c["id"] for c in chunks}
-        built.removed = sorted(set(old_vectors_by_id) - kept_ids)
+        # "Removed" = chunks that left the served set; tombstones have left it.
+        live_ids = {c["id"] for c in chunks if not c.get("is_tombstone")}
+        built.removed = sorted(set(old_vectors_by_id) - live_ids)
 
         vectors, embedded, reused, changed = self._vectors_for(
             chunks, old_chunks, old_vectors_by_id
