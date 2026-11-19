@@ -132,6 +132,8 @@ function RecordsSurface() {
   );
 }
 
-const RecordsGate = () => <RecordsSurface />;
+function RecordsGate() {
+  return <RecordsSurface />;
+}
 
 export default RecordsGate;

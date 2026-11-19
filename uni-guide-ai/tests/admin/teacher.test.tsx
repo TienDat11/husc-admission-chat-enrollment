@@ -11,7 +11,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import RecordsGate from "@/pages/admin/RecordsGate";
+import RecordsGate from "@/components/admin/RecordsGate";
 import Overview from "@/pages/teacher/Overview";
 import AddInfo from "@/pages/teacher/AddInfo";
 import QAForm from "@/pages/teacher/QAForm";
@@ -920,7 +920,7 @@ describe("Lịch sử & khôi phục", () => {
           ...emptyRelease,
           previous: { release_id: "R-0", created_at: "2026-08-01" },
         });
-      if (url.includes("/admin/rollback")) return json({ ok: true });
+      if (url.includes("/admin/releases/previous/rollback")) return json({ ok: true });
       return defaultHandler(url);
     };
     renderScreen("/quan-ly/lich-su", REVIEWER, <History />, withRelease);

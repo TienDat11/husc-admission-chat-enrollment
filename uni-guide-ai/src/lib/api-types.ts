@@ -598,11 +598,34 @@ export type paths = {
          * @description Which release is active, and which one is behind it.
          *
          *     Read-only: the pointer and the manifests, straight off disk. The previous
-         *     release is the one a targetless ``POST /admin/rollback`` would move to.
+         *     release is the one a targetless rollback would move to.
          */
         get: operations["get_release_status_admin_releases_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/releases/{release_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate Release
+         * @description Promote a ``gating`` release to ``active``.
+         *
+         *     A ``gate_failed`` release can never become ``active``: it is refused with
+         *     HTTP 409 ``RELEASE_GATE_FAILED`` (spec §PL-5).
+         */
+        post: operations["activate_release_admin_releases__release_id__activate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -636,55 +659,6 @@ export type paths = {
          *     explicit ``force_while_in_flight`` swaps past a timeout.
          */
         post: operations["reload_table_admin_reload_table_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/rollback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Rollback Release
-         * @description Roll canonical + retrieval back to the last good release, together.
-         *
-         *     Both levels move as one unit: the canonical pointer (step C), then the
-         *     LanceDB tag and the running runtime (step D). If step D fails, the pre-call
-         *     state is restored (step E) and the 5xx names both failures. The ROLLBACK
-         *     audit event is emitted only after both levels have moved, so the ledger
-         *     never records a rollback that did not happen.
-         *
-         *     The same ``_reload_lock`` a blue-green reload holds is taken here: a reload
-         *     and a rollback both change what every query reads, so they must not overlap.
-         *
-         *     The same ``request_tracker.gate`` a blue-green reload holds is taken here
-         *     too, for the same reason: step D rebinds the runtime every query path reads,
-         *     so an in-flight query still holding the old retriever would be answered from
-         *     a release the ledger just recorded as rolled back. Admission reopens once
-         *     step D has completed.
-         *
-         *     A drain that times out is refused with 409 (FIX-01), exactly as the reload
-         *     route refuses one: the old "log and proceed" policy answered a request from
-         *     the release being rolled away from, and closed the table under it. The
-         *     rollback that must happen anyway is ``force_while_in_flight=true`` — an
-         *     explicit emergency decision by the caller, recorded in the response.
-         *
-         *     Idempotency (ticket 27): ``target_release_id`` is optional, and without it
-         *     the target is resolved from the *current* pointer. A replayed implicit
-         *     rollback therefore resolves a *different* target — R3→R2, then R2→R1 — and
-         *     walks back two releases for what the caller believed was one action. No
-         *     state comparison catches that (the two calls legitimately differ), so an
-         *     ``Idempotency-Key`` is the only thing that can. With one, a replay returns
-         *     the first call's stored response and does not run again.
-         */
-        post: operations["rollback_release_admin_rollback_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2762,7 +2736,7 @@ export type components = {
         Role: "viewer" | "editor" | "reviewer" | "publisher" | "reviewer_publisher" | "admin" | "ops";
         /**
          * RollbackRequest
-         * @description Body for POST /admin/rollback.
+         * @description Body for rollback release.
          *
          *     ``reason`` is mandatory and non-blank. The event the rollback emits refuses
          *     to exist without one (``AuditAction.ROLLBACK`` is in ``REASON_REQUIRED``),
@@ -4208,6 +4182,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReleaseStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_release_admin_releases__release_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

@@ -9,14 +9,7 @@ import { AdminSessionProvider } from "@/hooks/useAdminSession";
 
 const Index = lazy(() => import("./pages/Index"));
 const NotFound = lazy(() => import("./pages/NotFound"));
-const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
-const ConfigEditor = lazy(() => import("./pages/admin/ConfigEditor"));
-const ComingSoon = lazy(() => import("./pages/admin/ComingSoon"));
-const RecordsGate = lazy(() => import("./pages/admin/RecordsGate"));
-const RecordList = lazy(() => import("./pages/admin/RecordList"));
-const RecordForm = lazy(() => import("./pages/admin/RecordForm"));
-const ReleaseStatus = lazy(() => import("./pages/admin/ReleaseStatus"));
-const ReviewPreview = lazy(() => import("./pages/admin/ReviewPreview"));
+const RecordsGate = lazy(() => import("./components/admin/RecordsGate"));
 const TeacherLayout = lazy(() => import("./pages/teacher/TeacherLayout"));
 const Overview = lazy(() => import("./pages/teacher/Overview"));
 const AddInfo = lazy(() => import("./pages/teacher/AddInfo"));
@@ -57,35 +50,6 @@ const App = () => (
                 </AdminSessionProvider>
               }
             >
-            <Route path="/admin" element={<AdminLayout />}>
-              <Route index element={<Navigate to="config" replace />} />
-              <Route path="config" element={<RecordsGate />}>
-                <Route index element={<ConfigEditor />} />
-              </Route>
-              {/* Admissions CRUD (ticket 19). The gate asks for an admin
-                  credential before any record is read or written. */}
-              <Route path="records" element={<RecordsGate />}>
-                <Route index element={<RecordList />} />
-                <Route path="new" element={<RecordForm mode="create" />} />
-                <Route path=":recordId/edit" element={<RecordForm mode="edit" />} />
-                {/* Review diff + preview (ticket 25): the officer sees the
-                    change against the published version and the real answer
-                    before submitting, and submits from that screen. */}
-                <Route
-                  path=":recordId/review"
-                  element={<ReviewPreview />}
-                />
-              </Route>
-              <Route path="ingest" element={<ComingSoon title="Ingest" />} />
-              <Route path="retrieval" element={<ComingSoon title="Retrieval" />} />
-              <Route path="debt" element={<ComingSoon title="Debt" />} />
-              {/* Release + index-job screen (ticket 26). Inside the gate for the
-                  same reason the records screens are: it reads release state
-                  and can roll one back, both of which need a credential. */}
-              <Route path="releases" element={<RecordsGate />}>
-                <Route index element={<ReleaseStatus />} />
-              </Route>
-            </Route>
             {/* Ticket T09: 7 teacher-facing screens (05-ux-spec), all behind
                 the same credential gate as the records screens. */}
             <Route path="/quan-ly/dang-nhap" element={<LoginGate />} />
