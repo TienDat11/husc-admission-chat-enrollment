@@ -339,3 +339,37 @@ def test_pdf_empty_page_span_has_empty_text(tmp_path: Path) -> None:
     assert all(p["text"] == "" for p in pages)
     # joined text is empty (no non-empty spans)
     assert result["text"] == ""
+
+
+
+def test_pdf_text_is_returned_nfc_normalized(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """U1 / plan §PL-6.4: worker output is NFC even when extraction yields NFD."""
+    import unicodedata
+
+    import pypdf
+
+    import src.services.document_parser_worker as worker
+
+    nfd_text = unicodedata.normalize("NFD", "Điều kiện tuyển sinh")
+    assert unicodedata.is_normalized("NFC", nfd_text) is False
+
+    class _Page:
+        def extract_text(self) -> str:
+            return nfd_text
+
+    class _Reader:
+        def __init__(self, _path: str) -> None:
+            self.pages = [_Page()]
+
+    monkeypatch.setattr(pypdf, "PdfReader", _Reader)
+    monkeypatch.setattr(worker, "_page_decompressed_bytes", lambda _page: 0)
+    monkeypatch.setattr(worker, "_pdf_table_count", lambda _reader: 0)
+    path = tmp_path / "nfd.pdf"
+    path.write_bytes(b"%PDF-1.4\n")
+
+    result = _parse_pdf(path, cap_mb=512)
+
+    assert unicodedata.is_normalized("NFC", result["text"])
+    assert unicodedata.is_normalized("NFC", result["pages"][0]["text"])

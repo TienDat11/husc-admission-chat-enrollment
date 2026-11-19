@@ -1,0 +1,412 @@
+{
+  "defaults": [
+    "admission_round_none",
+    "expected_pages_null",
+    "methods_hash_all",
+    "subject_suffix_kept"
+  ],
+  "in_scope_count": 48,
+  "mapping": {
+    "CHI_TIEU:nganh:7229010:2026:canon-lietke29": {
+      "coordinate_key": "CHI_TIEU:nganh:7229010:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "CHI_TIEU:nganh:7229010:2026:canon-nganh": {
+      "coordinate_key": "CHI_TIEU:nganh:7229010:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "CHI_TIEU:nganh:7229010:2026:ttts-p24": {
+      "coordinate_key": "CHI_TIEU:nganh:7229010:2026:none:all",
+      "legacy_source_tag": "ttts-p24"
+    },
+    "CHI_TIEU:nganh:7229030:2026:canon-lietke29": {
+      "coordinate_key": "CHI_TIEU:nganh:7229030:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "CHI_TIEU:nganh:7229030:2026:canon-nganh": {
+      "coordinate_key": "CHI_TIEU:nganh:7229030:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "CHI_TIEU:nganh:7229030:2026:ttts-p25": {
+      "coordinate_key": "CHI_TIEU:nganh:7229030:2026:none:all",
+      "legacy_source_tag": "ttts-p25"
+    },
+    "CHI_TIEU:nganh:7320101:2026:canon-lietke29": {
+      "coordinate_key": "CHI_TIEU:nganh:7320101:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "CHI_TIEU:nganh:7320101:2026:canon-nganh": {
+      "coordinate_key": "CHI_TIEU:nganh:7320101:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "CHI_TIEU:nganh:7320101:2026:ttts-p26": {
+      "coordinate_key": "CHI_TIEU:nganh:7320101:2026:none:all",
+      "legacy_source_tag": "ttts-p26"
+    },
+    "CHI_TIEU:nganh:7420101:2026:canon-lietke29": {
+      "coordinate_key": "CHI_TIEU:nganh:7420101:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "CHI_TIEU:nganh:7440102:2026:canon-lietke29": {
+      "coordinate_key": "CHI_TIEU:nganh:7440102:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "CHI_TIEU:nganh:7440102:2026:canon-nganh": {
+      "coordinate_key": "CHI_TIEU:nganh:7440102:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "CHI_TIEU:nganh:7440102:2026:ttts-p26": {
+      "coordinate_key": "CHI_TIEU:nganh:7440102:2026:none:all",
+      "legacy_source_tag": "ttts-p26"
+    },
+    "CHI_TIEU:nganh:7440112:2026:canon-lietke29": {
+      "coordinate_key": "CHI_TIEU:nganh:7440112:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "CHI_TIEU:nganh:7440112:2026:canon-nganh": {
+      "coordinate_key": "CHI_TIEU:nganh:7440112:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "CHI_TIEU:nganh:7440112:2026:ttts-p26": {
+      "coordinate_key": "CHI_TIEU:nganh:7440112:2026:none:all",
+      "legacy_source_tag": "ttts-p26"
+    },
+    "CHI_TIEU:nganh:7480201:2026:canon-lietke29": {
+      "coordinate_key": "CHI_TIEU:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "CHI_TIEU:nganh:7480201:2026:canon-nganh": {
+      "coordinate_key": "CHI_TIEU:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "CHI_TIEU:nganh:7480201:2026:ttts-p27": {
+      "coordinate_key": "CHI_TIEU:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "ttts-p27"
+    },
+    "CHI_TIEU:nganh:7580101:2026:canon-lietke29": {
+      "coordinate_key": "CHI_TIEU:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "CHI_TIEU:nganh:7580101:2026:canon-nganh": {
+      "coordinate_key": "CHI_TIEU:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "CHI_TIEU:nganh:7580101:2026:ttts-p28": {
+      "coordinate_key": "CHI_TIEU:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "ttts-p28"
+    },
+    "DIEM_CHUAN:nganh:7440102:2025:canon-diem-hoc_ba": {
+      "coordinate_key": "DIEM_CHUAN:nganh:7440102:2025:none:all",
+      "legacy_source_tag": "canon-diem-hoc_ba"
+    },
+    "DIEM_CHUAN:nganh:7440102:2025:canon-diem-thi_thpt": {
+      "coordinate_key": "DIEM_CHUAN:nganh:7440102:2025:none:all",
+      "legacy_source_tag": "canon-diem-thi_thpt"
+    },
+    "DIEM_CHUAN:nganh:7440102:2025:khong-xac-dinh:ttts-p62": {
+      "coordinate_key": "DIEM_CHUAN:nganh:7440102:2025:none:all",
+      "legacy_source_tag": "khong-xac-dinh:ttts-p62"
+    },
+    "DIEM_CHUAN:nganh:7480201-ky-su-viet-nhat:2025:khong-xac-dinh:ttts-p62": {
+      "coordinate_key": "DIEM_CHUAN:nganh:7480201-ky-su-viet-nhat:2025:none:all",
+      "legacy_source_tag": "khong-xac-dinh:ttts-p62"
+    },
+    "DIEM_CHUAN:nganh:7480201:2025:canon-diem-hoc_ba": {
+      "coordinate_key": "DIEM_CHUAN:nganh:7480201:2025:none:all",
+      "legacy_source_tag": "canon-diem-hoc_ba"
+    },
+    "DIEM_CHUAN:nganh:7480201:2025:canon-diem-thi_thpt": {
+      "coordinate_key": "DIEM_CHUAN:nganh:7480201:2025:none:all",
+      "legacy_source_tag": "canon-diem-thi_thpt"
+    },
+    "DIEM_CHUAN:nganh:7480201:2025:khong-xac-dinh:ttts-p62": {
+      "coordinate_key": "DIEM_CHUAN:nganh:7480201:2025:none:all",
+      "legacy_source_tag": "khong-xac-dinh:ttts-p62"
+    },
+    "HOC_PHI:nganh:7229001:2026:canon-nganh": {
+      "coordinate_key": "HOC_PHI:nganh:7229001:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "HOC_PHI:nganh:7229001:2026:ttts-p54": {
+      "coordinate_key": "HOC_PHI:nganh:7229001:2026:none:all",
+      "legacy_source_tag": "ttts-p54"
+    },
+    "HOC_PHI:nganh:7229010:2026:canon-nganh": {
+      "coordinate_key": "HOC_PHI:nganh:7229010:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "HOC_PHI:nganh:7229010:2026:ttts-p54": {
+      "coordinate_key": "HOC_PHI:nganh:7229010:2026:none:all",
+      "legacy_source_tag": "ttts-p54"
+    },
+    "HOC_PHI:nganh:7229030:2026:canon-nganh": {
+      "coordinate_key": "HOC_PHI:nganh:7229030:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "HOC_PHI:nganh:7229030:2026:ttts-p55": {
+      "coordinate_key": "HOC_PHI:nganh:7229030:2026:none:all",
+      "legacy_source_tag": "ttts-p55"
+    },
+    "HOC_PHI:nganh:7320111:2026:canon-nganh": {
+      "coordinate_key": "HOC_PHI:nganh:7320111:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "HOC_PHI:nganh:7320111:2026:ttts-p55": {
+      "coordinate_key": "HOC_PHI:nganh:7320111:2026:none:all",
+      "legacy_source_tag": "ttts-p55"
+    },
+    "HOC_PHI:nganh:7440112:2026:canon-nganh": {
+      "coordinate_key": "HOC_PHI:nganh:7440112:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "HOC_PHI:nganh:7440112:2026:ttts-p54": {
+      "coordinate_key": "HOC_PHI:nganh:7440112:2026:none:all",
+      "legacy_source_tag": "ttts-p54"
+    },
+    "HOC_PHI:nganh:7480103:2026:canon-nganh": {
+      "coordinate_key": "HOC_PHI:nganh:7480103:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "HOC_PHI:nganh:7480103:2026:ttts-p54": {
+      "coordinate_key": "HOC_PHI:nganh:7480103:2026:none:all",
+      "legacy_source_tag": "ttts-p54"
+    },
+    "HOC_PHI:nganh:7480201:2026:canon-nganh": {
+      "coordinate_key": "HOC_PHI:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "HOC_PHI:nganh:7480201:2026:ttts-p54": {
+      "coordinate_key": "HOC_PHI:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "ttts-p54"
+    },
+    "HOC_PHI:nganh:7580101:2026:canon-nganh": {
+      "coordinate_key": "HOC_PHI:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "HOC_PHI:nganh:7580101:2026:ttts-p54": {
+      "coordinate_key": "HOC_PHI:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "ttts-p54"
+    },
+    "NGANH:nganh:7229001:2026:canon-lietke29": {
+      "coordinate_key": "NGANH:nganh:7229001:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "NGANH:nganh:7229001:2026:canon-nganh": {
+      "coordinate_key": "NGANH:nganh:7229001:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "NGANH:nganh:7229001:2026:ttts-p24": {
+      "coordinate_key": "NGANH:nganh:7229001:2026:none:all",
+      "legacy_source_tag": "ttts-p24"
+    },
+    "NGANH:nganh:7310205:2026:canon-lietke29": {
+      "coordinate_key": "NGANH:nganh:7310205:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "NGANH:nganh:7310205:2026:canon-nganh": {
+      "coordinate_key": "NGANH:nganh:7310205:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "NGANH:nganh:7310205:2026:ttts-p25": {
+      "coordinate_key": "NGANH:nganh:7310205:2026:none:all",
+      "legacy_source_tag": "ttts-p25"
+    },
+    "NGANH:nganh:7310301:2026:canon-lietke29": {
+      "coordinate_key": "NGANH:nganh:7310301:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "NGANH:nganh:7310301:2026:canon-nganh": {
+      "coordinate_key": "NGANH:nganh:7310301:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "NGANH:nganh:7310301:2026:ttts-p25": {
+      "coordinate_key": "NGANH:nganh:7310301:2026:none:all",
+      "legacy_source_tag": "ttts-p25"
+    },
+    "NGANH:nganh:7310608:2026:canon-lietke29": {
+      "coordinate_key": "NGANH:nganh:7310608:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "NGANH:nganh:7310608:2026:canon-nganh": {
+      "coordinate_key": "NGANH:nganh:7310608:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "NGANH:nganh:7310608:2026:ttts-p25": {
+      "coordinate_key": "NGANH:nganh:7310608:2026:none:all",
+      "legacy_source_tag": "ttts-p25"
+    },
+    "NGANH:nganh:7320101:2026:canon-lietke29": {
+      "coordinate_key": "NGANH:nganh:7320101:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "NGANH:nganh:7320101:2026:canon-nganh": {
+      "coordinate_key": "NGANH:nganh:7320101:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "NGANH:nganh:7320101:2026:ttts-p26": {
+      "coordinate_key": "NGANH:nganh:7320101:2026:none:all",
+      "legacy_source_tag": "ttts-p26"
+    },
+    "NGANH:nganh:7420101:2026:canon-lietke29": {
+      "coordinate_key": "NGANH:nganh:7420101:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "NGANH:nganh:7440102:2026:canon-lietke29": {
+      "coordinate_key": "NGANH:nganh:7440102:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "NGANH:nganh:7440102:2026:canon-nganh": {
+      "coordinate_key": "NGANH:nganh:7440102:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "NGANH:nganh:7440102:2026:ttts-p26": {
+      "coordinate_key": "NGANH:nganh:7440102:2026:none:all",
+      "legacy_source_tag": "ttts-p26"
+    },
+    "NGANH:nganh:7440112:2026:canon-lietke29": {
+      "coordinate_key": "NGANH:nganh:7440112:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "NGANH:nganh:7440112:2026:canon-nganh": {
+      "coordinate_key": "NGANH:nganh:7440112:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "NGANH:nganh:7440112:2026:ttts-p26": {
+      "coordinate_key": "NGANH:nganh:7440112:2026:none:all",
+      "legacy_source_tag": "ttts-p26"
+    },
+    "NGANH:nganh:7480103:2026:canon-lietke29": {
+      "coordinate_key": "NGANH:nganh:7480103:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "NGANH:nganh:7480103:2026:canon-nganh": {
+      "coordinate_key": "NGANH:nganh:7480103:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "NGANH:nganh:7480103:2026:ttts-p27": {
+      "coordinate_key": "NGANH:nganh:7480103:2026:none:all",
+      "legacy_source_tag": "ttts-p27"
+    },
+    "NGANH:nganh:7480201:2026:canon-lietke29": {
+      "coordinate_key": "NGANH:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "NGANH:nganh:7480201:2026:canon-nganh": {
+      "coordinate_key": "NGANH:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "NGANH:nganh:7480201:2026:ttts-p27": {
+      "coordinate_key": "NGANH:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "ttts-p27"
+    },
+    "NGANH:nganh:7580101:2026:canon-lietke29": {
+      "coordinate_key": "NGANH:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "NGANH:nganh:7580101:2026:canon-nganh": {
+      "coordinate_key": "NGANH:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "NGANH:nganh:7580101:2026:ttts-p28": {
+      "coordinate_key": "NGANH:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "ttts-p28"
+    },
+    "THOI_GIAN:nganh:7480201:2026:canon-nganh": {
+      "coordinate_key": "THOI_GIAN:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "THOI_GIAN:nganh:7580101:2026:canon-nganh": {
+      "coordinate_key": "THOI_GIAN:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "TO_HOP:nganh:7229001:2026:canon-lietke29": {
+      "coordinate_key": "TO_HOP:nganh:7229001:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "TO_HOP:nganh:7229001:2026:canon-nganh": {
+      "coordinate_key": "TO_HOP:nganh:7229001:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "TO_HOP:nganh:7229001:2026:ttts-p24": {
+      "coordinate_key": "TO_HOP:nganh:7229001:2026:none:all",
+      "legacy_source_tag": "ttts-p24"
+    },
+    "TO_HOP:nganh:7229030:2026:canon-lietke29": {
+      "coordinate_key": "TO_HOP:nganh:7229030:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "TO_HOP:nganh:7229030:2026:canon-nganh": {
+      "coordinate_key": "TO_HOP:nganh:7229030:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "TO_HOP:nganh:7229030:2026:ttts-p25": {
+      "coordinate_key": "TO_HOP:nganh:7229030:2026:none:all",
+      "legacy_source_tag": "ttts-p25"
+    },
+    "TO_HOP:nganh:7320101:2026:canon-lietke29": {
+      "coordinate_key": "TO_HOP:nganh:7320101:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "TO_HOP:nganh:7320101:2026:canon-nganh": {
+      "coordinate_key": "TO_HOP:nganh:7320101:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "TO_HOP:nganh:7320101:2026:ttts-p26": {
+      "coordinate_key": "TO_HOP:nganh:7320101:2026:none:all",
+      "legacy_source_tag": "ttts-p26"
+    },
+    "TO_HOP:nganh:7480103:2026:canon-lietke29": {
+      "coordinate_key": "TO_HOP:nganh:7480103:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "TO_HOP:nganh:7480103:2026:canon-nganh": {
+      "coordinate_key": "TO_HOP:nganh:7480103:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "TO_HOP:nganh:7480103:2026:ttts-p27": {
+      "coordinate_key": "TO_HOP:nganh:7480103:2026:none:all",
+      "legacy_source_tag": "ttts-p27"
+    },
+    "TO_HOP:nganh:7480201:2026:canon-lietke29": {
+      "coordinate_key": "TO_HOP:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "TO_HOP:nganh:7480201:2026:canon-nganh": {
+      "coordinate_key": "TO_HOP:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "TO_HOP:nganh:7480201:2026:ttts-p27": {
+      "coordinate_key": "TO_HOP:nganh:7480201:2026:none:all",
+      "legacy_source_tag": "ttts-p27"
+    },
+    "TO_HOP:nganh:7580101:2026:canon-lietke29": {
+      "coordinate_key": "TO_HOP:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "canon-lietke29"
+    },
+    "TO_HOP:nganh:7580101:2026:canon-nganh": {
+      "coordinate_key": "TO_HOP:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "canon-nganh"
+    },
+    "TO_HOP:nganh:7580101:2026:ttts-p28": {
+      "coordinate_key": "TO_HOP:nganh:7580101:2026:none:all",
+      "legacy_source_tag": "ttts-p28"
+    }
+  },
+  "mapping_rule": "RECORD_TYPE:scope:subject:year:none:methods_hash (plan §PL-6.6; admission_round null)",
+  "out_of_scope_count": 10,
+  "source_artifact_version": 1,
+  "supersession_count": 26,
+  "supersession_matrix": {
+    "1to1_diff_id": 3,
+    "1to1_same_id": 3,
+    "amends_dieu": 5,
+    "chain_a_b_c": 2,
+    "coexist_revoke": 2,
+    "corrects": 2,
+    "merge_n_to_1": 3,
+    "repeals_expires": 3,
+    "split_1_to_n": 2,
+    "temporal_handoff": 1
+  },
+  "supersession_source": "tests/fixtures/legal_vn/golden_40.jsonl"
+}

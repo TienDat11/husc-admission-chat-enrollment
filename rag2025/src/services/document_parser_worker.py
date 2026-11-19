@@ -17,6 +17,7 @@ import zlib
 import io
 import json
 import sys
+import unicodedata
 import zipfile
 from pathlib import Path
 
@@ -82,7 +83,7 @@ def _parse_pdf(document: Path, cap_mb: int) -> dict:
                 f"decompressed content exceeds {cap_mb} MB cap at page "
                 f"{index + 1} (decompression bomb refused)"
             )
-        text = (page.extract_text() or "").strip()
+        text = unicodedata.normalize("NFC", (page.extract_text() or "").strip())
         pages_text.append(text)
         if len(text) < SCAN_PAGE_CHAR_THRESHOLD:
             scan_pages.append(index + 1)
@@ -97,7 +98,7 @@ def _parse_pdf(document: Path, cap_mb: int) -> dict:
             f"chỉ có ảnh, không đọc được văn bản "
             f"(trang {', '.join(str(p) for p in scan_pages)})"
         )
-    return {
+    return _nfc_deep({
         "text": text,
         "page_count": page_count,
         "chars_per_page": (len(text) / page_count) if page_count else 0.0,
@@ -111,7 +112,7 @@ def _parse_pdf(document: Path, cap_mb: int) -> dict:
             for index in range(page_count)
         ],
         "error": None,
-    }
+    })
 
 
 def _page_decompressed_bytes(page) -> int:
@@ -415,7 +416,7 @@ def _parse_docx(document: Path, cap_mb: int) -> dict:
     headings: list[dict] = []
     running = 0
     for p in doc.paragraphs:
-        t = p.text.strip()
+        t = unicodedata.normalize("NFC", p.text.strip())
         if not t:
             continue
         if p.style.name.startswith("Heading ") or p.style.name == "Title":
@@ -430,7 +431,7 @@ def _parse_docx(document: Path, cap_mb: int) -> dict:
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
-                cell_text = cell.text.strip()
+                cell_text = unicodedata.normalize("NFC", cell.text.strip())
                 if cell_text:
                     table_texts.append(cell_text)
     if table_texts:
@@ -443,7 +444,7 @@ def _parse_docx(document: Path, cap_mb: int) -> dict:
             "trang ảnh: tài liệu không chứa văn bản đọc được "
             "(có thể toàn bộ là ảnh)"
         )
-    return {
+    return _nfc_deep({
         "text": text,
         "page_count": 1,
         "chars_per_page": float(len(text)),
@@ -454,7 +455,7 @@ def _parse_docx(document: Path, cap_mb: int) -> dict:
         "warnings": warnings,
         "headings": headings,
         "error": None,
-    }
+    })
 
 
 def _parse_xlsx(document: Path, cap_mb: int) -> dict:
@@ -513,7 +514,7 @@ def _parse_xlsx(document: Path, cap_mb: int) -> dict:
     warnings: list[str] = []
     if not rows:
         warnings.append("bảng trống: không có dòng dữ liệu; không tạo nháp")
-    return {
+    return _nfc_deep({
         "text": text,
         "page_count": 1,
         "chars_per_page": float(len(text)),
@@ -525,7 +526,7 @@ def _parse_xlsx(document: Path, cap_mb: int) -> dict:
         "headings": (),
         "excel_rows": rows,
         "error": None,
-    }
+    })
 
 
 def _xlsx_scalar(cell: object) -> object:
@@ -536,16 +537,29 @@ def _xlsx_scalar(cell: object) -> object:
     (the same rule ``semantic_units._render`` applies); a date or any other
     object becomes its ``str`` so the worker's ``json.dumps`` never fails.
     """
-    if cell is None or isinstance(cell, (str, bool, int)):
+    if isinstance(cell, str):
+        return unicodedata.normalize("NFC", cell)
+    if cell is None or isinstance(cell, (bool, int)):
         return cell
     if isinstance(cell, float):
         return int(cell) if cell.is_integer() else cell
     return str(cell)
 
 
+def _nfc_deep(value: object) -> object:
+    """``value`` with every string NFC-normalized, through dicts, lists and tuples."""
+    if isinstance(value, str):
+        return unicodedata.normalize("NFC", value)
+    if isinstance(value, dict):
+        return {_nfc_deep(key): _nfc_deep(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_nfc_deep(item) for item in value)
+    return value
+
+
 def _emit(**result: object) -> None:
     """Print exactly one JSON object — the parent's whole contract."""
-    print(json.dumps(result, ensure_ascii=False), flush=True)
+    print(json.dumps(_nfc_deep(result), ensure_ascii=False), flush=True)
 
 
 if __name__ == "__main__":
