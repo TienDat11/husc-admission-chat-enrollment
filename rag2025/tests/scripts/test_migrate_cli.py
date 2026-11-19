@@ -42,7 +42,7 @@ RAG_ROOT = Path(__file__).resolve().parents[2]
 CLI = RAG_ROOT / "scripts" / "migrate_file_stores.py"
 STORE_ORDER = [
     "records", "retractions", "releases", "outbox", "conflicts", "idempotency",
-    "unanswered", "feedback", "source_documents", "identities", "audit",
+    "unanswered", "feedback", "source_documents", "source_document_blobs", "identities", "audit",
 ]
 _PLAIN_ALICE = "alice-plaintext-credential-XYZ"
 _PLAIN_BOB = "bob-plaintext-credential-QRS"

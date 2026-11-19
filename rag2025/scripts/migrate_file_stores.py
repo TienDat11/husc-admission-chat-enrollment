@@ -36,6 +36,7 @@ from src.infrastructure.canonical_record_store import (
     RECORDS_DIRNAME,
     RETRACTIONS_DIRNAME,
 )
+from src.infrastructure.source_document_registry import SOURCE_DOCUMENTS_DIRNAME, UPLOAD_ID_PREFIX
 from src.infrastructure.sql_audit_ledger import LEGACY_REQUEST_ID
 
 UNANCHORED_PREFIX = "unanchored:"
@@ -733,6 +734,40 @@ def load_source_documents(root: str | Path) -> RowsLoad:
     return RowsLoad(rows=rows, source_rows=len(paths), unfillable=unfill)
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def load_source_document_blobs(root: str | Path) -> RowsLoad:
+    """source_documents/ bytes, each matched to the documents/ entry that registers it.
+
+    A blob is a row only when a documents/ entry registers it as ``uploads/<relpath>`` with
+    the same sha256. Any other blob is an orphan: it counts in source_rows but not in rows,
+    so the store's mismatch is the orphan count until the operator reconciles it.
+    """
+    base = Path(root) / SOURCE_DOCUMENTS_DIRNAME
+    blobs = sorted(p for p in base.rglob("*") if p.is_file()) if base.is_dir() else []
+    docs_dir = Path(root) / "documents"
+    registered: dict[str, object] = {}
+    for path in sorted(docs_dir.glob("doc-*_d.json")) if docs_dir.is_dir() else []:
+        entry = _json_object(path)
+        doc_id = entry.get("document_id")
+        if isinstance(doc_id, str) and doc_id.startswith(UPLOAD_ID_PREFIX):
+            registered[doc_id] = entry.get("sha256")
+    rows: list[dict] = []
+    for blob in blobs:
+        doc_id = UPLOAD_ID_PREFIX + blob.relative_to(base).as_posix()
+        digest = _file_sha256(blob)
+        if registered.get(doc_id) == digest:
+            rows.append({"document_id": doc_id, "sha256": digest})
+    rows.sort(key=lambda r: r["document_id"])
+    return RowsLoad(rows=rows, source_rows=len(blobs))
+
+
 def load_identities(root: str | Path) -> RowsLoad:
     path = Path(root) / "identity" / "identities.json"
     if not path.is_file():
@@ -905,6 +940,7 @@ def _loaders() -> list[tuple[str, Callable]]:
         ("unanswered", load_unanswered),
         ("feedback", load_feedback),
         ("source_documents", load_source_documents),
+        ("source_document_blobs", load_source_document_blobs),
         ("identities", load_identities),
         ("audit", load_audit),
     ]
@@ -980,6 +1016,7 @@ _AUDIT_LOCK_TIMEOUT = "10s"  # bounds the wait for the audit chain advisory lock
 # report store -> (table, key column, key cast) for the post-commit PostgreSQL re-count.
 _TARGET_TABLES = {
     "source_documents": ("source_documents", "document_id", "text"),
+    "source_document_blobs": ("source_documents", "document_id", "text"),
     "identities": ("admin_identities", "subject_id", "uuid"),
     "releases": ("releases", "release_id", "text"),
     "outbox": ("reindex_outbox", "event_id", "uuid"),
@@ -1576,6 +1613,8 @@ def apply_to_database(root: str | Path, conn, *, now: datetime) -> dict:
     rows = {name: _parts(load)[0] for name, load in loads.items()}
     record_ids = getattr(loads["records"], "id_map", {})
     tally = _Tally(run_at)
+    for row in rows["source_document_blobs"]:
+        tally.seen("source_document_blobs", row["document_id"])
     with conn.transaction():
         with conn.cursor() as cur:
             _write_source_documents(cur, tally, rows["source_documents"])

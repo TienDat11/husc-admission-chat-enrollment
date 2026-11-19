@@ -17,11 +17,13 @@ import pytest
 
 from scripts.migrate_file_stores import (
     MigrationError,
+    build_report,
     derive_coordinate_key,
     load_audit,
     load_identities,
     load_records,
     load_retractions,
+    load_source_document_blobs,
     load_source_documents,
     load_unanswered,
     split_version_key,
@@ -1267,3 +1269,41 @@ def test_supersedes_follows_the_remapped_id_and_keeps_the_version(tmp_path):
     p63 = by_legacy["DIEM_CHUAN:nganh:7220104:2026:hoc_ba:ttts-p63"]
     assert p62["supersedes"] == f"{key}@1"
     assert p63["supersedes"] == "UNMAPPED:nganh:7220104:2026:x@2"
+
+
+# ── 12th store: source_document_blobs (bytes under source_documents/) ──
+
+
+def _blob(root: Path, name: str, data: bytes, *, register: bool = True, sha: str | None = None) -> None:
+    path = root / "source_documents" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    if register:
+        doc = {"document_id": f"uploads/{name}", "sha256": sha or hashlib.sha256(data).hexdigest()}
+        _write(root / "documents" / f"doc-{name}_d.json", json.dumps(doc))
+
+
+def test_registered_blob_with_matching_sha256_is_one_row(tmp_path):
+    _blob(tmp_path, "a.pdf", b"alpha")
+    out = load_source_document_blobs(tmp_path)
+    assert out.source_rows == 1
+    assert out.rows == [{"document_id": "uploads/a.pdf", "sha256": hashlib.sha256(b"alpha").hexdigest()}]
+
+
+def test_orphan_blob_counts_as_source_but_not_as_a_row(tmp_path):
+    _blob(tmp_path, "orphan.pdf", b"orphan", register=False)
+    out = load_source_document_blobs(tmp_path)
+    assert (out.source_rows, out.rows) == (1, [])
+    entry = {s["name"]: s for s in build_report(tmp_path)["stores"]}["source_document_blobs"]
+    assert (entry["source_rows"], entry["target_rows"], entry["mismatch"]) == (1, 0, 1)
+
+
+def test_blob_whose_registered_sha256_differs_is_an_orphan(tmp_path):
+    _blob(tmp_path, "b.pdf", b"bravo", sha="0" * 64)
+    out = load_source_document_blobs(tmp_path)
+    assert (out.source_rows, out.rows) == (1, [])
+
+
+def test_missing_source_documents_dir_is_empty(tmp_path):
+    out = load_source_document_blobs(tmp_path)
+    assert (out.rows, out.source_rows) == ([], 0)

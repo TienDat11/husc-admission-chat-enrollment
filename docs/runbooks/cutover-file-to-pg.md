@@ -143,10 +143,15 @@ Run every check against the legacy root you plan to migrate (default
    with an unexplained mismatch means stop, do not switch. `defaulted`, `skipped`,
    `dangling_source_document_id`, `normalised`, and `quarantined_rows` are reported counts
    that must be explained, not treated as errors.
+   `source_document_blobs` counts the files under `<root>/source_documents/`. A file is matched
+   only when a `documents/` entry registers it as `uploads/<relative path>` with the same
+   `sha256`. Any other file (no registration, or a different sha256) is an orphan: it is counted
+   in `source_rows` but not in `target_rows`, so its `mismatch` equals the orphan count. Reconcile
+   each orphan before the final run (register it, or move it out of the root). Never edit the report.
 
 Store names in the report: `records`, `retractions`, `releases`, `outbox`, `conflicts`,
-`idempotency`, `unanswered`, `feedback`, `source_documents`, `identities`, `audit`. The
-loader list has 11 entries. The plan text says 12 stores; this runbook follows the code.
+`idempotency`, `unanswered`, `feedback`, `source_documents`, `source_document_blobs`,
+`identities`, `audit`. The migrator has 12 stores, matching the plan's count.
 
 ### Step 3: switch to PostgreSQL and unfreeze
 

@@ -57,11 +57,19 @@ def _write_lines(path: Path, objs: list[dict]) -> None:
 
 
 def _full_fixture(root: Path) -> None:
-    """One legacy file (or more) for each of the 11 loader stores."""
+    """One legacy file (or more) for each of the 12 stores."""
     _multi_store(root)  # record (source doc-1), unanswered question, identities, 3 audit events
     _write_json(root / "documents" / "doc-1_d.json", {
         "document_id": "doc-1", "sha256": "cd" * 32, "path": "uploads/tuyensinh2026.pdf",
         "state": "registered", "registered_by": "alice",
+        "registered_at": "2026-01-02T03:04:05", "updated_at": "2026-01-03T00:00:00+00:00",
+    })
+    blob = b"%PDF-1.4 tuyensinh2026"
+    (root / "source_documents").mkdir(parents=True, exist_ok=True)
+    (root / "source_documents" / "tuyensinh2026.pdf").write_bytes(blob)
+    _write_json(root / "documents" / "doc-up_d.json", {
+        "document_id": "uploads/tuyensinh2026.pdf", "sha256": hashlib.sha256(blob).hexdigest(),
+        "path": "uploads/tuyensinh2026.pdf", "state": "registered", "registered_by": "alice",
         "registered_at": "2026-01-02T03:04:05", "updated_at": "2026-01-03T00:00:00+00:00",
     })
     # Child listed before its parent: the release insert order must follow parent_release_id.
@@ -184,7 +192,8 @@ def test_twelve_store_fixture_applies_and_counts_match(tmp_path, fresh_db):
     for name, s in stores.items():
         assert s["target_rows"] == s["source_rows"], (name, s)
         assert s["mismatch"] == 0, (name, s)
-        assert s["inserted"] == s["source_rows"], (name, s)
+        expected_inserted = 0 if name == "source_document_blobs" else s["source_rows"]
+        assert s["inserted"] == expected_inserted, (name, s)
     assert _counts(fresh_db)["canonical_records"] == 1
     assert _counts(fresh_db)["audit_events"] == 3
     assert report["defaulted"]["records"]["authored_by"] == 1
