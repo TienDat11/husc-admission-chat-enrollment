@@ -126,6 +126,8 @@ class AuditAction(str, Enum):
     # -- ingestion job operator actions (U2): who retried or cancelled a job
     JOB_RETRY = "job_retry"
     JOB_CANCEL = "job_cancel"
+    # -- U10: an identity locked after repeated wrong passwords (written in the lock txn)
+    ACCOUNT_LOCKED = "account_locked"
 
 
 class TargetKind(str, Enum):

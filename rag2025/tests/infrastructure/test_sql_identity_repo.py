@@ -9,7 +9,8 @@ import uuid
 
 from src.domain.admin_identity import Role
 from src.infrastructure.identity_store import IdentityEntry, hash_password
-from src.infrastructure.sql_identity_repo import LastAdminError, SqlIdentityRepository
+from src.infrastructure.sql_audit_ledger import SqlAuditLedger
+from src.infrastructure.sql_identity_repo import LastAdminError, PermissionAudit, SqlIdentityRepository
 from tests.pg_fixtures import ADMIN_ACTOR, ADMIN_TOKEN, fresh_db, sql_admin_client  # noqa: F401
 
 PASSWORD = "correct-horse-1"
@@ -29,6 +30,7 @@ def test_concurrent_demotions_of_the_two_remaining_admins_leave_one(fresh_db, tm
             password_hash=hash_password(PASSWORD),
         ),
         created_by="test",
+        audit=PermissionAudit(actor_id=ADMIN_ACTOR, actor_role="admin", reason="test setup"),
     )
 
     barrier = threading.Barrier(2)
@@ -37,7 +39,13 @@ def test_concurrent_demotions_of_the_two_remaining_admins_leave_one(fresh_db, tm
     def demote(subject_id: str) -> None:
         barrier.wait()
         try:
-            repo.update(subject_id, role=Role.EDITOR, disabled=None, password=None)
+            repo.update(
+                subject_id,
+                role=Role.EDITOR,
+                disabled=None,
+                password=None,
+                audit=PermissionAudit(actor_id=ADMIN_ACTOR, actor_role="admin", reason="concurrency test"),
+            )
             outcomes.append("ok")
         except LastAdminError:
             outcomes.append("last-admin")
@@ -51,3 +59,23 @@ def test_concurrent_demotions_of_the_two_remaining_admins_leave_one(fresh_db, tm
     assert sorted(outcomes) == ["last-admin", "ok"]
     admins = [entry for entry in repo.entries() if entry.role is Role.ADMIN and not entry.disabled]
     assert len(admins) == 1
+
+
+def test_an_identity_write_and_its_audit_row_commit_together(fresh_db):
+    repo = SqlIdentityRepository(fresh_db)
+    audit = PermissionAudit(actor_id=ADMIN_ACTOR, actor_role="admin", reason="atomicity check")
+    before = len(SqlAuditLedger(fresh_db).find(action="permission_change"))
+    subject = str(uuid.uuid4())
+    repo.add(
+        IdentityEntry(
+            subject_id=subject,
+            actor_id="cb.atomic",
+            role=Role.EDITOR,
+            password_hash=hash_password(PASSWORD),
+        ),
+        created_by="test",
+        audit=audit,
+    )
+    repo.update(subject, disabled=True, audit=audit)
+    events = SqlAuditLedger(fresh_db).find(action="permission_change")
+    assert len(events) - before == 2

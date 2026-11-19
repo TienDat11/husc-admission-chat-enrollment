@@ -29,6 +29,7 @@ import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from typing import Literal
 
 import psycopg
@@ -43,6 +44,9 @@ from src.infrastructure.identity_store import (
     hash_password,
     verify_password,
 )
+from src.domain.audit import AuditAction, AuditEvent, TargetKind
+from src.infrastructure.audit_ledger import permission_change_event
+from src.infrastructure.sql_audit_ledger import append_on
 
 __all__ = [
     "AccountDisabledError",
@@ -150,6 +154,16 @@ def _remaining(row: dict) -> int:
     return math.ceil(left) if left > 0 else 0
 
 
+@dataclass(frozen=True)
+class PermissionAudit:
+    """Who changes an identity and why. The repository writes the audit row in the same transaction."""
+
+    actor_id: str
+    actor_role: str | None
+    reason: str
+    four_eyes: bool | None = None
+
+
 class SqlIdentityRepository:
     """PostgreSQL-backed identity registry with the same read surface as ``IdentityStore``."""
 
@@ -232,7 +246,9 @@ class SqlIdentityRepository:
 
     # -- writes --------------------------------------------------------------
 
-    def add(self, entry: IdentityEntry, *, created_by: str) -> IdentityEntry:
+    def add(
+        self, entry: IdentityEntry, *, created_by: str, audit: PermissionAudit
+    ) -> IdentityEntry:
         """Insert one identity. ``entry.credential`` (the header token) is stored as its digest only."""
         if entry.password_hash is None and entry.credential is None:
             raise IdentityRuleError("identity needs a password or a header token")
@@ -251,6 +267,18 @@ class SqlIdentityRepository:
                         digest,
                         entry.disabled,
                         created_by,
+                    ),
+                )
+                append_on(
+                    conn,
+                    permission_change_event(
+                        actor_id=audit.actor_id,
+                        actor_role=audit.actor_role,
+                        subject_id=entry.subject_id,
+                        before_role=None,
+                        after_role=entry.role.value,
+                        reason=audit.reason,
+                        four_eyes=audit.four_eyes,
                     ),
                 )
         except psycopg.errors.UniqueViolation:
@@ -284,6 +312,7 @@ class SqlIdentityRepository:
         role: Role | None = None,
         disabled: bool | None = None,
         password: str | None = None,
+        audit: PermissionAudit,
     ) -> IdentityEntry:
         """Change role, disabled, or password. ``password=""`` clears it.
 
@@ -333,7 +362,20 @@ class SqlIdentityRepository:
                     "WHERE subject_id = %s AND revoked_at IS NULL",
                     (key,),
                 )
-        return _entry(row)
+            entry = _entry(row)
+            append_on(
+                conn,
+                permission_change_event(
+                    actor_id=audit.actor_id,
+                    actor_role=audit.actor_role,
+                    subject_id=entry.subject_id,
+                    before_role=cur_role,
+                    after_role=None if entry.disabled else entry.role.value,
+                    reason=audit.reason,
+                    four_eyes=audit.four_eyes,
+                ),
+            )
+        return entry
 
     def login(self, actor_id: str, password: str, *, user_agent: str | None = None) -> LoginResult:
         """Check a password; on success open a session. Counts failures and locks the row."""
@@ -381,12 +423,37 @@ class SqlIdentityRepository:
                     "locked_until = now() + make_interval(secs => %s) WHERE subject_id = %s",
                     (LOGIN_LOCK_SECONDS, row["subject_id"]),
                 )
+                append_on(
+                    conn,
+                    AuditEvent(
+                        action=AuditAction.ACCOUNT_LOCKED,
+                        actor_id=row["actor_id"],
+                        role=row["role"],
+                        target=str(row["subject_id"]),
+                        target_kind=TargetKind.SUBJECT,
+                        timestamp=datetime.now(timezone.utc),
+                        reason=f"{LOGIN_FAIL_LIMIT} wrong passwords; locked for {LOGIN_LOCK_SECONDS}s",
+                    ),
+                )
             else:
                 conn.execute(
                     "UPDATE admin_identities SET failed_login_count = %s WHERE subject_id = %s",
                     (failures, row["subject_id"]),
                 )
             return LoginResult("bad_password")
+
+    def unlock(self, actor_id: str, *, audit: AuditEvent) -> bool:
+        """Clear one actor's lockout and record the decision in the same transaction."""
+        with self._txn() as conn:
+            row = conn.execute(
+                "UPDATE admin_identities SET failed_login_count = 0, locked_until = NULL, "
+                "updated_at = now() WHERE actor_id = %s RETURNING subject_id",
+                (actor_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            append_on(conn, audit)
+        return True
 
     def revoke_session(self, token: str) -> None:
         with self._txn() as conn:

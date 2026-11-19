@@ -10,9 +10,10 @@ import {
   listIdentities,
   patchIdentity,
   type IdentityRow,
+  type Role,
 } from "@/lib/adminApi";
 
-const ROLES: { value: string; label: string }[] = [
+const ROLES: { value: Role; label: string }[] = [
   { value: "viewer", label: "Chỉ xem" },
   { value: "editor", label: "Người soạn" },
   { value: "reviewer", label: "Người duyệt" },
@@ -50,7 +51,7 @@ const Accounts = () => {
 
   const [reason, setReason] = useState("");
   const [actorId, setActorId] = useState("");
-  const [role, setRole] = useState("viewer");
+  const [role, setRole] = useState<Role>("viewer");
   const [password, setPassword] = useState("");
   const [issueToken, setIssueToken] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -91,7 +92,7 @@ const Accounts = () => {
         role,
         reason: reason.trim(),
         ...(password ? { password } : {}),
-        ...(issueToken ? { issue_header_token: true } : {}),
+        issue_header_token: issueToken,
       });
       setCreatedToken(created.header_token ?? null);
       setActorId("");
@@ -106,7 +107,7 @@ const Accounts = () => {
     }
   };
 
-  const onChangeRole = async (row: IdentityRow, nextRole: string) => {
+  const onChangeRole = async (row: IdentityRow, nextRole: Role) => {
     setBusy(true);
     setBanner(null);
     try {
@@ -192,7 +193,7 @@ const Accounts = () => {
           <select
             className="border border-zinc-400 px-3 py-2"
             value={role}
-            onChange={(event) => setRole(event.target.value)}
+            onChange={(event) => setRole(event.target.value as Role)}
           >
             {ROLES.map((option) => (
               <option key={option.value} value={option.value}>
@@ -254,7 +255,7 @@ const Accounts = () => {
                     className="border border-zinc-400 px-2 py-1"
                     value={row.role}
                     disabled={busy || reasonMissing}
-                    onChange={(event) => void onChangeRole(row, event.target.value)}
+                    onChange={(event) => void onChangeRole(row, event.target.value as Role)}
                   >
                     {ROLES.map((option) => (
                       <option key={option.value} value={option.value}>

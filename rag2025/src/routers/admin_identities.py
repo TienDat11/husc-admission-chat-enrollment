@@ -55,6 +55,7 @@ from src.routers.admin_auth import identity_store_for, require_action
 from src.infrastructure.sql_identity_repo import (
     IdentityRuleError,
     LastAdminError,
+    PermissionAudit,
     SqlIdentityRepository,
     issue_header_token,
 )
@@ -304,9 +305,15 @@ def create_identity(
         )
         header_token = None
 
+    audit = PermissionAudit(
+        actor_id=identity.actor_id,
+        actor_role=identity.role.value,
+        reason=reason,
+        four_eyes=four_eyes_on,
+    )
     try:
         if sql:
-            store.add(entry, created_by=identity.actor_id)
+            store.add(entry, created_by=identity.actor_id, audit=audit)
         else:
             store.add(entry)
     except IdentityConflictError as exc:
@@ -319,15 +326,16 @@ def create_identity(
     except IdentityStoreError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    _ledger_for(request).record_permission_change(
-        actor_id=identity.actor_id,
-        actor_role=identity.role.value,
-        subject_id=entry.subject_id,
-        before_role=None,
-        after_role=entry.role.value,
-        reason=reason,
-        four_eyes=four_eyes_on,
-    )
+    if not sql:
+        _ledger_for(request).record_permission_change(
+            actor_id=identity.actor_id,
+            actor_role=identity.role.value,
+            subject_id=entry.subject_id,
+            before_role=None,
+            after_role=entry.role.value,
+            reason=reason,
+            four_eyes=four_eyes_on,
+        )
     view_entry = replace(entry, credential=None) if sql else entry
     return _view(view_entry, header_token=header_token)
 
@@ -367,14 +375,29 @@ def patch_identity(
     if isinstance(store, SqlIdentityRepository):
         _refuse_self_change(identity, current, payload)
     _four_eyes_blocks(identity, current, four_eyes_on)
+    audit = PermissionAudit(
+        actor_id=identity.actor_id,
+        actor_role=identity.role.value,
+        reason=reason,
+        four_eyes=four_eyes_on,
+    )
 
     try:
-        entry = store.update(
-            subject_id,
-            role=payload.role,
-            disabled=payload.disabled,
-            password=payload.password,
-        )
+        if isinstance(store, SqlIdentityRepository):
+            entry = store.update(
+                subject_id,
+                role=payload.role,
+                disabled=payload.disabled,
+                password=payload.password,
+                audit=audit,
+            )
+        else:
+            entry = store.update(
+                subject_id,
+                role=payload.role,
+                disabled=payload.disabled,
+                password=payload.password,
+            )
     except IdentityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except LastAdminError as exc:
@@ -387,13 +410,14 @@ def patch_identity(
     except IdentityStoreError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    _ledger_for(request).record_permission_change(
-        actor_id=identity.actor_id,
-        actor_role=identity.role.value,
-        subject_id=entry.subject_id,
-        before_role=current.role.value,
-        after_role=None if entry.disabled else entry.role.value,
-        reason=reason,
-        four_eyes=four_eyes_on,
-    )
+    if not isinstance(store, SqlIdentityRepository):
+        _ledger_for(request).record_permission_change(
+            actor_id=identity.actor_id,
+            actor_role=identity.role.value,
+            subject_id=entry.subject_id,
+            before_role=current.role.value,
+            after_role=None if entry.disabled else entry.role.value,
+            reason=reason,
+            four_eyes=four_eyes_on,
+        )
     return _view(entry)

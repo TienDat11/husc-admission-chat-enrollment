@@ -10,6 +10,7 @@
 //    request validation carries `loc` paths (``["body","record","admission_year"]``),
 //    which is what lets the form put the message *at the offending field*
 //    instead of in a banner.
+import type { components } from "./api-types";
 import { getApiBaseUrl } from "./api";
 
 /** The header the backend reads (src/config/admin_identity.py). */
@@ -573,27 +574,18 @@ export async function rollbackRelease(
   });
 }
 
+type Schemas = components["schemas"];
+export type Role = Schemas["Role"];
+
 /** One row of `GET /admin/identities`. Secrets are never returned. */
-export interface IdentityRow {
-  subject_id: string;
-  actor_id: string;
-  role: string;
-  disabled: boolean;
-  last_login_at: string | null;
-}
+export type IdentityRow = Schemas["IdentityView"];
 
-export interface IdentityCreateBody {
-  actor_id: string;
-  role: string;
-  reason: string;
-  password?: string;
-  issue_header_token?: boolean;
-}
+export type IdentityCreateBody = Schemas["IdentityCreateRequest"];
 
-export interface IdentityCreated extends IdentityRow {
-  /** Returned once, on create, when `issue_header_token` was set. */
-  header_token?: string | null;
-}
+/** `POST /admin/identities` returns the created row; `header_token` is set once, on create. */
+export type IdentityCreated = Schemas["IdentityView"];
+
+export type IdentityPatchBody = Schemas["IdentityPatchRequest"];
 
 export async function listIdentities(token: string | null): Promise<IdentityRow[]> {
   return adminRequest<IdentityRow[]>(token, "/admin/identities");
@@ -612,7 +604,7 @@ export async function createIdentity(
 export async function patchIdentity(
   token: string | null,
   subjectId: string,
-  body: { reason: string; role?: string; disabled?: boolean },
+  body: IdentityPatchBody,
 ): Promise<IdentityRow> {
   return adminRequest<IdentityRow>(token, `/admin/identities/${subjectId}`, {
     method: "PATCH",

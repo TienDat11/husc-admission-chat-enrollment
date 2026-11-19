@@ -214,6 +214,32 @@ def _driver_error(exc: psycopg.Error) -> AuditLedgerError:
     return AuditLedgerError(f"audit ledger database error (sqlstate {state})")
 
 
+def append_on(conn: psycopg.Connection, event: AuditEvent) -> AuditEntry:
+    """Extend the chain with ``event`` inside the caller's transaction, under ``audit_chain``.
+
+    The caller owns the transaction, so a write and its audit row commit or roll back together.
+    """
+    cols = _columns(event)
+    conn.execute(_LOCK_SQL)
+    tail = conn.execute(_TAIL_SQL).fetchone()
+    prev_hash = bytes(tail["entry_hash"]) if tail is not None else None
+    entry_hash = compute_entry_hash(prev_hash, canonical_payload(cols))
+    params = dict(
+        cols,
+        before=json.dumps(cols["before"]),
+        after=json.dumps(cols["after"]),
+        prev_hash=prev_hash,
+        entry_hash=entry_hash,
+    )
+    seq = conn.execute(_INSERT_SQL, params).fetchone()["seq"]
+    return AuditEntry(
+        seq=int(seq),
+        prev_hash=GENESIS_HASH if prev_hash is None else prev_hash.hex(),
+        entry_hash=entry_hash.hex(),
+        event=event,
+    )
+
+
 class SqlAuditLedger:
     """Audit ledger over the ``audit_events`` table. The constructor never connects.
 
@@ -247,27 +273,9 @@ class SqlAuditLedger:
 
     def append(self, event: AuditEvent) -> AuditEntry:
         """Extend the chain with ``event`` in one transaction under the ``audit_chain`` lock."""
-        cols = _columns(event)
         with self._connect() as conn:
             conn.execute(f"SET LOCAL lock_timeout = '{self._lock_timeout_ms}ms'")
-            conn.execute(_LOCK_SQL)
-            tail = conn.execute(_TAIL_SQL).fetchone()
-            prev_hash = bytes(tail["entry_hash"]) if tail is not None else None
-            entry_hash = compute_entry_hash(prev_hash, canonical_payload(cols))
-            params = dict(
-                cols,
-                before=json.dumps(cols["before"]),
-                after=json.dumps(cols["after"]),
-                prev_hash=prev_hash,
-                entry_hash=entry_hash,
-            )
-            seq = conn.execute(_INSERT_SQL, params).fetchone()["seq"]
-        return AuditEntry(
-            seq=int(seq),
-            prev_hash=GENESIS_HASH if prev_hash is None else prev_hash.hex(),
-            entry_hash=entry_hash.hex(),
-            event=event,
-        )
+            return append_on(conn, event)
 
     # Same emitter as the file ledger: it touches only ``self.append``.
     record_permission_change = AuditLedger.record_permission_change
