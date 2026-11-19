@@ -71,6 +71,9 @@ from src.services.log_redaction import safe_query, redact_pii
 from src.services import serve_probe as _serve_probe
 from src.services.rate_limit import FixedWindowLimiter
 
+from infrastructure.db import make_session_factory
+from sqlalchemy import text
+
 # Keep existing imports for backward compatibility
 from config.settings import RAGSettings
 from config.request_context import set_request_id, reset_request_id
@@ -547,6 +550,12 @@ app.include_router(meta_router)
 # NO LLM, NO network, single-digit ms — see routers/recommender.py.
 from routers.recommender import router as recommender_router
 app.include_router(recommender_router)
+
+# Mount the /v2 student-profile router (§PL-7.2 Frame 12): anonymous student
+# profile (GET/PUT/DELETE /v2/student-profile) and admission roadmap
+# (GET /v2/admission-roadmap).
+from routers.student_profile import router as student_profile_router
+app.include_router(student_profile_router)
 
 # Mount the extracted /health router
 from routers.health import router as health_router
@@ -1528,6 +1537,71 @@ async def _synthesize_v2_answer(
 # Returns a tuple (response_payload, rag_result) where rag_result is needed
 # for the route label in the meta event.
 # ───────────────────────────────────────────────────────────────────────────
+
+
+def _is_uuid_v4(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        return uuid.UUID(value).version == 4
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+async def _fetch_student_profile(raw_request: Request, session_id: str):
+    """Fetch a non-expired student profile for the session, or None.
+
+    Never logs the session id together with query text.
+    """
+    engine = getattr(raw_request.app.state, "db_engine", None)
+    if engine is None:
+        return None
+    try:
+        async with make_session_factory(engine)() as sess:
+            row = await sess.execute(
+                text(
+                    """
+                    SELECT raw_score, method, to_hop, uu_tien_kv, uu_tien_dt,
+                           target_majors, admission_year
+                    FROM student_profiles
+                    WHERE student_session_id = :sid
+                      AND expires_at >= now()
+                    """
+                ),
+                {"sid": session_id},
+            )
+            rec = row.mappings().first()
+            if rec is None:
+                return None
+            return {
+                "raw_score": (
+                    float(rec["raw_score"]) if rec["raw_score"] is not None else None
+                ),
+                "method": rec["method"],
+                "to_hop": rec["to_hop"],
+                "uu_tien_kv": rec["uu_tien_kv"],
+                "uu_tien_dt": rec["uu_tien_dt"],
+                "target_majors": list(rec["target_majors"] or []),
+                "admission_year": rec["admission_year"],
+            }
+    except Exception:
+        return None
+
+
+async def _has_active_release(app) -> bool:
+    engine = getattr(app.state, "db_engine", None)
+    if engine is None:
+        return False
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                text("SELECT 1 FROM releases WHERE status = 'active' LIMIT 1")
+            )
+            return result.scalar_one_or_none() is not None
+    except Exception:
+        return False
+
+
 async def _build_v2_query_payload(
     request: UnifiedQueryRequest,
     raw_request: Request,
@@ -1545,9 +1619,25 @@ async def _build_v2_query_payload(
     trace_id = str(uuid.uuid4())
     token = set_request_id(trace_id)
     try:
-        return await _build_v2_query_payload_inner(
+        payload = await _build_v2_query_payload_inner(
             request, raw_request, progress_cb, trace_id
         )
+        # Optional student profile context (Frame 12). Missing/invalid header ->
+        # chat works as before. Present & valid + profile exists -> attach context.
+        session_header = raw_request.headers.get("X-Student-Session")
+        if session_header and _is_uuid_v4(session_header):
+            profile = await _fetch_student_profile(raw_request, session_header)
+            if profile is not None:
+                payload["student_profile"] = profile
+                if not await _has_active_release(raw_request.app):
+                    raise HTTPException(
+                        status_code=503,
+                        detail={
+                            "code": "NO_ACTIVE_RELEASE",
+                            "message": "Hiện chưa có đợt tuyển sinh nào hoạt động. Vui lòng thử lại sau.",
+                        },
+                    )
+        return payload
     finally:
         reset_request_id(token)
 

@@ -31,11 +31,14 @@ restart.
 """
 from __future__ import annotations
 
+from decimal import Decimal
 import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
+
+from services.priority_score import compute_priority
 
 # Resolve repo-root / src import path the same way the A1 parser does.
 _HERE = Path(__file__).resolve().parent
@@ -206,21 +209,15 @@ def recommend(
     score: float,
     to_hop: Optional[str] = None,
     uu_tien: float = 0.0,
+    kv: str | None = None,
+    dt: str | None = None,
 ) -> List[Recommendation]:
     """Return ranked recommendations for a given score.
 
-    ``score`` is the raw thang-30 score. ``uu_tien`` is the ưu tiên
-    bonus (e.g. 0.5 / 1.0 / 1.5 from ``diem_cong`` rules in
-    ``husc_2026_canonical.json``).
-
-    The recommender:
-      - Picks the latest available year for each major (currently 2025).
-      - Computes delta = score + uu_tien − diem_chuan.
-      - Sorts by delta DESC, then by major_code ASC for stability.
-      - If ``to_hop`` is given, only includes majors whose known tổ hợp
-        list contains it (from the canonical 2026 program data). If the
-        major has no known tổ hợp it is still included (with a note
-        about tổ hợp not being checked).
+    ``score`` is the raw thang-30 score. ``uu_tien`` is the legacy ưu tiên
+    bonus, used only when ``kv``/``dt`` are not provided (existing callers).
+    Otherwise the TT06 priority total from :func:`compute_priority` drives
+    the ranking.
     """
     if not isinstance(score, (int, float)) or math.isnan(score) or score < 0:
         return []
@@ -228,6 +225,18 @@ def recommend(
     _load_history()
     if not _CACHE_LATEST:
         return []
+
+    # TT06 priority total (replaces the legacy score + uu_tien arithmetic).
+    # Fall back to the legacy ``uu_tien`` bonus when kv/dt are not provided so
+    # existing callers stay compatible.
+    if kv is None and dt is None:
+        priority_total = Decimal(str(score)) + Decimal(str(uu_tien))
+        rule = "legacy_uu_tien"
+    else:
+        priority = compute_priority(Decimal(str(score)), kv, dt)
+        priority_total = priority.total
+        rule = priority.rule
+    effective_bonus = float(priority_total - Decimal(str(score)))
 
     # Friendly names + to_hop from the entries already loaded by _load_history
     # (snapshot-backed when injected — never touches data/major_codes/*.json).
@@ -252,7 +261,7 @@ def recommend(
         meta = by_code_meta.get(major_code, {"major_name": major_code, "to_hop": None})
         if to_hop and meta.get("to_hop") and to_hop not in meta["to_hop"]:
             continue
-        delta = float(score) + float(uu_tien) - float(diem)
+        delta = float(priority_total) - float(diem)
         label = _label_for(delta)
         if to_hop and (not meta.get("to_hop") or to_hop not in meta["to_hop"]):
             # The user asked for a tổ hợp but this major's known tổ hợp
@@ -264,7 +273,7 @@ def recommend(
             to_hop_note = ""
         explanation = (
             f"Điểm chuẩn {year} ngành {meta['major_name']} là {diem:.2f}, "
-            f"điểm của bạn {float(score):.2f}{(' + ưu tiên ' + format(uu_tien, '.2f')) if uu_tien else ''} "
+            f"điểm của bạn {float(score):.2f}{(' + ưu tiên ' + format(effective_bonus, '.2f')) if effective_bonus else ''} "
             f"→ {label.replace('_', ' ')}{to_hop_note}"
         )
         out.append(Recommendation(
@@ -286,6 +295,8 @@ def whatif_probability(
     major_code: str,
     to_hop: Optional[str] = None,  # noqa: ARG001 — kept for API parity
     uu_tien: float = 0.0,
+    kv: str | None = None,
+    dt: str | None = None,
 ) -> WhatIfResult:
     """Honest band-based probability estimate for a specific major.
 
@@ -328,7 +339,11 @@ def whatif_probability(
             ),
         )
     year, diem = latest
-    delta = float(score) + float(uu_tien) - float(diem)
+    if kv is None and dt is None:
+        priority_total = Decimal(str(score)) + Decimal(str(uu_tien))
+    else:
+        priority_total = compute_priority(Decimal(str(score)), kv, dt).total
+    delta = float(priority_total) - float(diem)
     band, p_pass = _band_for(delta)
     n_years = len(history)
     if n_years >= 2:

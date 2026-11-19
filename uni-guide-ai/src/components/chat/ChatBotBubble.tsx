@@ -5,33 +5,14 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Shield, AlertTriangle, RefreshCw } from 'lucide-react';
-import type { Message, Source } from '@/lib/chat-types';
+import type { Message } from '@/lib/chat-types';
 import { isGenerationFailure, LOCALIZED_ERROR_COPY } from '@/lib/chat-helpers';
+import { SourceChip } from '@/components/student/SourceChip';
 
 interface ChatBotBubbleProps {
   message: Message;
   /** Ticket 43: gửi lại ngay câu hỏi trước đó qua handleSendMessage của ChatLayout. */
   onRetry?: () => void;
-}
-
-function SourceChip({ source }: { source: Source }) {
-  const chipClass =
-    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-[#D6DEEA] bg-[#F7F9FC] text-[12px] leading-[16px] text-[#4A5568] font-medium hover:bg-[#E6ECF7] transition-colors';
-
-  return (
-    <span
-      className={chipClass}
-      title={source.url ?? source.title}
-    >
-      <span aria-hidden="true">📄</span>
-      <span className="truncate max-w-[140px] block">{source.title}</span>
-      {source.data_year && source.data_year !== 'N/A' && (
-        <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded-full bg-[#E6ECF7] text-[#143980] font-semibold">
-          {source.data_year}
-        </span>
-      )}
-    </span>
-  );
 }
 
 export function ChatBotBubble({ message, onRetry }: ChatBotBubbleProps) {

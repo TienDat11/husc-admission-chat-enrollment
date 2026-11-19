@@ -1,3 +1,7 @@
+// @spec(PL-7.2 Frame 12 — recommender + anonymous student profile)
+// MajorRecommender — gợi ý ngành phù hợp.
+// Dùng useStudentProfile để lấy điểm ưu tiên KV/ĐT từ hồ sơ thí sinh ẩn danh
+// thay vì nhập thủ công ô uuTien.
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -28,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useStudentProfile } from '@/hooks/useStudentProfile';
 import {
   getRecommendations,
   getWhatIf,
@@ -45,9 +50,20 @@ const TO_HOP_OPTIONS = [
   { value: 'D01', label: 'D01 — Toán, Văn, Anh' },
 ];
 
+const KV_OPTIONS = [
+  { value: '', label: 'Không (KV3)' },
+  { value: 'KV1', label: 'KV1' },
+  { value: 'KV2NT', label: 'KV2 NT' },
+  { value: 'KV2', label: 'KV2' },
+];
+
+const DT_OPTIONS = [
+  { value: '', label: 'Không' },
+  { value: 'UT1', label: 'UT1' },
+  { value: 'UT2', label: 'UT2' },
+];
+
 // Map BE label → display (VI) + Tailwind class for the colored badge.
-// Colors are tuned for both light + dark mode (Tailwind's bg-*/text-* with
-// the project token layer all have dark: variants via the design system).
 const LABEL_STYLES: Record<
   RecommendLabel,
   { label: string; icon: React.ReactNode; className: string }
@@ -81,10 +97,13 @@ interface MajorRecommenderProps {
 }
 
 export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
+  const { profile, setProfile } = useStudentProfile();
+
   // ── Recommend form state ───────────────────────────────────────────────
-  const [score, setScore] = useState<string>('24');
-  const [toHop, setToHop] = useState<string>('__none__');
-  const [uuTien, setUuTien] = useState<string>('0');
+  const [score, setScore] = useState<string>(profile?.raw_score ? String(profile.raw_score) : '24');
+  const [toHop, setToHop] = useState<string>(profile?.to_hop ?? '__none__');
+  const [kv, setKv] = useState<string>(profile?.uu_tien_kv ?? '');
+  const [dt, setDt] = useState<string>(profile?.uu_tien_dt ?? '');
 
   // ── Result state ───────────────────────────────────────────────────────
   const [loading, setLoading] = useState(false);
@@ -94,18 +113,15 @@ export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
   const [disclaimer, setDisclaimer] = useState<string>('');
 
   const parsedScore = useMemo(() => Number.parseFloat(score), [score]);
-  const parsedUuTien = useMemo(() => Number.parseFloat(uuTien) || 0, [uuTien]);
+  const kvValue = useMemo(() => kv || null, [kv]);
+  const dtValue = useMemo(() => dt || null, [dt]);
 
   const scoreValid = useMemo(
     () => Number.isFinite(parsedScore) && parsedScore >= 0 && parsedScore <= 30,
     [parsedScore],
   );
-  const uuTienValid = useMemo(
-    () => Number.isFinite(parsedUuTien) && parsedUuTien >= 0 && parsedUuTien <= 5,
-    [parsedUuTien],
-  );
 
-  const canSubmit = scoreValid && uuTienValid && !loading;
+  const canSubmit = scoreValid && !loading;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,12 +131,22 @@ export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
     try {
       const resp = await getRecommendations({
         score: parsedScore,
-        uu_tien: parsedUuTien,
+        kv: kvValue,
+        dt: dtValue,
         ...(toHop && toHop !== '__none__' ? { to_hop: toHop } : {}),
       });
       setResults(resp.recommendations);
       setBasis(resp.basis);
       setDisclaimer(resp.disclaimer);
+
+      // Sync the profile with the current inputs so KV/ĐT persist.
+      setProfile({
+        ...profile,
+        raw_score: parsedScore,
+        to_hop: toHop !== '__none__' ? toHop : null,
+        uu_tien_kv: kvValue,
+        uu_tien_dt: dtValue,
+      } as never);
     } catch (err) {
       setError(
         err instanceof Error
@@ -131,6 +157,16 @@ export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveProfile = () => {
+    setProfile({
+      ...profile,
+      raw_score: parsedScore,
+      to_hop: toHop !== '__none__' ? toHop : null,
+      uu_tien_kv: kvValue,
+      uu_tien_dt: dtValue,
+    } as never);
   };
 
   return (
@@ -150,6 +186,12 @@ export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
             </CardDescription>
           </div>
         </div>
+        {profile && (
+          <div className="text-[11px] leading-[14px] text-[#6B7686]">
+            Đang dùng hồ sơ: điểm {profile.raw_score}, phương thức{' '}
+            {profile.method ?? '—'}
+          </div>
+        )}
       </CardHeader>
 
       <CardContent className="space-y-5">
@@ -194,22 +236,42 @@ export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
               <p className="text-xs text-muted-foreground">Không bắt buộc</p>
             </div>
 
-            {/* Ưu tiên */}
+            {/* Ưu tiên KV */}
             <div className="space-y-1.5">
-              <Label htmlFor="mr-uuu" className="font-semibold">
-                Điểm ưu tiên
+              <Label htmlFor="mr-kv" className="font-semibold">
+                Khu vực ưu tiên (KV)
               </Label>
-              <Input
-                id="mr-uuu"
-                type="number"
-                min={0}
-                max={5}
-                step={0.25}
-                value={uuTien}
-                onChange={(e) => setUuTien(e.target.value)}
-                className="font-semibold"
-              />
-              <p className="text-xs text-muted-foreground">0 – 5</p>
+              <Select value={kv} id="mr-kv" onValueChange={setKv}>
+                <SelectTrigger className="font-medium">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {KV_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Ưu tiên ĐT */}
+            <div className="space-y-1.5">
+              <Label htmlFor="mr-dt" className="font-semibold">
+                Đối tượng ưu tiên (ĐT)
+              </Label>
+              <Select value={dt} id="mr-dt" onValueChange={setDt}>
+                <SelectTrigger className="font-medium">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -218,30 +280,38 @@ export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
               ⚠️ Điểm phải nằm trong khoảng 0 – 30.
             </p>
           )}
-          {!uuTienValid && (
-            <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
-              ⚠️ Điểm ưu tiên phải nằm trong khoảng 0 – 5.
-            </p>
-          )}
 
-          <Button
-            type="submit"
-            disabled={!canSubmit}
-            className="w-full sm:w-auto font-bold"
-            size="lg"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Đang tính toán…
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4 mr-2" />
-                Gợi ý ngành
-              </>
+          <div className="flex items-center justify-between">
+            <Button
+              type="submit"
+              disabled={!canSubmit}
+              className="w-full sm:w-auto font-bold"
+              size="lg"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Đang tính toán…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Gợi ý ngành
+                </>
+              )}
+            </Button>
+            {profile && (
+              <Button
+                type="button"
+                onClick={handleSaveProfile}
+                variant="outline"
+                size="sm"
+                className="text-[12px] px-3"
+              >
+                Lưu vào hồ sơ
+              </Button>
             )}
-          </Button>
+          </div>
         </form>
 
         {/* Error */}
@@ -381,7 +451,7 @@ export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
               className="rounded-2xl border-2 border-border bg-muted px-4 py-6 text-center text-sm text-muted-foreground"
             >
               Không tìm thấy ngành phù hợp với điểm và tổ hợp đã chọn. Hãy thử
-              giảm điểm ưu tiên hoặc bỏ chọn tổ hợp.
+              thay đổi organizer điểm hoặc bỏ chọn tổ hợp.
             </motion.div>
           )}
         </AnimatePresence>
@@ -390,7 +460,8 @@ export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
         {showWhatIf && results && results.length > 0 && (
           <WhatIfWidget
             score={parsedScore}
-            uuTien={parsedUuTien}
+            kv={kvValue}
+            dt={dtValue}
             toHop={toHop}
             majors={results.map((r) => ({
               major_code: r.major_code,
@@ -406,12 +477,14 @@ export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
 // ── What-if sub-component ────────────────────────────────────────────────
 function WhatIfWidget({
   score,
-  uuTien,
+  kv,
+  dt,
   toHop,
   majors,
 }: {
   score: number;
-  uuTien: number;
+  kv: string | null;
+  dt: string | null;
   toHop: string;
   majors: { major_code: string; major_name: string }[];
 }) {
@@ -428,7 +501,8 @@ function WhatIfWidget({
       const resp = await getWhatIf({
         score,
         major_code: majorCode,
-        uu_tien: uuTien,
+        kv,
+        dt,
         ...(toHop && toHop !== '__none__' ? { to_hop: toHop } : {}),
       });
       setResult(resp);
@@ -470,57 +544,38 @@ function WhatIfWidget({
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Xem'}
         </Button>
       </div>
+      {result && (
+        <div className="rounded-lg border border-[#EDF1F6] bg-white p-3 space-y-1">
+          <p className="text-xs font-semibold">Xác suất trúng tuyển ước tính</p>
+          <div className="text-xl font-mono font-bold">
+            {(result.probability ?? 0).toFixed(2)}%
+          </div>
+          <p className="text-xs text-[#6B7686]">
+            Cơ sở: {result.basis ?? '—'} &nbsp;|&nbsp; Mức rủi ro:{' '}
+            {result.risk_level ?? '—'}
+          </p>
+        </div>
+      )}
       {error && (
         <p className="text-xs text-rose-700 dark:text-rose-300 font-medium">
           {error}
         </p>
       )}
-      {result && (
-        <div className="rounded-xl bg-background border border-border p-3 text-sm space-y-1">
-          <p>
-            <span className="font-bold">Xác suất đậu:</span>{' '}
-            <span className="font-mono">{result.p_pass}</span>
-          </p>
-          <p>
-            <span className="font-bold">Mức:</span>{' '}
-            <span className="font-mono">{result.band}</span>
-          </p>
-          {typeof result.delta === 'number' && (
-            <p className="text-xs text-muted-foreground">
-              Điểm chuẩn {result.latest_diem_chuan?.toFixed(2)} (
-              {result.latest_year}) — chênh lệch{' '}
-              {result.delta > 0 ? '+' : ''}
-              {result.delta.toFixed(2)} — dựa trên {result.n_years} năm gần nhất.
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
-// ── Small label/value pair for the result card stats row ────────────────
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: 'good' | 'bad' | 'neutral';
-}) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'bad' | 'neutral' }) {
   const toneClass =
     tone === 'good'
-      ? 'text-emerald-700 dark:text-emerald-300'
+      ? 'text-[#14532D]'
       : tone === 'bad'
-        ? 'text-rose-700 dark:text-rose-300'
-        : 'text-foreground';
+        ? 'text-[#991B1B]'
+        : 'text-[#6B7686]';
   return (
-    <div className="rounded-lg bg-muted/60 px-2.5 py-1.5">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-        {label}
-      </p>
-      <p className={`font-mono font-bold text-sm ${toneClass}`}>{value}</p>
+    <div className="text-center">
+      <div className="text-[10px] text-[#6B7686] font-medium">{label}</div>
+      <div className={`text-[12px] font-bold ${toneClass}`}>{value}</div>
     </div>
   );
 }

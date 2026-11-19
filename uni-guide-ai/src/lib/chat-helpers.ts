@@ -103,6 +103,7 @@ export function decorateAnswer(
 export const LOCALIZED_ERROR_COPY: Record<string, string> = {
   network: 'Không kết nối được máy chủ. Vui lòng kiểm tra mạng và thử lại.',
   warming: 'Máy chủ đang khởi động, vui lòng đợi trong giây lát...',
+  no_active_release: 'Chưa có đợt tuyển sinh đang hoạt động.',
   unauthorized: 'Phiên đăng nhập hết hạn, vui lòng tải lại trang.',
   server: 'Máy chủ gặp sự cố. Vui lòng thử lại sau ít phút.',
   unknown: 'Có lỗi xảy ra',

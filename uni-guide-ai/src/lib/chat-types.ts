@@ -20,7 +20,7 @@ export interface Message {
   // @spec(plan-warmup-ux-20260705-111031 §3.2) — carries the classified
   // QueryErrorKind so MessageBubble renders the correct Vietnamese copy
   // instead of the raw err.message (e.g. "Failed to fetch").
-  errorKind?: 'network' | 'warming' | 'unauthorized' | 'server' | 'unknown';
+  errorKind?: 'network' | 'warming' | 'no_active_release' | 'unauthorized' | 'server' | 'unknown';
   // Backend response fields (from /query endpoint)
   confidence?: number;
   topKUsed?: number;

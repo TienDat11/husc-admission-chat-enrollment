@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { ThemeProvider } from "@/hooks/useTheme";
 import { AdminSessionProvider } from "@/hooks/useAdminSession";
+import { StudentProfileProvider } from "@/hooks/useStudentProfile";
 
 const Index = lazy(() => import("./pages/Index"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -47,6 +48,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <StudentProfileProvider>
         <BrowserRouter>
           <Suspense fallback={<RouteLoadingSkeleton />}>
             <Routes>
@@ -129,6 +131,7 @@ const App = () => (
           </Routes>
         </Suspense>
       </BrowserRouter>
+        </StudentProfileProvider>
       </TooltipProvider>
     </ThemeProvider>
   </QueryClientProvider>

@@ -5,11 +5,15 @@
 // Màn hình chào mừng render DÙ backend chưa sẵn sàng (trạng thái rỗng thiết kế-đủ mà không cần API).
 // Phục hồi hành vi từ HEAD: buildSessionHistory → send(content, history), khung báo GENERATION_FAILED,
 // badge INSUFFICIENT_DATA, chip nguồn, đọc answer_confidence, xử lý lỗi "Có lỗi xảy ra".
-import React from 'react';
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useChatStream } from '@/hooks/useChatStream';
 import { useBackendReadiness, type ReadinessStage } from '@/hooks/useBackendReadiness';
+import { useStudentProfile } from '@/hooks/useStudentProfile';
+import { StudentProfileForm } from '@/components/student/StudentProfileForm';
+import { RoadmapPanel } from '@/components/student/RoadmapPanel';
+import { OutOfScopeCard } from '@/components/student/OutOfScopeCard';
+import { LOCALIZED_ERROR_COPY } from '@/lib/chat-helpers';
 import type { Message } from '@/lib/chat-types';
 import { buildSessionHistory, removeExchange } from '@/lib/session-history';
 import { deriveFollowUpQuestions } from '@/lib/follow-up-questions';
@@ -20,7 +24,6 @@ import { ChatSidebar } from './ChatSidebar';
 import { ChatWelcome } from './ChatWelcome';
 import { ChatUserBubble } from './ChatUserBubble';
 import { ChatBotBubble } from './ChatBotBubble';
-import { ChatRoadmap } from './ChatRoadmap';
 import { ChatComposer } from './ChatComposer';
 import { SuggestedQuestions } from './SuggestedQuestions';
 
@@ -70,10 +73,17 @@ export function ChatLayout() {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
 
   const readiness = useBackendReadiness({ pollMs: 2000 });
-  const { send, isTyping } = useChatStream({ messages, onMessagesChange: setMessages });
+  const { send, isTyping, error } = useChatStream({ messages, onMessagesChange: setMessages });
+  const { profile } = useStudentProfile();
 
   const history = useMemo(() => buildSessionHistory(messages), [messages]);
   const followUps = useMemo(() => deriveFollowUpQuestions(messages), [messages]);
+
+  const isOutOfScope = (message: Message) =>
+    message.statusCode === 'NOT_IN_HUSC_SCOPE' ||
+    message.statusCode === 'HUSC_ENTITY_NOT_FOUND';
+
+  const isNoActiveRelease = error === LOCALIZED_ERROR_COPY.no_active_release;
 
   const handleSendMessage = useCallback(
     (content: string) => {
@@ -107,14 +117,6 @@ export function ChatLayout() {
     setIsSidebarOpen(false);
   }, []);
 
-  const ROADMAP_STEPS = [
-    { title: 'Chọn ngành và tổ hợp', detail: 'Đủ điểm chuẩn CNTT (24.50) và Quản trị kinh doanh (23.75)', status: 'done' as const },
-    { title: 'Chọn phương thức xét tuyển', detail: 'Xét điểm thi tốt nghiệp hoặc xét tuyển thẳng IELTS ≥ 6.0', status: 'done' as const },
-    { title: 'Chuẩn bị hồ sơ ưu tiên', detail: 'Nộp minh chứng trước 30/06/2026', status: 'done' as const },
-    { title: 'Đăng ký nguyện vọng', detail: 'Cần đặt CNTT là nguyện vọng 1 trên Cổng Bộ GD&ĐT', status: 'current' as const },
-    { title: 'Xác nhận nhập học', detail: 'Chuẩn bị học phí học kỳ I khoảng 7.250.000 đ', status: 'pending' as const },
-  ];
-
   return (
     <div className="flex h-screen w-full bg-[#F3F5F9]">
       {/* Rail trái 320 — ẩn trên mobile, cột chat lấp đầy khung nhìn */}
@@ -130,6 +132,20 @@ export function ChatLayout() {
         <AnimatePresence>
           {!readiness.ready && <WarmingBanner stage={readiness.stage} />}
         </AnimatePresence>
+
+        {/* Vietnamese retry banner for 503 NO_ACTIVE_RELEASE: no white screen.
+            Shown when the BE reports that no admission release is currently active. */}
+        {isNoActiveRelease && (
+          <div className="mx-4 mt-3 px-4 py-2 rounded-xl border-2 border-[#FCA5A5] bg-[#FEF2F2] text-[#991B1B] text-sm font-semibold flex items-center gap-2" role="status" aria-live="polite">
+            <span>⚠️ {LOCALIZED_ERROR_COPY.no_active_release}</span>
+          </div>
+        )}
+
+        {/* Hồ sơ thí sinh ẩn danh + lộ trình (khung Frame 12). */}
+        <div className="mx-4 mt-3 space-y-3">
+          <StudentProfileForm />
+          <RoadmapPanel />
+        </div>
 
         {/* Lịch sử phiên — phục hồi hành vi từ HEAD (test ids luôn có mặt trong DOM). */}
         <ChatSidebar
@@ -158,6 +174,8 @@ export function ChatLayout() {
             <div key={message.id} data-message-id={message.id}>
               {message.role === 'user' ? (
                 <ChatUserBubble key={message.id} message={message} />
+              ) : isOutOfScope(message) ? (
+                <OutOfScopeCard key={message.id} />
               ) : (
                 <ChatBotBubble
                   key={message.id}
@@ -169,9 +187,6 @@ export function ChatLayout() {
               )}
             </div>
           ))}
-
-          {/* Lộ trình 5 bước xuất hiện sau khi có cuộc trò chuyện */}
-          {messages.length > 0 && <ChatRoadmap steps={ROADMAP_STEPS} readyCount={3} />}
 
           {followUps.length > 0 && !isTyping && (
             <SuggestedQuestions questions={followUps} onSelect={handleTopicSelect} />
