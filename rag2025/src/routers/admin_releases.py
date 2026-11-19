@@ -34,7 +34,7 @@ from src.domain.admin_identity import AdminAction, Identity
 from src.infrastructure.sql_record_store import SqlRecordStore
 from src.routers.admin_auth import current_identity, require_action
 
-router = APIRouter(prefix="/admin", tags=["admin-releases"])
+router = APIRouter(tags=["admin-releases"])
 
 
 class ReleaseCreateRequest(BaseModel):

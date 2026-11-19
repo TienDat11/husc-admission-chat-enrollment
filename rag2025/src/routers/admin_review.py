@@ -18,7 +18,7 @@ from src.infrastructure.sql_record_store import SqlRecordStore
 from src.routers.admin_auth import current_identity, require_action
 from src.services.retrieval_sandbox import Chunk, Query, compute_diff
 
-router = APIRouter(prefix="/admin", tags=["admin-review"])
+router = APIRouter(tags=["admin-review"])
 
 
 class RetrievalPreviewRequest(BaseModel):

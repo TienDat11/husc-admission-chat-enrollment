@@ -19,146 +19,6 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
-    "/admin/admin/records/batch-transition": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Batch Transition
-         * @description Apply many record transitions in one transaction.
-         */
-        post: operations["batch_transition_admin_admin_records_batch_transition_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/admin/releases": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Releases */
-        get: operations["list_releases_admin_admin_releases_get"];
-        put?: never;
-        /** Create Release */
-        post: operations["create_release_admin_admin_releases_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/admin/releases/{release_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Release */
-        get: operations["get_release_admin_admin_releases__release_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/admin/releases/{release_id}/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Activate Release */
-        post: operations["activate_release_admin_admin_releases__release_id__activate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/admin/releases/{release_id}/rollback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Rollback Release */
-        post: operations["rollback_release_admin_admin_releases__release_id__rollback_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/admin/retrieval-preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Retrieval Preview */
-        post: operations["retrieval_preview_admin_admin_retrieval_preview_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/admin/supersession-candidates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Supersession Candidates */
-        get: operations["list_supersession_candidates_admin_admin_supersession_candidates_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/admin/supersession-candidates/{candidate_id}/decision": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Decide Supersession */
-        post: operations["decide_supersession_admin_admin_supersession_candidates__candidate_id__decision_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/admin/audit/events": {
         parameters: {
             query?: never;
@@ -525,6 +385,26 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/admin/previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Preview
+         * @description Build and persist a chunk preview for one record version.
+         */
+        post: operations["create_preview_admin_previews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/records": {
         parameters: {
             query?: never;
@@ -547,6 +427,26 @@ export type paths = {
          * @description Store a new canonical record as version 1 (draft).
          */
         post: operations["create_record_admin_records_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/records/batch-transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Transition
+         * @description Apply many record transitions in one transaction.
+         */
+        post: operations["batch_transition_admin_records_batch_transition_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -733,16 +633,62 @@ export type paths = {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Release Status
-         * @description Which release is active, and which one is behind it.
-         *
-         *     Read-only: the pointer and the manifests, straight off disk. The previous
-         *     release is the one a targetless ``POST /admin/rollback`` would move to.
-         */
-        get: operations["get_release_status_admin_releases_get"];
+        /** List Releases */
+        get: operations["list_releases_admin_releases_get"];
+        put?: never;
+        /** Create Release */
+        post: operations["create_release_admin_releases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/releases/{release_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Release */
+        get: operations["get_release_admin_releases__release_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/releases/{release_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Release */
+        post: operations["activate_release_admin_releases__release_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/releases/{release_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rollback Release */
+        post: operations["rollback_release_admin_releases__release_id__rollback_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -776,6 +722,23 @@ export type paths = {
          *     explicit ``force_while_in_flight`` swaps past a timeout.
          */
         post: operations["reload_table_admin_reload_table_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/retrieval-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retrieval Preview */
+        post: operations["retrieval_preview_admin_retrieval_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1073,6 +1036,129 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/admin/source-documents/{document_id}/blocks/{block_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Block
+         * @description Edit a block's content / pasted Excel TSV / assigned coordinate_key.
+         *
+         *     Optimistic concurrency via ``expected_version`` (409 VERSION_CONFLICT when
+         *     stale). Assigning a ``coordinate_key`` to an unanchored record creates the
+         *     canonical record at version 1 (draft) and withdraws the quarantined record.
+         */
+        patch: operations["patch_block_admin_source_documents__document_id__blocks__block_id__patch"];
+        trace?: never;
+    };
+    "/admin/source-documents/{document_id}/blocks/{block_id}/insert-missing-rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Insert Missing Rows
+         * @description 1-click insertion of ``payload.missing_pypdf_rows`` into the block's table data.
+         *
+         *     Marks the block resolved and clears ``TABLE_CELL_DROP_SUSPECTED``.
+         */
+        post: operations["insert_missing_rows_admin_source_documents__document_id__blocks__block_id__insert_missing_rows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/source-documents/{document_id}/exceptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Exceptions
+         * @description List the exception blocks and quarantined unanchored records of a document.
+         */
+        get: operations["list_exceptions_admin_source_documents__document_id__exceptions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/source-documents/{document_id}/reocr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reocr
+         * @description Re-OCR the requested pages only, via rapidocr through the page router.
+         *
+         *     Creates/enqueues a ``reocr`` parse job in ``ingestion_jobs`` and returns
+         *     HTTP 202 with ``{job_id, state, page_numbers}``.
+         */
+        post: operations["reocr_admin_source_documents__document_id__reocr_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/supersession-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Supersession Candidates */
+        get: operations["list_supersession_candidates_admin_supersession_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/supersession-candidates/{candidate_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Supersession */
+        post: operations["decide_supersession_admin_supersession_candidates__candidate_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/unanswered/": {
         parameters: {
             query?: never;
@@ -1339,6 +1425,23 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/v2/admission-roadmap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admission Roadmap */
+        get: operations["get_admission_roadmap_v2_admission_roadmap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/compare": {
         parameters: {
             query?: never;
@@ -1504,6 +1607,25 @@ export type paths = {
          */
         post: operations["post_recommend_v2_recommend_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/student-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Student Profile */
+        get: operations["get_student_profile_v2_student_profile_get"];
+        /** Put Student Profile */
+        put: operations["put_student_profile_v2_student_profile_put"];
+        post?: never;
+        /** Delete Student Profile */
+        delete: operations["delete_student_profile_v2_student_profile_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1768,6 +1890,37 @@ export type components = {
             statuses: string[];
             /** Unregistered Count */
             unregistered_count: number;
+        };
+        /** BlockView */
+        BlockView: {
+            /** Block Id */
+            block_id: string;
+            /** Block Type */
+            block_type: string;
+            /** Coordinate Key */
+            coordinate_key?: string | null;
+            /** Document Id */
+            document_id: string;
+            /**
+             * Missing Pypdf Rows
+             * @default []
+             */
+            missing_pypdf_rows: string[][];
+            /** Ordinal */
+            ordinal: number;
+            /** Page */
+            page: number;
+            /** State */
+            state?: string | null;
+            /** Text */
+            text: string;
+            /** Version */
+            version: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /** Body_upload_source_document_admin_source_documents_upload_post */
         Body_upload_source_document_admin_source_documents_upload_post: {
@@ -2338,6 +2491,20 @@ export type components = {
                 [key: string]: unknown;
             } | null;
         };
+        /** ExceptionsListResponse */
+        ExceptionsListResponse: {
+            /** Blocks */
+            blocks: components["schemas"]["BlockView"][];
+            /** Document Id */
+            document_id: string;
+            /**
+             * Unanchored
+             * @default []
+             */
+            unanchored: {
+                [key: string]: unknown;
+            }[];
+        };
         /** FeedbackItem */
         FeedbackItem: {
             /** Answered At */
@@ -2590,6 +2757,25 @@ export type components = {
             /** Reindex Reason */
             reindex_reason: string;
         };
+        /** InsertMissingRowsRequest */
+        InsertMissingRowsRequest: {
+            /** Expected Version */
+            expected_version?: number | null;
+        };
+        /** InsertMissingRowsResponse */
+        InsertMissingRowsResponse: {
+            /** Block Id */
+            block_id: string;
+            /**
+             * Cleared Blockers
+             * @default []
+             */
+            cleared_blockers: string[];
+            /** Inserted */
+            inserted: number;
+            /** State */
+            state: string;
+        };
         /** JobSummary */
         JobSummary: {
             /** Attempt */
@@ -2725,17 +2911,78 @@ export type components = {
             /** Unanswered Overdue Count */
             unanswered_overdue_count: number;
         };
-        /** PreviewRequest */
-        PreviewRequest: {
-            /** Query */
-            query: string;
+        /** PatchBlockRequest */
+        PatchBlockRequest: {
+            /** Content */
+            content?: string | null;
+            /** Coordinate Key */
+            coordinate_key?: string | null;
+            /** Expected Version */
+            expected_version?: number | null;
+            /** Table Tsv */
+            table_tsv?: string | null;
+        };
+        /** PatchBlockResponse */
+        PatchBlockResponse: {
+            /** Block Id */
+            block_id: string;
             /**
-             * Top K
-             * @default 5
+             * Cleared Blockers
+             * @default []
              */
-            top_k: number;
-            /** Version */
-            version?: number | null;
+            cleared_blockers: string[];
+            /** Record */
+            record?: {
+                [key: string]: unknown;
+            } | null;
+            /** State */
+            state: string;
+        };
+        /** PreviewItem */
+        PreviewItem: {
+            /** Chunk Id */
+            chunk_id: string;
+            /**
+             * Metadata
+             * @default {}
+             */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Ordinal */
+            ordinal: number;
+            /** Parent Unit Id */
+            parent_unit_id?: string | null;
+            /** Record Id */
+            record_id: string;
+            /** Record Version */
+            record_version: number;
+            /** Text */
+            text: string;
+            /** Token Count */
+            token_count: number;
+        };
+        /** PreviewResponse */
+        PreviewResponse: {
+            /** Histogram */
+            histogram: {
+                [key: string]: number;
+            };
+            /** Items */
+            items: components["schemas"]["PreviewItem"][];
+            /** Preview Id */
+            preview_id: string;
+            /** Record Id */
+            record_id: string;
+            /** Record Version */
+            record_version: number;
+            /** Status */
+            status: string;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /** PromoteGoldenBody */
         PromoteGoldenBody: {
@@ -3090,6 +3337,20 @@ export type components = {
             /** Total Ms */
             total_ms: number;
         };
+        /** ReocrRequest */
+        ReocrRequest: {
+            /** Page Numbers */
+            page_numbers: number[];
+        };
+        /** ReocrResponse */
+        ReocrResponse: {
+            /** Job Id */
+            job_id: string;
+            /** Page Numbers */
+            page_numbers: number[];
+            /** State */
+            state: string;
+        };
         /**
          * ResolveConflictRequest
          * @description The decision body: the winning source and the reason.
@@ -3281,6 +3542,70 @@ export type components = {
             updated_at: string;
             /** Updated By */
             updated_by: string;
+        };
+        /** StudentProfileOut */
+        StudentProfileOut: {
+            /** Admission Year */
+            admission_year: number | null;
+            /** Created At */
+            created_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Method */
+            method: string | null;
+            /** Raw Score */
+            raw_score: number | null;
+            /** Student Session Id */
+            student_session_id: string;
+            /** Target Majors */
+            target_majors: string[];
+            /** To Hop */
+            to_hop: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /** Uu Tien Dt */
+            uu_tien_dt: string | null;
+            /** Uu Tien Kv */
+            uu_tien_kv: string | null;
+        };
+        /** StudentProfileUpsert */
+        StudentProfileUpsert: {
+            /**
+             * Admission Year
+             * @description Năm tuyển sinh
+             */
+            admission_year?: number | null;
+            /**
+             * Method
+             * @description Phương thức xét tuyển
+             */
+            method?: string | null;
+            /**
+             * Raw Score
+             * @description Điểm thi tốt nghiệp thang 30 (0–30)
+             */
+            raw_score?: number | string | null;
+            /**
+             * Target Majors
+             * @description Danh sách mã ngành mục tiêu
+             * @default []
+             */
+            target_majors: string[];
+            /**
+             * To Hop
+             * @description Tổ hợp môn
+             */
+            to_hop?: string | null;
+            /**
+             * Uu Tien Dt
+             * @description Ưu tiên đối tượng
+             */
+            uu_tien_dt?: string | null;
+            /**
+             * Uu Tien Kv
+             * @description Ưu tiên khu vực
+             */
+            uu_tien_kv?: string | null;
         };
         /** SupersessionCandidate */
         SupersessionCandidate: {
@@ -3672,6 +3997,25 @@ export type components = {
             /** Target Release Id */
             target_release_id?: string | null;
         };
+        /** PreviewRequest */
+        routers__admin_preview__PreviewRequest: {
+            /** Query */
+            query: string;
+            /**
+             * Top K
+             * @default 5
+             */
+            top_k: number;
+            /** Version */
+            version?: number | null;
+        };
+        /** PreviewRequest */
+        src__routers__admin_previews__PreviewRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Record Id */
+            record_id: string;
+        };
         /** RollbackRequest */
         src__routers__admin_releases__RollbackRequest: {
             /** Reason */
@@ -3704,315 +4048,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-        };
-    };
-    batch_transition_admin_admin_records_batch_transition_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Admin-Token"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BatchTransitionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BatchTransitionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_releases_admin_admin_releases_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Admin-Token"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReleaseView"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_release_admin_admin_releases_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Admin-Token"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReleaseCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReleaseView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_release_admin_admin_releases__release_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Admin-Token"?: string | null;
-            };
-            path: {
-                release_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReleaseView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    activate_release_admin_admin_releases__release_id__activate_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Admin-Token"?: string | null;
-            };
-            path: {
-                release_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReleaseView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    rollback_release_admin_admin_releases__release_id__rollback_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Admin-Token"?: string | null;
-            };
-            path: {
-                release_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["src__routers__admin_releases__RollbackRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReleaseView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    retrieval_preview_admin_admin_retrieval_preview_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Admin-Token"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RetrievalPreviewRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RetrievalPreviewResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_supersession_candidates_admin_admin_supersession_candidates_get: {
-        parameters: {
-            query?: {
-                status?: string;
-            };
-            header?: {
-                "X-Admin-Token"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SupersessionCandidate"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decide_supersession_admin_admin_supersession_candidates__candidate_id__decision_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "X-Admin-Token"?: string | null;
-            };
-            path: {
-                candidate_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DecisionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SupersessionCandidate"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4604,6 +4639,41 @@ export interface operations {
             };
         };
     };
+    create_preview_admin_previews_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["src__routers__admin_previews__PreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_records_admin_records_get: {
         parameters: {
             query?: {
@@ -4664,6 +4734,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LifecycleRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_transition_admin_records_batch_transition_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchTransitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchTransitionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4834,7 +4939,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PreviewRequest"];
+                "application/json": components["schemas"]["routers__admin_preview__PreviewRequest"];
             };
         };
         responses: {
@@ -4930,7 +5035,7 @@ export interface operations {
             };
         };
     };
-    get_release_status_admin_releases_get: {
+    list_releases_admin_releases_get: {
         parameters: {
             query?: never;
             header?: {
@@ -4947,7 +5052,145 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReleaseStatusResponse"];
+                    "application/json": components["schemas"]["ReleaseView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_release_admin_releases_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_release_admin_releases__release_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_release_admin_releases__release_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollback_release_admin_releases__release_id__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["src__routers__admin_releases__RollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseView"];
                 };
             };
             /** @description Validation Error */
@@ -4983,6 +5226,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReloadTableResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retrieval_preview_admin_retrieval_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetrievalPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetrievalPreviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5373,6 +5651,228 @@ export interface operations {
             };
         };
     };
+    patch_block_admin_source_documents__document_id__blocks__block_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                /** @description Repo-relative source document id */
+                document_id: string;
+                /** @description Block id */
+                block_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchBlockRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PatchBlockResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    insert_missing_rows_admin_source_documents__document_id__blocks__block_id__insert_missing_rows_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                /** @description Repo-relative source document id */
+                document_id: string;
+                /** @description Block id */
+                block_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InsertMissingRowsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsertMissingRowsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_exceptions_admin_source_documents__document_id__exceptions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                /** @description Repo-relative source document id */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionsListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reocr_admin_source_documents__document_id__reocr_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                /** @description Repo-relative source document id */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReocrRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReocrResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_supersession_candidates_admin_supersession_candidates_get: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupersessionCandidate"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_supersession_admin_supersession_candidates__candidate_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupersessionCandidate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_unanswered_admin_unanswered__get: {
         parameters: {
             query?: {
@@ -5692,6 +6192,26 @@ export interface operations {
             };
         };
     };
+    get_admission_roadmap_v2_admission_roadmap_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     compare_v2_compare_post: {
         parameters: {
             query?: never;
@@ -5911,6 +6431,77 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_student_profile_v2_student_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentProfileOut"];
+                };
+            };
+        };
+    };
+    put_student_profile_v2_student_profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudentProfileUpsert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_student_profile_v2_student_profile_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

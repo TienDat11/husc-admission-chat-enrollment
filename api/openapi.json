@@ -435,6 +435,90 @@
         "title": "BlindCitationListView",
         "type": "object"
       },
+      "BlockView": {
+        "properties": {
+          "block_id": {
+            "title": "Block Id",
+            "type": "string"
+          },
+          "block_type": {
+            "title": "Block Type",
+            "type": "string"
+          },
+          "coordinate_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinate Key"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "missing_pypdf_rows": {
+            "default": [],
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Missing Pypdf Rows",
+            "type": "array"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "block_id",
+          "document_id",
+          "page",
+          "ordinal",
+          "block_type",
+          "text",
+          "version"
+        ],
+        "title": "BlockView",
+        "type": "object"
+      },
       "Body_upload_source_document_admin_source_documents_upload_post": {
         "properties": {
           "file": {
@@ -1597,6 +1681,36 @@
         "title": "EditRecordRequest",
         "type": "object"
       },
+      "ExceptionsListResponse": {
+        "properties": {
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/BlockView"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "unanchored": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Unanchored",
+            "type": "array"
+          }
+        },
+        "required": [
+          "document_id",
+          "blocks"
+        ],
+        "title": "ExceptionsListResponse",
+        "type": "object"
+      },
       "FeedbackItem": {
         "properties": {
           "answered_at": {
@@ -2144,6 +2258,55 @@
         "title": "IndexJobsResponse",
         "type": "object"
       },
+      "InsertMissingRowsRequest": {
+        "properties": {
+          "expected_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          }
+        },
+        "title": "InsertMissingRowsRequest",
+        "type": "object"
+      },
+      "InsertMissingRowsResponse": {
+        "properties": {
+          "block_id": {
+            "title": "Block Id",
+            "type": "string"
+          },
+          "cleared_blockers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cleared Blockers",
+            "type": "array"
+          },
+          "inserted": {
+            "title": "Inserted",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "block_id",
+          "inserted",
+          "state"
+        ],
+        "title": "InsertMissingRowsResponse",
+        "type": "object"
+      },
       "JobSummary": {
         "properties": {
           "attempt": {
@@ -2461,22 +2624,31 @@
         "title": "OverviewResponse",
         "type": "object"
       },
-      "PreviewRequest": {
+      "PatchBlockRequest": {
         "properties": {
-          "query": {
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Query",
-            "type": "string"
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
           },
-          "top_k": {
-            "default": 5,
-            "maximum": 20.0,
-            "minimum": 1.0,
-            "title": "Top K",
-            "type": "integer"
+          "coordinate_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinate Key"
           },
-          "version": {
+          "expected_version": {
             "anyOf": [
               {
                 "minimum": 1.0,
@@ -2486,13 +2658,166 @@
                 "type": "null"
               }
             ],
-            "title": "Version"
+            "title": "Expected Version"
+          },
+          "table_tsv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Tsv"
+          }
+        },
+        "title": "PatchBlockRequest",
+        "type": "object"
+      },
+      "PatchBlockResponse": {
+        "properties": {
+          "block_id": {
+            "title": "Block Id",
+            "type": "string"
+          },
+          "cleared_blockers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cleared Blockers",
+            "type": "array"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
           }
         },
         "required": [
-          "query"
+          "block_id",
+          "state"
         ],
-        "title": "PreviewRequest",
+        "title": "PatchBlockResponse",
+        "type": "object"
+      },
+      "PreviewItem": {
+        "properties": {
+          "chunk_id": {
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Metadata",
+            "type": "object"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "parent_unit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Unit Id"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "token_count": {
+            "title": "Token Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "record_id",
+          "record_version",
+          "ordinal",
+          "text",
+          "token_count"
+        ],
+        "title": "PreviewItem",
+        "type": "object"
+      },
+      "PreviewResponse": {
+        "properties": {
+          "histogram": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Histogram",
+            "type": "object"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "preview_id": {
+            "title": "Preview Id",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "preview_id",
+          "record_id",
+          "record_version",
+          "status",
+          "items",
+          "histogram"
+        ],
+        "title": "PreviewResponse",
         "type": "object"
       },
       "PromoteGoldenBody": {
@@ -3250,6 +3575,49 @@
         "title": "ReloadTableResponse",
         "type": "object"
       },
+      "ReocrRequest": {
+        "properties": {
+          "page_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Page Numbers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "page_numbers"
+        ],
+        "title": "ReocrRequest",
+        "type": "object"
+      },
+      "ReocrResponse": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "page_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Page Numbers",
+            "type": "array"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "state",
+          "page_numbers"
+        ],
+        "title": "ReocrResponse",
+        "type": "object"
+      },
       "ResolveConflictRequest": {
         "description": "The decision body: the winning source and the reason.\n\n``actor`` is deliberately absent — the event's actor comes from the\ncredential, never from the body.",
         "properties": {
@@ -3665,6 +4033,226 @@
           "notes"
         ],
         "title": "SourceDocumentView",
+        "type": "object"
+      },
+      "StudentProfileOut": {
+        "properties": {
+          "admission_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admission Year"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "raw_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Score"
+          },
+          "student_session_id": {
+            "title": "Student Session Id",
+            "type": "string"
+          },
+          "target_majors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Majors",
+            "type": "array"
+          },
+          "to_hop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Hop"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "uu_tien_dt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uu Tien Dt"
+          },
+          "uu_tien_kv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uu Tien Kv"
+          }
+        },
+        "required": [
+          "student_session_id",
+          "raw_score",
+          "method",
+          "to_hop",
+          "uu_tien_kv",
+          "uu_tien_dt",
+          "target_majors",
+          "admission_year",
+          "created_at",
+          "updated_at",
+          "expires_at"
+        ],
+        "title": "StudentProfileOut",
+        "type": "object"
+      },
+      "StudentProfileUpsert": {
+        "properties": {
+          "admission_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Năm tuyển sinh",
+            "title": "Admission Year"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Phương thức xét tuyển",
+            "title": "Method"
+          },
+          "raw_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Điểm thi tốt nghiệp thang 30 (0–30)",
+            "title": "Raw Score"
+          },
+          "target_majors": {
+            "default": [],
+            "description": "Danh sách mã ngành mục tiêu",
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Majors",
+            "type": "array"
+          },
+          "to_hop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tổ hợp môn",
+            "title": "To Hop"
+          },
+          "uu_tien_dt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ưu tiên đối tượng",
+            "title": "Uu Tien Dt"
+          },
+          "uu_tien_kv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ưu tiên khu vực",
+            "title": "Uu Tien Kv"
+          }
+        },
+        "title": "StudentProfileUpsert",
         "type": "object"
       },
       "SupersessionCandidate": {
@@ -4567,6 +5155,60 @@
         "title": "RollbackRequest",
         "type": "object"
       },
+      "routers__admin_preview__PreviewRequest": {
+        "properties": {
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 5,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "PreviewRequest",
+        "type": "object"
+      },
+      "src__routers__admin_previews__PreviewRequest": {
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "record_id": {
+            "minLength": 1,
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "expected_version"
+        ],
+        "title": "PreviewRequest",
+        "type": "object"
+      },
       "src__routers__admin_releases__RollbackRequest": {
         "properties": {
           "reason": {
@@ -4609,559 +5251,6 @@
           }
         },
         "summary": "Root"
-      }
-    },
-    "/admin/admin/records/batch-transition": {
-      "post": {
-        "description": "Apply many record transitions in one transaction.",
-        "operationId": "batch_transition_admin_admin_records_batch_transition_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-Admin-Token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BatchTransitionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BatchTransitionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Batch Transition",
-        "tags": [
-          "admin",
-          "admin-batch"
-        ]
-      }
-    },
-    "/admin/admin/releases": {
-      "get": {
-        "operationId": "list_releases_admin_admin_releases_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-Admin-Token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ReleaseView"
-                  },
-                  "title": "Response List Releases Admin Admin Releases Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Releases",
-        "tags": [
-          "admin",
-          "admin-releases"
-        ]
-      },
-      "post": {
-        "operationId": "create_release_admin_admin_releases_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-Admin-Token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReleaseCreateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReleaseView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Release",
-        "tags": [
-          "admin",
-          "admin-releases"
-        ]
-      }
-    },
-    "/admin/admin/releases/{release_id}": {
-      "get": {
-        "operationId": "get_release_admin_admin_releases__release_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "release_id",
-            "required": true,
-            "schema": {
-              "title": "Release Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Admin-Token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReleaseView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Release",
-        "tags": [
-          "admin",
-          "admin-releases"
-        ]
-      }
-    },
-    "/admin/admin/releases/{release_id}/activate": {
-      "post": {
-        "operationId": "activate_release_admin_admin_releases__release_id__activate_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "release_id",
-            "required": true,
-            "schema": {
-              "title": "Release Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Admin-Token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReleaseView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Activate Release",
-        "tags": [
-          "admin",
-          "admin-releases"
-        ]
-      }
-    },
-    "/admin/admin/releases/{release_id}/rollback": {
-      "post": {
-        "operationId": "rollback_release_admin_admin_releases__release_id__rollback_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "release_id",
-            "required": true,
-            "schema": {
-              "title": "Release Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Admin-Token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/src__routers__admin_releases__RollbackRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReleaseView"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Rollback Release",
-        "tags": [
-          "admin",
-          "admin-releases"
-        ]
-      }
-    },
-    "/admin/admin/retrieval-preview": {
-      "post": {
-        "operationId": "retrieval_preview_admin_admin_retrieval_preview_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-Admin-Token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RetrievalPreviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RetrievalPreviewResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Retrieval Preview",
-        "tags": [
-          "admin",
-          "admin-review"
-        ]
-      }
-    },
-    "/admin/admin/supersession-candidates": {
-      "get": {
-        "operationId": "list_supersession_candidates_admin_admin_supersession_candidates_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "default": "open",
-              "title": "Status",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Admin-Token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/SupersessionCandidate"
-                  },
-                  "title": "Response List Supersession Candidates Admin Admin Supersession Candidates Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Supersession Candidates",
-        "tags": [
-          "admin",
-          "admin-review"
-        ]
-      }
-    },
-    "/admin/admin/supersession-candidates/{candidate_id}/decision": {
-      "post": {
-        "operationId": "decide_supersession_admin_admin_supersession_candidates__candidate_id__decision_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "candidate_id",
-            "required": true,
-            "schema": {
-              "title": "Candidate Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Admin-Token",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Admin-Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DecisionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SupersessionCandidate"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Decide Supersession",
-        "tags": [
-          "admin",
-          "admin-review"
-        ]
       }
     },
     "/admin/audit/events": {
@@ -6242,6 +6331,67 @@
         ]
       }
     },
+    "/admin/previews": {
+      "post": {
+        "description": "Build and persist a chunk preview for one record version.",
+        "operationId": "create_preview_admin_previews_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/src__routers__admin_previews__PreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Preview",
+        "tags": [
+          "admin",
+          "admin-previews"
+        ]
+      }
+    },
     "/admin/records": {
       "get": {
         "description": "Every stored record's latest version, filtered by ngành / năm / trạng thái.\n\nFilters combine with AND; an absent filter matches everything. Newest\nadmission year first, then ``record_id`` — a total order, so the same store\nlists in the same order on every call.",
@@ -6404,6 +6554,67 @@
         "summary": "Create Record",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/admin/records/batch-transition": {
+      "post": {
+        "description": "Apply many record transitions in one transaction.",
+        "operationId": "batch_transition_admin_records_batch_transition_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchTransitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Batch Transition",
+        "tags": [
+          "admin",
+          "admin-batch"
         ]
       }
     },
@@ -6716,7 +6927,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PreviewRequest"
+                "$ref": "#/components/schemas/routers__admin_preview__PreviewRequest"
               }
             }
           },
@@ -6882,8 +7093,7 @@
     },
     "/admin/releases": {
       "get": {
-        "description": "Which release is active, and which one is behind it.\n\nRead-only: the pointer and the manifests, straight off disk. The previous\nrelease is the one a targetless ``POST /admin/rollback`` would move to.",
-        "operationId": "get_release_status_admin_releases_get",
+        "operationId": "list_releases_admin_releases_get",
         "parameters": [
           {
             "in": "header",
@@ -6907,7 +7117,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReleaseStatusResponse"
+                  "items": {
+                    "$ref": "#/components/schemas/ReleaseView"
+                  },
+                  "title": "Response List Releases Admin Releases Get",
+                  "type": "array"
                 }
               }
             },
@@ -6924,9 +7138,255 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Release Status",
+        "summary": "List Releases",
         "tags": [
-          "admin"
+          "admin",
+          "admin-releases"
+        ]
+      },
+      "post": {
+        "operationId": "create_release_admin_releases_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Release",
+        "tags": [
+          "admin",
+          "admin-releases"
+        ]
+      }
+    },
+    "/admin/releases/{release_id}": {
+      "get": {
+        "operationId": "get_release_admin_releases__release_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Release",
+        "tags": [
+          "admin",
+          "admin-releases"
+        ]
+      }
+    },
+    "/admin/releases/{release_id}/activate": {
+      "post": {
+        "operationId": "activate_release_admin_releases__release_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Release",
+        "tags": [
+          "admin",
+          "admin-releases"
+        ]
+      }
+    },
+    "/admin/releases/{release_id}/rollback": {
+      "post": {
+        "operationId": "rollback_release_admin_releases__release_id__rollback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/src__routers__admin_releases__RollbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Release",
+        "tags": [
+          "admin",
+          "admin-releases"
         ]
       }
     },
@@ -6987,6 +7447,66 @@
         "summary": "Reload Table",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/admin/retrieval-preview": {
+      "post": {
+        "operationId": "retrieval_preview_admin_retrieval_preview_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrievalPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetrievalPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retrieval Preview",
+        "tags": [
+          "admin",
+          "admin-review"
         ]
       }
     },
@@ -7659,6 +8179,439 @@
         ]
       }
     },
+    "/admin/source-documents/{document_id}/blocks/{block_id}": {
+      "patch": {
+        "description": "Edit a block's content / pasted Excel TSV / assigned coordinate_key.\n\nOptimistic concurrency via ``expected_version`` (409 VERSION_CONFLICT when\nstale). Assigning a ``coordinate_key`` to an unanchored record creates the\ncanonical record at version 1 (draft) and withdraws the quarantined record.",
+        "operationId": "patch_block_admin_source_documents__document_id__blocks__block_id__patch",
+        "parameters": [
+          {
+            "description": "Repo-relative source document id",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "Repo-relative source document id",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Block id",
+            "in": "path",
+            "name": "block_id",
+            "required": true,
+            "schema": {
+              "description": "Block id",
+              "title": "Block Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatchBlockResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Block",
+        "tags": [
+          "admin",
+          "admin-exceptions"
+        ]
+      }
+    },
+    "/admin/source-documents/{document_id}/blocks/{block_id}/insert-missing-rows": {
+      "post": {
+        "description": "1-click insertion of ``payload.missing_pypdf_rows`` into the block's table data.\n\nMarks the block resolved and clears ``TABLE_CELL_DROP_SUSPECTED``.",
+        "operationId": "insert_missing_rows_admin_source_documents__document_id__blocks__block_id__insert_missing_rows_post",
+        "parameters": [
+          {
+            "description": "Repo-relative source document id",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "Repo-relative source document id",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Block id",
+            "in": "path",
+            "name": "block_id",
+            "required": true,
+            "schema": {
+              "description": "Block id",
+              "title": "Block Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InsertMissingRowsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsertMissingRowsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Insert Missing Rows",
+        "tags": [
+          "admin",
+          "admin-exceptions"
+        ]
+      }
+    },
+    "/admin/source-documents/{document_id}/exceptions": {
+      "get": {
+        "description": "List the exception blocks and quarantined unanchored records of a document.",
+        "operationId": "list_exceptions_admin_source_documents__document_id__exceptions_get",
+        "parameters": [
+          {
+            "description": "Repo-relative source document id",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "Repo-relative source document id",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionsListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Exceptions",
+        "tags": [
+          "admin",
+          "admin-exceptions"
+        ]
+      }
+    },
+    "/admin/source-documents/{document_id}/reocr": {
+      "post": {
+        "description": "Re-OCR the requested pages only, via rapidocr through the page router.\n\nCreates/enqueues a ``reocr`` parse job in ``ingestion_jobs`` and returns\nHTTP 202 with ``{job_id, state, page_numbers}``.",
+        "operationId": "reocr_admin_source_documents__document_id__reocr_post",
+        "parameters": [
+          {
+            "description": "Repo-relative source document id",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "Repo-relative source document id",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReocrRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReocrResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reocr",
+        "tags": [
+          "admin",
+          "admin-exceptions"
+        ]
+      }
+    },
+    "/admin/supersession-candidates": {
+      "get": {
+        "operationId": "list_supersession_candidates_admin_supersession_candidates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SupersessionCandidate"
+                  },
+                  "title": "Response List Supersession Candidates Admin Supersession Candidates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Supersession Candidates",
+        "tags": [
+          "admin",
+          "admin-review"
+        ]
+      }
+    },
+    "/admin/supersession-candidates/{candidate_id}/decision": {
+      "post": {
+        "operationId": "decide_supersession_admin_supersession_candidates__candidate_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupersessionCandidate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Supersession",
+        "tags": [
+          "admin",
+          "admin-review"
+        ]
+      }
+    },
     "/admin/unanswered/": {
       "get": {
         "description": "Open unanswered questions, newest first.\n\nDefault excludes resolved items and out-of-scope items. Pass\n``resolved=true`` to also surface resolved rows.",
@@ -8150,6 +9103,25 @@
         "summary": "Query"
       }
     },
+    "/v2/admission-roadmap": {
+      "get": {
+        "operationId": "get_admission_roadmap_v2_admission_roadmap_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Admission Roadmap",
+        "tags": [
+          "student-profile"
+        ]
+      }
+    },
     "/v2/compare": {
       "post": {
         "description": "Build a same-year comparison table for several majors.\n\nThe comparison contract lives in :class:`ComparisonResponse`; read its\ndocstring for the three guarantees (same effective year, per-cell\nprovenance, missing cells marked not inferred).",
@@ -8424,6 +9396,78 @@
         "summary": "Post Recommend",
         "tags": [
           "recommender"
+        ]
+      }
+    },
+    "/v2/student-profile": {
+      "delete": {
+        "operationId": "delete_student_profile_v2_student_profile_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete Student Profile",
+        "tags": [
+          "student-profile"
+        ]
+      },
+      "get": {
+        "operationId": "get_student_profile_v2_student_profile_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Student Profile",
+        "tags": [
+          "student-profile"
+        ]
+      },
+      "put": {
+        "operationId": "put_student_profile_v2_student_profile_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentProfileUpsert"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Student Profile",
+        "tags": [
+          "student-profile"
         ]
       }
     },

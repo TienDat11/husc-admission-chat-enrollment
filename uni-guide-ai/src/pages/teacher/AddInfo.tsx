@@ -205,6 +205,7 @@ const AddInfo = () => {
               {stored.warnings.map((warning) => (
                 <p key={warning}>{warning}</p>
               ))}
+              <p><Link to="/quan-ly/them/ngoai-le" className="underline">Xử lý ngoại lệ bảng</Link></p>
             </div>
           ) : null}
 

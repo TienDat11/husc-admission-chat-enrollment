@@ -33,7 +33,7 @@ from src.services.admin_lifecycle import (
     VersionConflictError,
 )
 
-router = APIRouter(prefix="/admin", tags=["admin-batch"])
+router = APIRouter(tags=["admin-batch"])
 
 _MAX_BATCH = 110
 
