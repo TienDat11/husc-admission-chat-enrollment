@@ -17,7 +17,7 @@ import { StatusPill, type PillTone } from "@/components/ui-kit/StatusPill";
 
 const STEPS = ["1 Chọn tệp", "2 Kiểm tra", "3 Hỏi thử", "4 Gửi duyệt"];
 const STORAGE_KEY = "admin.addinfo.upload";
-const TERMINAL_STATES: Record<string, true> = { completed: true, failed_terminal: true, cancelled: true };
+const TERMINAL_STATES: Record<string, true> = { completed: true, ready_for_review: true, failed_terminal: true, cancelled: true };
 const POLL_MS = 2000;
 const NETWORK_MESSAGE = "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.";
 
@@ -49,6 +49,7 @@ function toStored(report: UploadReport, fileName: string): StoredUpload {
 
 const JOB_LABEL: Record<string, { label: string; tone: PillTone }> = {
   completed: { label: "Hoàn tất", tone: "ok" },
+  ready_for_review: { label: "Sẵn sàng duyệt", tone: "ok" },
   failed_terminal: { label: "Thất bại", tone: "blocked" },
   cancelled: { label: "Đã huỷ", tone: "muted" },
 };
@@ -151,7 +152,7 @@ const AddInfo = () => {
             <ExceptionBar title={duplicate.message} detail="Bạn có thể mở bản đã đăng ký hoặc chọn tệp khác.">
               <div className="flex flex-wrap gap-2">
                 <Link
-                  to="/quan-ly/kho"
+                  to={`/quan-ly/kho?source_document_id=${encodeURIComponent(duplicate.sourceDocumentId)}`}
                   className="inline-flex min-h-11 items-center rounded-md border border-zinc-400 bg-white px-4 font-semibold text-zinc-900"
                 >
                   Mở bản cũ

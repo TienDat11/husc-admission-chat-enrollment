@@ -2,6 +2,7 @@
 // (Frame 5). The sidebar badge "Chờ duyệt (n)" reads the same review_count.
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useAdminSession } from "@/hooks/useAdminSession";
 import { AdminApiError, fetchReleaseStatus } from "@/lib/adminApi";
 import { fetchAdminOverview } from "@/lib/adminOpsApi";
 import type { ApiFailure } from "@/lib/apiError";
@@ -13,9 +14,11 @@ function failureOf(error: unknown): ApiFailure | null {
 }
 
 const Overview = () => {
+  const { can } = useAdminSession();
   const overview = useQuery({
     queryKey: ["admin", "overview"],
     queryFn: () => fetchAdminOverview(null),
+    enabled: can("records.read"),
     retry: false,
   });
   const release = useQuery({
@@ -52,7 +55,7 @@ const Overview = () => {
           <li className="space-y-2 rounded-md border border-zinc-400 p-4">
             <h2 className="text-lg font-semibold">Chờ duyệt</h2>
             <p className="text-3xl font-bold">{counts.review_count}</p>
-            <Link className="text-base font-medium text-[#3730A3] underline" to="/quan-ly/cho-duyet">
+            <Link className="text-base font-medium text-[#143980] underline" to="/quan-ly/cho-duyet">
               Mở hàng chờ duyệt
             </Link>
           </li>
@@ -62,14 +65,14 @@ const Overview = () => {
             {counts.unanswered_overdue_count > 0 ? (
               <StatusPill tone="overdue" label={`${OVERDUE_LABEL}: ${counts.unanswered_overdue_count}`} />
             ) : null}
-            <Link className="text-base font-medium text-[#3730A3] underline" to="/quan-ly/cau-hoi">
+            <Link className="text-base font-medium text-[#143980] underline" to="/quan-ly/cau-hoi">
               Xem câu hỏi
             </Link>
           </li>
           <li className="space-y-2 rounded-md border border-zinc-400 p-4">
             <h2 className="text-lg font-semibold">Mâu thuẫn chưa phân xử</h2>
             <p className="text-3xl font-bold">{counts.open_blocker_count}</p>
-            <Link className="text-base font-medium text-[#3730A3] underline" to="/quan-ly/cho-duyet">
+            <Link className="text-base font-medium text-[#143980] underline" to="/quan-ly/cho-duyet">
               Xem mâu thuẫn
             </Link>
           </li>

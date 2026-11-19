@@ -47,7 +47,7 @@ const TeacherLayout = () => {
   const overview = useQuery({
     queryKey: ["admin", "overview"],
     queryFn: () => fetchAdminOverview(null),
-    enabled: status === "ready",
+    enabled: status === "ready" && can("records.read"),
     retry: false,
     refetchInterval: 30_000,
   });
