@@ -5224,14 +5224,11 @@
       "src__routers__admin_releases__RollbackRequest": {
         "properties": {
           "reason": {
-            "minLength": 10,
+            "default": "",
             "title": "Reason",
             "type": "string"
           }
         },
-        "required": [
-          "reason"
-        ],
         "title": "RollbackRequest",
         "type": "object"
       }

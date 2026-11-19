@@ -35,6 +35,7 @@ for p in (ROOT, SRC):
 from src.services.golden_gate import (  # noqa: E402
     GOLDEN_SEED_PATH,
     REQUIRED_MATRIX_COUNT,
+    _load_baseline,
     _load_seed,
     _matrix_complete,
     _matrix_rows,
@@ -463,3 +464,96 @@ def test_load_seed_accepts_jsonl_and_json_layouts(tmp_path, layout):
         path.write_text(json.dumps({"questions": rows}), encoding="utf-8")
 
     assert _load_seed(path) == rows
+
+
+# ---------------------------------------------------------------------------
+# H. one retrieval per question; citation by coordinate key and page; fail-closed baseline
+# ---------------------------------------------------------------------------
+class _MetaRetriever:
+    """``retrieve`` returns scripted documents with arbitrary metadata per question."""
+
+    def __init__(self, metas_by_question):
+        self._metas = metas_by_question
+        self.calls = 0
+
+    def retrieve(self, *, query_vector, top_k=None, query=None):
+        self.calls += 1
+        metas = self._metas.get(str(query), [])
+        docs = [
+            _RetrievedDocumentDouble(
+                text="chunk", source="s", chunk_id=f"c{i}", metadata=m, score=0.9
+            )
+            for i, m in enumerate(metas[:top_k])
+        ]
+        return _RetrievalResult(docs)
+
+
+def _gate_with_in_scope(tmp_path, row, metas_by_question, name="seed"):
+    """Full §PL-6.7 seed with ``q001`` replaced by ``row``."""
+    seed = _full_seed()
+    seed[0] = row
+    seed_path = tmp_path / f"{name}.jsonl"
+    seed_path.write_text(_seed_text(seed), encoding="utf-8")
+    baseline = tmp_path / f"{name}-baseline.json"
+    baseline.write_text("{}", encoding="utf-8")
+    return run_golden_gate(
+        release_id="rel-h",
+        retriever=_MetaRetriever(metas_by_question),
+        embedder=_ScriptedEmbedder(),
+        seed_path=seed_path,
+        baseline_path=baseline,
+    )
+
+
+def test_citation_accepts_colon_bearing_coordinate_keys(tmp_path):
+    key = "HOC_PHI:nganh:7480201:2026:none:all"
+    report = _gate_with_in_scope(
+        tmp_path,
+        _in_scope("q001", [key]),
+        {"q001": [{"record_id": key, "coordinate_keys": [key], "pages": []}]},
+    )
+
+    assert report.citation_precision == 1.0
+
+
+def test_citation_matches_document_page_pairs(tmp_path):
+    row = _in_scope("q001", ["K001"])
+    row["expected_pages"] = [{"document_id": "doc-a.pdf", "page": 3}]
+    on_page = {
+        "record_id": None,
+        "coordinate_keys": [],
+        "pages": [{"document_id": "doc-a.pdf", "page": 3}],
+    }
+    off_page = {
+        "record_id": "K001",
+        "coordinate_keys": [],
+        "pages": [{"document_id": "doc-a.pdf", "page": 9}],
+    }
+
+    matched = _gate_with_in_scope(tmp_path, row, {"q001": [on_page]}, name="match")
+    mixed = _gate_with_in_scope(tmp_path, row, {"q001": [on_page, off_page]}, name="mixed")
+
+    assert matched.citation_precision == 1.0
+    # off_page names an expected record id, but its page is not an expected page.
+    assert mixed.citation_precision == pytest.approx(0.5)
+
+
+def test_each_question_is_retrieved_exactly_once(tmp_path):
+    seed = _full_seed()
+    seed_path = tmp_path / "seed.jsonl"
+    seed_path.write_text(_seed_text(seed), encoding="utf-8")
+    retriever = _passing_retriever()
+
+    run_golden_gate(
+        release_id="rel-calls",
+        retriever=retriever,
+        embedder=_ScriptedEmbedder(),
+        seed_path=seed_path,
+    )
+
+    assert retriever.calls == len(seed)
+
+
+def test_missing_baseline_file_fails_closed(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        _load_baseline(tmp_path / "absent.json")

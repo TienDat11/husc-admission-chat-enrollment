@@ -1620,9 +1620,14 @@ async def _build_v2_query_payload(
     trace_id = str(uuid.uuid4())
     token = set_request_id(trace_id)
     try:
-        payload = await _build_v2_query_payload_inner(
-            request, raw_request, progress_cb, trace_id
+        # Copy before attaching per-session context: the inner payload can be the
+        # object held in query_cache, and one session's profile must never reach it.
+        payload = dict(
+            await _build_v2_query_payload_inner(
+                request, raw_request, progress_cb, trace_id
+            )
         )
+        payload.pop("student_profile", None)
         # Optional student profile context (Frame 12). Missing/invalid header ->
         # chat works as before. Present & valid + profile exists -> attach context.
         session_header = raw_request.headers.get("X-Student-Session")
@@ -2769,45 +2774,16 @@ async def feedback(
     """
     svc = getattr(raw_request.app.state, "unanswered_queue", None)
     engine = getattr(raw_request.app.state, "db_engine", None)
-    if svc is None and engine is None:
+    if engine is not None:
+        # SQL mode: the service writes chat_feedback (idempotent by trace_id,
+        # PII-redacted reason) and promotes negative ratings into the queue.
+        svc = UnansweredQueueService(engine=engine, data_dir=settings.CANONICAL_STORE_ROOT)
+    if svc is None:
         return FeedbackResponse(
             trace_id=request.trace_id,
             helpful=request.helpful,
             recorded=False,
             reason=request.reason,
-        )
-    if engine is not None:
-        # SQL mode (table 20 chat_feedback): persist with PII redacted on reason.
-        try:
-            factory = make_session_factory(engine)
-            async with factory() as conn:
-                await conn.execute(
-                    text(
-                        "INSERT INTO chat_feedback "
-                        "(feedback_id, trace_id, helpful, reason, answered_at, linked_item, release_id, created_at) "
-                        "VALUES (:feedback_id, :trace_id, :helpful, :reason, now(), false, NULL, now())"
-                    ),
-                    {
-                        "feedback_id": str(uuid.uuid4()),
-                        "trace_id": request.trace_id,
-                        "helpful": bool(request.helpful),
-                        "reason": redact_pii(request.reason) if request.reason else None,
-                    },
-                )
-                await conn.commit()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"chat_feedback insert failed: {exc}")
-            return FeedbackResponse(
-                trace_id=request.trace_id,
-                helpful=request.helpful,
-                recorded=False,
-                reason=request.reason,
-            )
-        return FeedbackResponse(
-            trace_id=request.trace_id,
-            helpful=request.helpful,
-            recorded=True,
-            reason=redact_pii(request.reason) if request.reason else None,
         )
     try:
         stored = await svc.feedback(
@@ -2818,6 +2794,16 @@ async def feedback(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        if engine is None:
+            raise
+        logger.warning(f"chat_feedback write failed: {exc}")
+        return FeedbackResponse(
+            trace_id=request.trace_id,
+            helpful=request.helpful,
+            recorded=False,
+            reason=request.reason,
+        )
     return FeedbackResponse(
         trace_id=stored["trace_id"],
         helpful=stored["helpful"],

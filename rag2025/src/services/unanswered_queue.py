@@ -375,7 +375,7 @@ class UnansweredQueueService:
                     "recorded": True,
                 }
             linked_item = False
-            if question is not None:
+            if not helpful and question:
                 item = await self._sql_push(question, trace_id, route, status_code)
                 linked_item = True
             await conn.execute(

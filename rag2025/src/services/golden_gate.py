@@ -19,8 +19,7 @@ hard-enforce the invariants that the advisory T06 check only warned about:
 A passing ``gating`` release moves to ``ready``; a failing one moves to
 ``gate_failed`` (which can never become ``active``).
 
-Reuses :func:`load_golden_set` (`:36`) and :func:`_top5_record_ids` (`:96`)
-from ``src/services/golden_retrieval_check.py``.
+Reuses :func:`load_golden_set` from ``src/services/golden_retrieval_check.py``.
 """
 
 from __future__ import annotations
@@ -32,7 +31,6 @@ from typing import Any, Mapping, Sequence
 
 from src.services.golden_retrieval_check import (  # noqa: E402
     GoldenRetrievalReport,
-    _top5_record_ids,
     load_golden_set,
 )
 
@@ -121,7 +119,7 @@ class GoldenGateReport:
 class _Chunk:
     record_id: str | None
     coordinate_keys: tuple[str, ...]
-    pages: tuple[tuple[str | None, int | None], ...]
+    pages: tuple[tuple[str, int], ...]
 
 
 def _load_seed(path: Path | None = None) -> list[dict[str, Any]]:
@@ -155,7 +153,8 @@ def _expected_record_ids(path: Path | None = None) -> list[dict[str, Any]]:
 def _load_baseline(path: Path | None = None) -> dict[str, Any]:
     p = path or Path(__file__).resolve().parents[2] / "eval" / "baseline_A1.json"
     if not p.is_file():
-        return {}
+        # Fail closed: a gate without its baseline floor cannot pass.
+        raise FileNotFoundError(f"baseline file not found: {p}")
     return json.loads(p.read_text(encoding="utf-8"))
 
 
@@ -231,27 +230,41 @@ def run_golden_gate(
         question = str(q.get("question") or "")
         qid = str(q.get("id") or "")
 
-        top5 = _top5_record_ids(retriever, embedder, question)
-        top5_chunks = _top5_chunks(retriever, embedder, question)
+        top10_chunks = _top_chunks(retriever, embedder, question, top_k=10)
+        top5_chunks = top10_chunks[:5]
+        top5 = _record_keys(top5_chunks)
+        top10 = _record_keys(top10_chunks)
 
         if group == "in_scope":
             expected = {str(k) for k in (q.get("expected_coordinate_keys") or [])}
             if not expected:
                 continue
+            expected_page_pairs = {
+                (str(p["document_id"]), int(p["page"]))
+                for p in (q.get("expected_pages") or [])
+                if isinstance(p, Mapping)
+                and p.get("document_id") is not None
+                and p.get("page") is not None
+            }
             in_scope_rows += 1
-            hit5 = bool(expected & top5)
-            hit10 = bool(expected & top5)  # top5 == top10 for the seam's top-k
-            if hit5:
+            if expected & top5:
                 in_scope_hits_5 += 1
-            if hit10:
+            if expected & top10:
                 in_scope_hits_10 += 1
-            # Citation precision by (document_id, page): count chunks returned
-            # whose (doc, page) matches an expected key's document/page.
+            # Citation precision over the top 5: a chunk with page metadata is
+            # relevant only when a page matches; otherwise its record id or
+            # coordinate keys must name an expected coordinate key.
             for ck in top5_chunks:
-                if ck.record_id is None:
+                if ck.record_id is None and not ck.coordinate_keys and not ck.pages:
                     continue
                 citation_returned += 1
-                if any(ck.record_id == ek.split(":")[0] for ek in expected):
+                if expected_page_pairs and ck.pages:
+                    relevant = bool(set(ck.pages) & expected_page_pairs)
+                else:
+                    relevant = (ck.record_id is not None and ck.record_id in expected) or bool(
+                        set(ck.coordinate_keys) & expected
+                    )
+                if relevant:
                     citation_relevant += 1
 
         elif group == "supersession":
@@ -321,10 +334,16 @@ def run_golden_gate(
     )
 
 
-def _top5_chunks(retriever: Any, embedder: Any, question: str) -> tuple[_Chunk, ...]:
-    """Return the top-k retrieved chunks as (record_id, keys, pages)."""
+def _top_chunks(
+    retriever: Any, embedder: Any, question: str, *, top_k: int = 10
+) -> tuple[_Chunk, ...]:
+    """Return the top-``top_k`` retrieved chunks as (record_id, keys, pages).
+
+    One ``retrieve`` call per question: callers slice the result for top-5 and
+    use the whole list for top-10.
+    """
     qvec = embedder.encode_query(question)
-    result = retriever.retrieve(query_vector=list(qvec), top_k=10, query=question)
+    result = retriever.retrieve(query_vector=list(qvec), top_k=top_k, query=question)
     docs = result.documents if getattr(result, "is_success", True) else []
     chunks: list[_Chunk] = []
     for doc in docs:
@@ -332,11 +351,24 @@ def _top5_chunks(retriever: Any, embedder: Any, question: str) -> tuple[_Chunk, 
         record_id = meta.get("record_id")
         keys = tuple(str(k) for k in (meta.get("coordinate_keys") or []))
         pages = tuple(
-            (p.get("document_id"), p.get("page"))
+            (str(p["document_id"]), int(p["page"]))
             for p in (meta.get("pages") or [])
+            if isinstance(p, Mapping)
+            and p.get("document_id") is not None
+            and p.get("page") is not None
         )
         chunks.append(_Chunk(record_id=record_id, coordinate_keys=keys, pages=pages))
     return tuple(chunks)
+
+
+def _record_keys(chunks: Sequence[_Chunk]) -> set[str]:
+    """Record ids and coordinate keys behind ``chunks``."""
+    keys: set[str] = set()
+    for ck in chunks:
+        if ck.record_id:
+            keys.add(str(ck.record_id))
+        keys.update(ck.coordinate_keys)
+    return keys
 
 
 def _pg_url() -> str:
@@ -367,12 +399,13 @@ def persist_to_pg(
     payload = json.dumps(report.to_dict(), ensure_ascii=False)
     with psycopg.connect(database_url, autocommit=True) as conn:
         with conn.cursor() as cur:
+            # Only a release still being gated is written; the CASE moves it to ready/gate_failed.
             cur.execute(
                 """
                 UPDATE releases
                 SET golden_report = %s::jsonb,
-                    status = %s
-                WHERE release_id = %s AND status = 'gating'
+                    status = CASE WHEN status IN ('building', 'gating') THEN %s ELSE status END
+                WHERE release_id = %s AND status IN ('building', 'gating')
                 """,
                 (payload, status, release_id),
             )

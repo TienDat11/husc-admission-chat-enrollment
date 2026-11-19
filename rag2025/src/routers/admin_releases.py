@@ -25,12 +25,15 @@ transaction, appends an audit event, and the reconciler hot-swaps
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from src.domain.admin_identity import AdminAction, Identity
+from src.domain.audit import AuditAction, AuditEvent, TargetKind
+from src.infrastructure.sql_audit_ledger import append_on
 from src.infrastructure.sql_record_store import SqlRecordStore
 from src.routers.admin_auth import current_identity, require_action
 
@@ -50,7 +53,7 @@ class ReleaseView(BaseModel):
 
 
 class RollbackRequest(BaseModel):
-    reason: str = Field(min_length=10)
+    reason: str = Field(default="")
 
 
 def _require_pg_store(request: Request) -> SqlRecordStore:
@@ -116,6 +119,19 @@ async def activate_release(release_id: str, request: Request, identity: Identity
             if current:
                 conn.execute("UPDATE releases SET status = 'superseded', updated_at = now() WHERE release_id = %s AND status = 'active'", [current["release_id"]])
             conn.execute("UPDATE releases SET status = 'active', activated_at = now(), activated_by = %s WHERE release_id = %s", [actor, release_id])
+            append_on(
+                conn,
+                AuditEvent(
+                    actor_id=actor,
+                    role=identity.role.value,
+                    action=AuditAction.PUBLISH,
+                    target=release_id,
+                    target_kind=TargetKind.RELEASE,
+                    reason=f"activated release {release_id}",
+                    release_id=release_id,
+                    timestamp=datetime.now(timezone.utc),
+                ),
+            )
     with store._connect() as conn2:
         row = conn2.execute("SELECT release_id, status, golden_report, corpus_stamp FROM releases WHERE release_id = %s", [release_id]).fetchone()
     return ReleaseView(**dict(row))
@@ -178,9 +194,18 @@ async def rollback_release(release_id: str, payload: RollbackRequest, request: R
                 if published_now != len(to_publish):
                     raise HTTPException(status_code=409, detail={"code": "CURRENT_COORDINATE_TAKEN", "message": "không thể khôi phục toàn bộ bản mục tiêu"})
             conn.execute("UPDATE releases SET status = 'active', activated_at = now(), activated_by = %s WHERE release_id = %s", [actor, release_id])
-            conn.execute(
-                "INSERT INTO audit_events (aggregate_type, aggregate_id, actor_id, role, action, reason, created_at) VALUES ('release', %s, %s, %s, 'rollback', %s, now())",
-                [release_id, actor, identity.role.value, reason],
+            append_on(
+                conn,
+                AuditEvent(
+                    actor_id=actor,
+                    role=identity.role.value,
+                    action=AuditAction.ROLLBACK,
+                    target=release_id,
+                    target_kind=TargetKind.RELEASE,
+                    reason=reason,
+                    release_id=release_id,
+                    timestamp=datetime.now(timezone.utc),
+                ),
             )
     with store._connect() as conn2:
         row = conn2.execute("SELECT release_id, status, golden_report, corpus_stamp FROM releases WHERE release_id = %s", [release_id]).fetchone()
