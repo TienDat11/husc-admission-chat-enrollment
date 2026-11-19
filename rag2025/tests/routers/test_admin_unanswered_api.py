@@ -13,6 +13,7 @@ bytes the service wrote, through the real admin router mount.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -81,7 +82,9 @@ def test_missing_credential_is_422(client: TestClient) -> None:
 
 
 def test_credentialed_call_sees_queued_item(client: TestClient, svc: UnansweredQueueService) -> None:
-    svc.push(f"Hỏi về điểm chuẩn, gọi {PHONE} nhé", "trace-admin-1", "guardrail", "NOT_IN_HUSC_SCOPE")
+    asyncio.run(
+        svc.push(f"Hỏi về điểm chuẩn, gọi {PHONE} nhé", "trace-admin-1", "guardrail", "NOT_IN_HUSC_SCOPE")
+    )
 
     response = client.get("/admin/unanswered/", headers=_headers("viewer"))
 
@@ -96,8 +99,10 @@ def test_credentialed_call_sees_queued_item(client: TestClient, svc: UnansweredQ
 
 
 def test_resolved_items_carry_markers(client: TestClient, svc: UnansweredQueueService) -> None:
-    svc.push("câu hỏi đã có đáp án bổ sung", "trace-admin-2", "padded_rag", "INSUFFICIENT_DATA")
-    svc.resolve("trace-admin-2", "HOI_DAP:QA:cntt:2026:faq-1")
+    asyncio.run(
+        svc.push("câu hỏi đã có đáp án bổ sung", "trace-admin-2", "padded_rag", "INSUFFICIENT_DATA")
+    )
+    asyncio.run(svc.resolve("trace-admin-2", "HOI_DAP:QA:cntt:2026:faq-1"))
 
     default_view = client.get("/admin/unanswered/", headers=_headers("viewer")).json()
     assert default_view["count"] == 0

@@ -1405,6 +1405,77 @@
         "title": "EditRecordRequest",
         "type": "object"
       },
+      "FeedbackItem": {
+        "properties": {
+          "answered_at": {
+            "title": "Answered At",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "feedback_id": {
+            "title": "Feedback Id",
+            "type": "string"
+          },
+          "helpful": {
+            "title": "Helpful",
+            "type": "boolean"
+          },
+          "linked_item": {
+            "title": "Linked Item",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "feedback_id",
+          "trace_id",
+          "helpful",
+          "reason",
+          "answered_at",
+          "linked_item",
+          "created_at"
+        ],
+        "title": "FeedbackItem",
+        "type": "object"
+      },
+      "FeedbackList": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "FeedbackList",
+        "type": "object"
+      },
       "FeedbackRequest": {
         "description": "Feedback on a served answer (public endpoint for the student).",
         "properties": {
@@ -2139,6 +2210,24 @@
         "title": "MetaResponse",
         "type": "object"
       },
+      "OutOfScopeResult": {
+        "properties": {
+          "out_of_scope": {
+            "title": "Out Of Scope",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "out_of_scope"
+        ],
+        "title": "OutOfScopeResult",
+        "type": "object"
+      },
       "OverviewResponse": {
         "description": "Counts behind the sidebar badges and the Frame 5 cards.",
         "properties": {
@@ -2212,6 +2301,71 @@
           "query"
         ],
         "title": "PreviewRequest",
+        "type": "object"
+      },
+      "PromoteGoldenBody": {
+        "properties": {
+          "admission_year": {
+            "default": 2026,
+            "title": "Admission Year",
+            "type": "integer"
+          },
+          "answer": {
+            "description": "The officer's answer text.",
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "coordinate_key": {
+            "description": "Stable coordinate key for the new draft record.",
+            "minLength": 1,
+            "title": "Coordinate Key",
+            "type": "string"
+          },
+          "scope": {
+            "default": "tuyen_sinh",
+            "title": "Scope",
+            "type": "string"
+          },
+          "subject": {
+            "default": "cau_hoi_chua_tra_loi",
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "answer",
+          "coordinate_key"
+        ],
+        "title": "PromoteGoldenBody",
+        "type": "object"
+      },
+      "PromoteGoldenResult": {
+        "properties": {
+          "golden_query_id": {
+            "title": "Golden Query Id",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "record_id",
+          "status",
+          "golden_query_id"
+        ],
+        "title": "PromoteGoldenResult",
         "type": "object"
       },
       "QueryResponse": {
@@ -3286,6 +3440,16 @@
             "title": "Asked At",
             "type": "string"
           },
+          "is_overdue": {
+            "default": false,
+            "title": "Is Overdue",
+            "type": "boolean"
+          },
+          "occurrence_count": {
+            "default": 1,
+            "title": "Occurrence Count",
+            "type": "integer"
+          },
           "out_of_scope": {
             "default": false,
             "title": "Out Of Scope",
@@ -3324,6 +3488,17 @@
           "route": {
             "title": "Route",
             "type": "string"
+          },
+          "sla_due_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sla Due At"
           },
           "status_code": {
             "title": "Status Code",
@@ -6552,11 +6727,11 @@
     },
     "/admin/unanswered/": {
       "get": {
-        "description": "Open unanswered questions, newest first, with the resolution markers.\n\nBy default only open items are returned (the ones the team still needs to\nreview); pass ``resolved=true`` to see everything, including items T15\nalready resolved.",
+        "description": "Open unanswered questions, newest first.\n\nDefault excludes resolved items and out-of-scope items. Pass\n``resolved=true`` to also surface resolved rows.",
         "operationId": "list_unanswered_admin_unanswered__get",
         "parameters": [
           {
-            "description": "Include resolved items too",
+            "description": "Include resolved items too when true",
             "in": "query",
             "name": "resolved",
             "required": false,
@@ -6569,7 +6744,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Include resolved items too",
+              "description": "Include resolved items too when true",
               "title": "Resolved"
             }
           },
@@ -6615,7 +6790,211 @@
         "summary": "List Unanswered",
         "tags": [
           "admin",
-          "admin"
+          "admin-unanswered"
+        ]
+      }
+    },
+    "/admin/unanswered/feedback": {
+      "get": {
+        "description": "Recent chat_feedback rows, newest first.",
+        "operationId": "list_feedback_admin_unanswered_feedback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Feedback",
+        "tags": [
+          "admin",
+          "admin-unanswered"
+        ]
+      }
+    },
+    "/admin/unanswered/{trace_id}/out-of-scope": {
+      "post": {
+        "description": "Mark a question out of scope without deleting the row.\n\nReturns ``409 VERSION_CONFLICT`` when the question is already out of scope.",
+        "operationId": "mark_out_of_scope_admin_unanswered__trace_id__out_of_scope_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutOfScopeResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Out Of Scope",
+        "tags": [
+          "admin",
+          "admin-unanswered"
+        ]
+      }
+    },
+    "/admin/unanswered/{trace_id}/promote-golden": {
+      "post": {
+        "description": "Promote one unanswered question to a draft record + golden query.\n\nRuns in one atomic SQL transaction:\n  1. insert a ``draft`` canonical record (never auto-publishes),\n  2. insert ``golden_queries(origin='promoted')``,\n  3. stamp ``resolved_by_record_id`` + ``resolved_at`` on the question,\n  4. append an audit event.",
+        "operationId": "promote_golden_admin_unanswered__trace_id__promote_golden_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteGoldenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromoteGoldenResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote Golden",
+        "tags": [
+          "admin",
+          "admin-unanswered"
         ]
       }
     },

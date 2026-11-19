@@ -296,6 +296,18 @@ export async function createRecord(
   });
 }
 
+/** `GET /admin/unanswered/feedback` — recent/paginated chat feedback rows. */
+export async function fetchFeedback(
+  token: string | null,
+  limit = 50,
+  offset = 0,
+): Promise<components["schemas"]["FeedbackList"]> {
+  return adminRequest<components["schemas"]["FeedbackList"]>(
+    token,
+    `/admin/unanswered/feedback?limit=${limit}&offset=${offset}`,
+  );
+}
+
 export async function editRecord(
   token: string | null,
   recordId: string,

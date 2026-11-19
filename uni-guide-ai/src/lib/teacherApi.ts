@@ -17,32 +17,28 @@ import {
   adminRequestHeaders,
 } from "./adminApi";
 import { getApiBaseUrl } from "./api";
+import type { components } from "./api-types";
+
+type Schemas = components["schemas"];
 
 // ---------------------------------------------------------------------------
 // Ticket T09 — endpoints the existing admin client does not expose yet.
 // ---------------------------------------------------------------------------
 
 /** `GET /admin/unanswered/` — one open question the bot could not answer. */
-export interface UnansweredItem {
-  question: string;
-  trace_id: string;
-  asked_at: string;
-  route: string;
-  status_code: string;
-  resolved: boolean;
-  resolved_at: string | null;
-  resolved_by_record_id: string | null;
-}
-
-export interface UnansweredList {
-  items: UnansweredItem[];
-  count: number;
-}
+export type UnansweredItem = Schemas["UnansweredItem"];
+export type UnansweredList = Schemas["UnansweredList"];
+/** `POST /admin/unanswered/{trace_id}/out-of-scope` result. */
+export type OutOfScopeResult = Schemas["OutOfScopeResult"];
+/** `POST /admin/unanswered/{trace_id}/promote-golden` request body. */
+export type PromoteGoldenBody = Schemas["PromoteGoldenBody"];
+/** `POST /admin/unanswered/{trace_id}/promote-golden` result. */
+export type PromoteGoldenResult = Schemas["PromoteGoldenResult"];
 
 async function teacherGet<T>(token: string | null, path: string): Promise<T> {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     headers: adminRequestHeaders(token),
-    credentials: "same-origin",
+    credentials: "include",
   });
   if (!response.ok) throw new Error(`Không lấy được dữ liệu (lỗi ${response.status}).`);
   return (await response.json()) as T;
@@ -54,6 +50,31 @@ export function listUnanswered(
 ): Promise<UnansweredList> {
   const query = resolved == null ? "" : `?resolved=${resolved}`;
   return teacherGet<UnansweredList>(token, `/admin/unanswered/${query}`);
+}
+
+/** `POST /admin/unanswered/{trace_id}/out-of-scope` — mark a question out of scope (never deletes the row). */
+export async function markOutOfScope(
+  token: string | null,
+  traceId: string,
+): Promise<OutOfScopeResult> {
+  return adminRequest<OutOfScopeResult>(
+    token,
+    `/admin/unanswered/${encodeURIComponent(traceId)}/out-of-scope`,
+    { method: "POST" },
+  );
+}
+
+/** `POST /admin/unanswered/{trace_id}/promote-golden` — create a draft record + golden query in one transaction. */
+export async function promoteToGolden(
+  token: string | null,
+  traceId: string,
+  body: PromoteGoldenBody,
+): Promise<PromoteGoldenResult> {
+  return adminRequest<PromoteGoldenResult>(
+    token,
+    `/admin/unanswered/${encodeURIComponent(traceId)}/promote-golden`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
 }
 
 /** `GET /admin/audit/events` — the ledger, newest first (T09 history screen). */

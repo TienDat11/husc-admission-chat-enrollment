@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createRecord, newIdempotencyKey } from "@/lib/adminApi";
-import { submitDraftForReview } from "@/lib/teacherApi";
-import { Link, useSearchParams } from "react-router-dom";
+import { promoteToGolden, submitDraftForReview } from "@/lib/teacherApi";
+import { useAdminSession } from "@/hooks/useAdminSession";
 
 const YEARS = [2026, 2027];
 const MAJORS = ["Tất cả các ngành", "Hán Nôm", "Công nghệ thông tin", "Báo chí", "Kiến trúc"];
@@ -15,14 +16,18 @@ const MAJORS = ["Tất cả các ngành", "Hán Nôm", "Công nghệ thông tin"
  * types the answer. Saving builds the record the way 02 §1 says: the
  * system makes the source document ("Phòng tuyển sinh HUSC trả lời ngày …"),
  * so the teacher does not pick a source.
+ *
+ * When opened with `?promote=1&trace_id=...` from the unanswered list,
+ * submitting runs the atomic promote-golden transaction (draft record +
+ * golden query + resolution marker) instead of the ordinary draft flow.
  */
 const QAForm = () => {
+  const { can } = useAdminSession();
+  const navigate = useNavigate();
+  const canCreate = can("records.create");
   const [params] = useSearchParams();
-  // Ticket T07: the "Bổ sung thông tin" link carries ?trace_id= so the
-  // saved record is traceable back to the unanswered question. Omit
-  // the key entirely when there is no trace id — the server must not
-  // see an empty value it has to special-case.
   const traceId = params.get("trace_id");
+  const promote = params.get("promote") === "1";
   const [question, setQuestion] = useState(params.get("question") ?? "");
   const [answer, setAnswer] = useState("");
   const [year, setYear] = useState(String(YEARS[0]));
@@ -32,6 +37,17 @@ const QAForm = () => {
 
   const submit = useMutation({
     mutationFn: async () => {
+      if (promote) {
+        if (!traceId) throw new Error("Không tìm thấy câu hỏi để đưa vào bộ chuẩn.");
+        await promoteToGolden(null, traceId, {
+          admission_year: Number(year),
+          answer,
+          coordinate_key: `gq-${traceId}`,
+          scope: "tuyen_sinh",
+          subject: "cau_hoi_chua_tra_loi",
+        });
+        return;
+      }
       const key = newIdempotencyKey();
       const result = await createRecord(null, {
         schema_version: "1.0",
@@ -77,18 +93,40 @@ const QAForm = () => {
     submit.mutate();
   };
 
+  const handleBack = () => {
+    navigate(-1);
+  };
+
   if (sent) {
     return (
-      <p role="status" className="note ok">
-        <span aria-hidden="true">✓</span> Đã gửi. Người duyệt sẽ nhận được
-        trong mục Chờ duyệt.
-      </p>
+      <div className="space-y-4">
+        <p role="status" className="note ok">
+          <span aria-hidden="true">✓</span>
+          {promote
+            ? "Đã đưa câu hỏi vào bộ câu hỏi chuẩn (bản nháp + câu hỏi chuẩn)."
+            : "Đã gửi. Người duyệt sẽ nhận được trong mục Chờ duyệt."}
+        </p>
+        <div className="actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => navigate("/quan-ly/cau-hoi")}
+          >
+            Về danh sách câu hỏi
+          </button>
+          <button type="button" className="btn" onClick={handleBack}>
+            Quay lại
+          </button>
+        </div>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Gõ hỏi–đáp trực tiếp</h1>
+      <h1 className="text-2xl font-bold">
+        {promote ? "Trả lời & Đưa vào bộ câu hỏi chuẩn" : "Gõ hỏi–đáp trực tiếp"}
+      </h1>
       <p className="text-zinc-600">
         Dùng khi thông tin chưa có trong tài liệu nào, ví dụ câu thí sinh hay
         hỏi qua điện thoại.
@@ -107,6 +145,7 @@ const QAForm = () => {
             id="qa-question"
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
+            readOnly={promote}
           />
         </div>
         <div className="field">
@@ -124,6 +163,7 @@ const QAForm = () => {
               id="qa-year"
               value={year}
               onChange={(event) => setYear(event.target.value)}
+              disabled={promote}
             >
               {YEARS.map((value) => (
                 <option key={value} value={value}>
@@ -138,6 +178,7 @@ const QAForm = () => {
               id="qa-major"
               value={major}
               onChange={(event) => setMajor(event.target.value)}
+              disabled={promote}
             >
               {MAJORS.map((value) => (
                 <option key={value} value={value}>
@@ -158,8 +199,12 @@ const QAForm = () => {
           <button type="button" className="btn" onClick={handleAsk}>
             Hỏi thử
           </button>
-          <button type="submit" className="btn btn-primary" disabled={submit.isPending}>
-            {submit.isPending ? "Đang gửi…" : "Gửi duyệt"}
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={!canCreate || submit.isPending}
+          >
+            {submit.isPending ? "Đang gửi…" : promote ? "Đưa vào bộ chuẩn" : "Gửi duyệt"}
           </button>
         </div>
       </form>
@@ -171,5 +216,4 @@ const QAForm = () => {
   );
 };
 
-// ponytail: structuredValues is unused here — kept import removed, no need.
 export default QAForm;
