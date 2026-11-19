@@ -35,6 +35,10 @@ is removable without noticing; the domain test pins the second one.
 """
 from __future__ import annotations
 
+import uuid
+from dataclasses import replace
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
@@ -48,6 +52,12 @@ from src.infrastructure.identity_store import (
     hash_password,
 )
 from src.routers.admin_auth import identity_store_for, require_action
+from src.infrastructure.sql_identity_repo import (
+    IdentityRuleError,
+    LastAdminError,
+    SqlIdentityRepository,
+    issue_header_token,
+)
 
 __all__ = [
     "IdentityCreateRequest",
@@ -90,20 +100,23 @@ class IdentityView(BaseModel):
     actor_id: str
     role: Role
     disabled: bool
-    credential: str
+    credential: str | None = None
+    last_login_at: datetime | None = None
+    header_token: str | None = None
 
 
 class IdentityCreateRequest(BaseModel):
     """Body for ``POST /admin/identities``.
 
-    The credential is supplied by the caller rather than generated here: this
-    surface hands an existing secret to a named person, and inventing one in a
-    response body would put a live credential in a place logs read.
+    File store: the caller supplies the credential, as before, so an existing
+    secret can be handed to a named person. PostgreSQL store: the server issues
+    the header token (``issue_header_token``) and returns it exactly once.
     """
 
     actor_id: str
     role: Role
-    credential: str
+    credential: str | None = None
+    issue_header_token: bool = False
     subject_id: str | None = None
     password: str | None = None
     reason: str
@@ -143,14 +156,73 @@ def _ledger_for(request: Request):
     return ledger
 
 
-def _view(entry: IdentityEntry) -> IdentityView:
+def _view(entry: IdentityEntry, *, header_token: str | None = None) -> IdentityView:
     return IdentityView(
         subject_id=entry.subject_id,
         actor_id=entry.actor_id,
         role=entry.role,
         disabled=entry.disabled,
-        credential=mask_credential(entry.credential),
+        credential=mask_credential(entry.credential) if entry.credential else None,
+        last_login_at=entry.last_login_at,
+        header_token=header_token,
     )
+
+
+def _refuse_self_change(
+    identity: Identity,
+    target: IdentityEntry,
+    payload: IdentityPatchRequest,
+) -> None:
+    """Refuse changing your own role or disabling your own account (SQL path).
+
+    Applies whether or not ``ADMIN_REQUIRE_FOUR_EYES`` is on: a second admin
+    cannot approve a change to one's own permissions, so it is refused outright.
+    """
+    if target.actor_id != identity.actor_id:
+        return
+    changes_role = payload.role is not None and payload.role != target.role
+    disables = payload.disabled is True and not target.disabled
+    if changes_role or disables:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "SELF_ROLE_CHANGE_FORBIDDEN",
+                "message": "you cannot change your own role or disable your own account",
+            },
+        )
+
+
+def _sql_entry_for_create(payload: IdentityCreateRequest) -> tuple[IdentityEntry, str | None]:
+    """The entry for the PostgreSQL store.
+
+    The server issues the subject id unless a UUID is supplied, and issues a
+    header token when asked. The plaintext token is returned once by the caller
+    and never stored.
+    """
+    if payload.credential is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="credential is not accepted on the PostgreSQL store; set issue_header_token",
+        )
+    if not payload.password and not payload.issue_header_token:
+        raise HTTPException(
+            status_code=422,
+            detail="a password or issue_header_token is required",
+        )
+    raw_subject = (payload.subject_id or "").strip() or str(uuid.uuid4())
+    try:
+        subject_id = str(uuid.UUID(raw_subject))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="subject_id must be a UUID") from None
+    token = issue_header_token() if payload.issue_header_token else None
+    entry = IdentityEntry(
+        subject_id=subject_id,
+        actor_id=payload.actor_id.strip(),
+        role=payload.role,
+        credential=token,
+        password_hash=hash_password(payload.password) if payload.password else None,
+    )
+    return entry, token
 
 
 def _require_reason(reason: str) -> str:
@@ -217,18 +289,33 @@ def create_identity(
     reason = _require_reason(payload.reason)
     # Read the switch exactly once; the check and the event share this value.
     four_eyes_on = four_eyes_enabled()
-    entry = IdentityEntry(
-        subject_id=(payload.subject_id or payload.actor_id).strip(),
-        actor_id=payload.actor_id.strip(),
-        role=payload.role,
-        credential=payload.credential,
-        password_hash=hash_password(payload.password) if payload.password else None,
-    )
+    sql = isinstance(store, SqlIdentityRepository)
+    if sql:
+        entry, header_token = _sql_entry_for_create(payload)
+    else:
+        if not payload.credential:
+            raise HTTPException(status_code=422, detail="credential is required")
+        entry = IdentityEntry(
+            subject_id=(payload.subject_id or payload.actor_id).strip(),
+            actor_id=payload.actor_id.strip(),
+            role=payload.role,
+            credential=payload.credential,
+            password_hash=hash_password(payload.password) if payload.password else None,
+        )
+        header_token = None
 
     try:
-        store.add(entry)
+        if sql:
+            store.add(entry, created_by=identity.actor_id)
+        else:
+            store.add(entry)
     except IdentityConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IDENTITY_EXISTS", "message": str(exc)},
+        ) from exc
+    except IdentityRuleError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except IdentityStoreError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -241,7 +328,8 @@ def create_identity(
         reason=reason,
         four_eyes=four_eyes_on,
     )
-    return _view(entry)
+    view_entry = replace(entry, credential=None) if sql else entry
+    return _view(view_entry, header_token=header_token)
 
 
 @router.patch("/{subject_id}", response_model=IdentityView)
@@ -276,6 +364,8 @@ def patch_identity(
             status_code=404,
             detail=f"unknown subject_id: {subject_id}",
         )
+    if isinstance(store, SqlIdentityRepository):
+        _refuse_self_change(identity, current, payload)
     _four_eyes_blocks(identity, current, four_eyes_on)
 
     try:
@@ -287,6 +377,13 @@ def patch_identity(
         )
     except IdentityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except LastAdminError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "LAST_ADMIN", "message": str(exc)},
+        ) from exc
+    except IdentityRuleError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except IdentityStoreError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

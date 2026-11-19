@@ -44,6 +44,7 @@ import hmac
 import os
 import json
 from pathlib import Path
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -134,9 +135,10 @@ class IdentityEntry:
     subject_id: str
     actor_id: str
     role: Role
-    credential: str
+    credential: str | None = None
     password_hash: str | None = None
     disabled: bool = False
+    last_login_at: datetime | None = None
 
 
     def to_dict(self) -> dict[str, object]:

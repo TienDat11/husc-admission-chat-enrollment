@@ -26,6 +26,7 @@ const Vault = lazy(() => import("./pages/teacher/Vault"));
 const Unanswered = lazy(() => import("./pages/teacher/Unanswered"));
 const AskTest = lazy(() => import("./pages/teacher/AskTest"));
 const History = lazy(() => import("./pages/teacher/History"));
+const Accounts = lazy(() => import("./pages/teacher/Accounts"));
 
 const queryClient = new QueryClient();
 
@@ -110,6 +111,9 @@ const App = () => (
               </Route>
               <Route path="lich-su" element={<RecordsGate />}>
                 <Route index element={<History />} />
+              </Route>
+              <Route path="tai-khoan" element={<RecordsGate />}>
+                <Route index element={<Accounts />} />
               </Route>
             </Route>
             </Route>

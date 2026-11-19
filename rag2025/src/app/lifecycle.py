@@ -134,22 +134,22 @@ def _build_audit_ledger(settings: RAGSettings, root: Path, file_ledger_cls):
     return file_ledger_cls(root / "audit" / "ledger.jsonl")
 
 
-def _attach_postgres_file_state(app, root: Path) -> None:
-    """Under postgres: the identity store stays file-backed, and stale file stores are reported.
+def _attach_postgres_state(app, root: Path) -> None:
+    """Under postgres: identities live in PostgreSQL; stale file stores are reported.
 
-    Identities are file-backed until their own unit (Ruling W), so the store is
-    attached explicitly here and the lazy ``identity_store_for`` path never reads
-    ``.root`` of a SqlRecordStore. Pre-cutover ``records/`` and ``audit/ledger.jsonl``
-    under the root are left alone, but the operator is told they are no longer
-    the source of truth: nothing under postgres writes to them.
+    ``admin_identities`` and ``admin_sessions`` (migration 0001) are the source of
+    truth, so the identity store is a ``SqlIdentityRepository`` and the lazy
+    ``identity_store_for`` path never reads a file root. Pre-cutover ``records/``
+    and ``audit/ledger.jsonl`` under the root are left alone, but the operator is
+    told they are no longer the source of truth: nothing under postgres writes to them.
     """
     try:
-        from src.infrastructure.identity_store import IdentityStore
+        from src.infrastructure.sql_identity_repo import SqlIdentityRepository
     except ModuleNotFoundError:
-        from rag2025.src.infrastructure.identity_store import (  # type: ignore
-            IdentityStore,
+        from rag2025.src.infrastructure.sql_identity_repo import (  # type: ignore
+            SqlIdentityRepository,
         )
-    app.state.identity_store = IdentityStore(root)
+    app.state.identity_store = SqlIdentityRepository(_postgres_database_url())
     for stale in (root / "records", root / "audit" / "ledger.jsonl"):
         if stale.exists():
             logger.warning(
@@ -274,7 +274,7 @@ def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None
     store = _build_record_store(resolved, root, CanonicalRecordStore)
     app.state.canonical_record_store = store
     if resolved.STORE_BACKEND == "postgres":
-        _attach_postgres_file_state(app, root)
+        _attach_postgres_state(app, root)
 
     # Ticket 14: the append-only audit ledger. It lives beside the records
     # under the same root, so the two are published and rolled back together

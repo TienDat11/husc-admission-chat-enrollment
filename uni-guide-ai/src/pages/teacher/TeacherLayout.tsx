@@ -24,6 +24,7 @@ const navItems = [
   { to: "/quan-ly/cau-hoi", label: "Câu hỏi bot chưa trả lời được", icon: "❓" },
   { to: "/quan-ly/hoi-thu", label: "Hỏi thử bot", icon: "💬" },
   { to: "/quan-ly/lich-su", label: "Lịch sử & khôi phục", icon: "🕘" },
+  { to: "/quan-ly/tai-khoan", label: "Tài khoản", icon: "👥" },
 ];
 
 const TeacherLayout = () => {

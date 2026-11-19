@@ -572,3 +572,50 @@ export async function rollbackRelease(
       : {}),
   });
 }
+
+/** One row of `GET /admin/identities`. Secrets are never returned. */
+export interface IdentityRow {
+  subject_id: string;
+  actor_id: string;
+  role: string;
+  disabled: boolean;
+  last_login_at: string | null;
+}
+
+export interface IdentityCreateBody {
+  actor_id: string;
+  role: string;
+  reason: string;
+  password?: string;
+  issue_header_token?: boolean;
+}
+
+export interface IdentityCreated extends IdentityRow {
+  /** Returned once, on create, when `issue_header_token` was set. */
+  header_token?: string | null;
+}
+
+export async function listIdentities(token: string | null): Promise<IdentityRow[]> {
+  return adminRequest<IdentityRow[]>(token, "/admin/identities");
+}
+
+export async function createIdentity(
+  token: string | null,
+  body: IdentityCreateBody,
+): Promise<IdentityCreated> {
+  return adminRequest<IdentityCreated>(token, "/admin/identities", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function patchIdentity(
+  token: string | null,
+  subjectId: string,
+  body: { reason: string; role?: string; disabled?: boolean },
+): Promise<IdentityRow> {
+  return adminRequest<IdentityRow>(token, `/admin/identities/${subjectId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
