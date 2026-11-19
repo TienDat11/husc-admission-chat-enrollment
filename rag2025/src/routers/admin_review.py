@@ -69,7 +69,7 @@ async def retrieval_preview(payload: RetrievalPreviewRequest, request: Request, 
                 "SELECT query_id, text, query_embedding, embedding_model, record_type, major_codes, admission_year "
                 "FROM golden_queries WHERE record_id = ANY(%s)",
                 [record_ids],
-            ).mappings().all()
+            ).fetchall()
         else:
             rows = []
         if not rows:
@@ -93,7 +93,7 @@ async def retrieval_preview(payload: RetrievalPreviewRequest, request: Request, 
             rows = conn.execute(
                 "SELECT chunk_id, record_id, record_version, text, embedding, embedding_model FROM chunk_preview_items WHERE record_id = ANY(%s)",
                 [record_ids],
-            ).mappings().all()
+            ).fetchall()
             for row in rows:
                 emb = None
                 if row["embedding"] is not None:
@@ -119,7 +119,7 @@ async def list_supersession_candidates(
         rows = conn.execute(
             "SELECT candidate_id, old_record_id, old_record_version, new_record_id, new_record_version, decision, status FROM supersession_candidates WHERE status = %s ORDER BY created_at DESC",
             [status],
-        ).mappings().all()
+        ).fetchall()
     return [SupersessionCandidate(**dict(r)) for r in rows]
 
 
@@ -127,7 +127,7 @@ async def list_supersession_candidates(
 async def decide_supersession(candidate_id: str, payload: DecisionRequest, request: Request, identity: Identity = Depends(current_identity)) -> SupersessionCandidate:
     store = _require_pg_store(request)
     with store._connect() as conn:
-        row = conn.execute("SELECT candidate_id, expected_version, status, decision FROM supersession_candidates WHERE candidate_id = %s FOR UPDATE", [candidate_id]).mappings().first()
+        row = conn.execute("SELECT candidate_id, expected_version, status, decision FROM supersession_candidates WHERE candidate_id = %s FOR UPDATE", [candidate_id]).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "không tìm thấy ứng viên"})
         if row["status"] != "pending_review":
@@ -137,5 +137,5 @@ async def decide_supersession(candidate_id: str, payload: DecisionRequest, reque
         conn.execute("UPDATE supersession_candidates SET decision = %s, status = 'accepted', decided_by = %s, decided_at = now() WHERE candidate_id = %s", [payload.decision, identity.actor_id, candidate_id])
     row = conn_fetch = None
     with store._connect() as conn2:
-        row = conn2.execute("SELECT candidate_id, old_record_id, old_record_version, new_record_id, new_record_version, decision, status FROM supersession_candidates WHERE candidate_id = %s", [candidate_id]).mappings().first()
+        row = conn2.execute("SELECT candidate_id, old_record_id, old_record_version, new_record_id, new_record_version, decision, status FROM supersession_candidates WHERE candidate_id = %s", [candidate_id]).fetchone()
     return SupersessionCandidate(**dict(row))
