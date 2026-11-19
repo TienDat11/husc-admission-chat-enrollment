@@ -183,7 +183,7 @@ const AddInfo = () => {
           <p role="status" className="note warn">
             <span aria-hidden="true">⚠</span> Máy đã đọc 12/14 trang. Trang 5
             và 9 là ảnh chụp, máy chưa đọc được — vui lòng gõ lại hoặc tải
-            bản Word.
+            bản Word. <a href="/quan-ly/them/ngoai-le" className="underline">Xử lý ngoại lệ bảng</a>
           </p>
           <div className="table-wrap">
             <table>

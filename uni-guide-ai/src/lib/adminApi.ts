@@ -611,3 +611,98 @@ export async function patchIdentity(
     body: JSON.stringify(body),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Unit U7 — exceptions, block edit, chunk preview
+// ---------------------------------------------------------------------------
+
+type Schemas = components["schemas"];
+type Operations = components["operations"];
+
+export type BlockView = Schemas["BlockView"];
+export type ExceptionsListResponse = Schemas["ExceptionsListResponse"];
+export type PatchBlockRequest = Schemas["PatchBlockRequest"];
+export type PatchBlockResponse = Schemas["PatchBlockResponse"];
+export type InsertMissingRowsRequest = Schemas["InsertMissingRowsRequest"];
+export type InsertMissingRowsResponse = Schemas["InsertMissingRowsResponse"];
+export type ReocrRequest = Schemas["ReocrRequest"];
+export type ReocrResponse = Schemas["ReocrResponse"];
+export type PreviewRequest = Schemas["ChunkPreviewRequest"];
+export type PreviewResponse = Schemas["PreviewResponse"];
+export type PreviewItem = Schemas["PreviewItem"];
+export type ChunkPreview = Schemas["ChunkPreview"];
+
+export async function listExceptions(
+  token: string | null,
+  documentId: string,
+): Promise<ExceptionsListResponse> {
+  return adminRequest<ExceptionsListResponse>(
+    token,
+    `/admin/source-documents/${encodeURIComponent(documentId)}/exceptions`,
+  );
+}
+
+export async function patchBlock(
+  token: string | null,
+  documentId: string,
+  blockId: string,
+  body: PatchBlockRequest,
+): Promise<PatchBlockResponse> {
+  return adminRequest<PatchBlockResponse>(
+    token,
+    `/admin/source-documents/${encodeURIComponent(documentId)}/blocks/${blockId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function insertMissingRows(
+  token: string | null,
+  documentId: string,
+  blockId: string,
+  body: InsertMissingRowsRequest,
+): Promise<InsertMissingRowsResponse> {
+  return adminRequest<InsertMissingRowsResponse>(
+    token,
+    `/admin/source-documents/${encodeURIComponent(documentId)}/blocks/${blockId}/insert-missing-rows`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function reocr(
+  token: string | null,
+  documentId: string,
+  body: ReocrRequest,
+): Promise<ReocrResponse> {
+  const res = await fetch(
+    `${getApiBaseUrl()}/admin/source-documents/${encodeURIComponent(documentId)}/reocr`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...adminRequestHeaders(token),
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) {
+    const failure = await adminRequest<never>(token, "/admin/identity").catch(() => null);
+    throw new AdminApiError(res.status, await res.json().catch(() => ({})), failure);
+  }
+  return (await res.json()) as ReocrResponse;
+}
+
+export async function createPreview(
+  token: string | null,
+  body: PreviewRequest,
+): Promise<PreviewResponse> {
+  return adminRequest<PreviewResponse>(token, "/admin/previews", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}

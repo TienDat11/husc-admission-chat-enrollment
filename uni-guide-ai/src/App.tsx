@@ -27,6 +27,7 @@ const Unanswered = lazy(() => import("./pages/teacher/Unanswered"));
 const AskTest = lazy(() => import("./pages/teacher/AskTest"));
 const History = lazy(() => import("./pages/teacher/History"));
 const Accounts = lazy(() => import("./pages/teacher/Accounts"));
+const TableFix = lazy(() => import("./pages/teacher/TableFix"));
 
 const queryClient = new QueryClient();
 
@@ -96,6 +97,7 @@ const App = () => (
               <Route path="them" element={<RecordsGate />}>
                 <Route index element={<AddInfo />} />
                 <Route path="qa" element={<QAForm />} />
+                <Route path="ngoai-le" element={<TableFix />} />
               </Route>
               <Route path="cho-duyet" element={<RecordsGate />}>
                 <Route index element={<PendingReview />} />

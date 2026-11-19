@@ -365,6 +365,26 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/admin/previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Preview
+         * @description Build and persist a chunk preview for one record version.
+         */
+        post: operations["create_preview_admin_previews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/records": {
         parameters: {
             query?: never;
@@ -907,6 +927,95 @@ export type paths = {
          *     - an XLSX drafts one record per data row (ticket T17).
          */
         post: operations["upload_source_document_admin_source_documents_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/source-documents/{document_id}/blocks/{block_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Block
+         * @description Edit a block's content / pasted Excel TSV / assigned coordinate_key.
+         *
+         *     Optimistic concurrency via ``expected_version`` (409 VERSION_CONFLICT when
+         *     stale). Assigning a ``coordinate_key`` to an unanchored record creates the
+         *     canonical record at version 1 (draft) and withdraws the quarantined record.
+         */
+        patch: operations["patch_block_admin_source_documents__document_id__blocks__block_id__patch"];
+        trace?: never;
+    };
+    "/admin/source-documents/{document_id}/blocks/{block_id}/insert-missing-rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Insert Missing Rows
+         * @description 1-click insertion of ``payload.missing_pypdf_rows`` into the block's table data.
+         *
+         *     Marks the block resolved and clears ``TABLE_CELL_DROP_SUSPECTED``.
+         */
+        post: operations["insert_missing_rows_admin_source_documents__document_id__blocks__block_id__insert_missing_rows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/source-documents/{document_id}/exceptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Exceptions
+         * @description List the exception blocks and quarantined unanchored records of a document.
+         */
+        get: operations["list_exceptions_admin_source_documents__document_id__exceptions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/source-documents/{document_id}/reocr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reocr
+         * @description Re-OCR the requested pages only, via rapidocr through the page router.
+         *
+         *     Creates/enqueues a ``reocr`` parse job in ``ingestion_jobs`` and returns
+         *     HTTP 202 with ``{job_id, state, page_numbers}``.
+         */
+        post: operations["reocr_admin_source_documents__document_id__reocr_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1478,6 +1587,37 @@ export type components = {
             statuses: string[];
             /** Unregistered Count */
             unregistered_count: number;
+        };
+        /** BlockView */
+        BlockView: {
+            /** Block Id */
+            block_id: string;
+            /** Block Type */
+            block_type: string;
+            /** Coordinate Key */
+            coordinate_key?: string | null;
+            /** Document Id */
+            document_id: string;
+            /**
+             * Missing Pypdf Rows
+             * @default []
+             */
+            missing_pypdf_rows: string[][];
+            /** Ordinal */
+            ordinal: number;
+            /** Page */
+            page: number;
+            /** State */
+            state?: string | null;
+            /** Text */
+            text: string;
+            /** Version */
+            version: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /** Body_upload_source_document_admin_source_documents_upload_post */
         Body_upload_source_document_admin_source_documents_upload_post: {
@@ -2065,6 +2205,20 @@ export type components = {
                 [key: string]: unknown;
             } | null;
         };
+        /** ExceptionsListResponse */
+        ExceptionsListResponse: {
+            /** Blocks */
+            blocks: components["schemas"]["BlockView"][];
+            /** Document Id */
+            document_id: string;
+            /**
+             * Unanchored
+             * @default []
+             */
+            unanchored: {
+                [key: string]: unknown;
+            }[];
+        };
         /**
          * FeedbackRequest
          * @description Feedback on a served answer (public endpoint for the student).
@@ -2293,6 +2447,25 @@ export type components = {
             /** Reindex Reason */
             reindex_reason: string;
         };
+        /** InsertMissingRowsRequest */
+        InsertMissingRowsRequest: {
+            /** Expected Version */
+            expected_version?: number | null;
+        };
+        /** InsertMissingRowsResponse */
+        InsertMissingRowsResponse: {
+            /** Block Id */
+            block_id: string;
+            /**
+             * Cleared Blockers
+             * @default []
+             */
+            cleared_blockers: string[];
+            /** Inserted */
+            inserted: number;
+            /** State */
+            state: string;
+        };
         /** JobSummary */
         JobSummary: {
             /** Attempt */
@@ -2405,17 +2578,78 @@ export type components = {
             /** Total Notifications */
             total_notifications: number | null;
         };
-        /** PreviewRequest */
-        PreviewRequest: {
-            /** Query */
-            query: string;
+        /** PatchBlockRequest */
+        PatchBlockRequest: {
+            /** Content */
+            content?: string | null;
+            /** Coordinate Key */
+            coordinate_key?: string | null;
+            /** Expected Version */
+            expected_version?: number | null;
+            /** Table Tsv */
+            table_tsv?: string | null;
+        };
+        /** PatchBlockResponse */
+        PatchBlockResponse: {
+            /** Block Id */
+            block_id: string;
             /**
-             * Top K
-             * @default 5
+             * Cleared Blockers
+             * @default []
              */
-            top_k: number;
-            /** Version */
-            version?: number | null;
+            cleared_blockers: string[];
+            /** Record */
+            record?: {
+                [key: string]: unknown;
+            } | null;
+            /** State */
+            state: string;
+        };
+        /** PreviewItem */
+        PreviewItem: {
+            /** Chunk Id */
+            chunk_id: string;
+            /**
+             * Metadata
+             * @default {}
+             */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Ordinal */
+            ordinal: number;
+            /** Parent Unit Id */
+            parent_unit_id?: string | null;
+            /** Record Id */
+            record_id: string;
+            /** Record Version */
+            record_version: number;
+            /** Text */
+            text: string;
+            /** Token Count */
+            token_count: number;
+        };
+        /** PreviewResponse */
+        PreviewResponse: {
+            /** Histogram */
+            histogram: {
+                [key: string]: number;
+            };
+            /** Items */
+            items: components["schemas"]["PreviewItem"][];
+            /** Preview Id */
+            preview_id: string;
+            /** Record Id */
+            record_id: string;
+            /** Record Version */
+            record_version: number;
+            /** Status */
+            status: string;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /**
          * QueryResponse
@@ -2703,6 +2937,20 @@ export type components = {
             in_flight_at_swap: number;
             /** Total Ms */
             total_ms: number;
+        };
+        /** ReocrRequest */
+        ReocrRequest: {
+            /** Page Numbers */
+            page_numbers: number[];
+        };
+        /** ReocrResponse */
+        ReocrResponse: {
+            /** Job Id */
+            job_id: string;
+            /** Page Numbers */
+            page_numbers: number[];
+            /** State */
+            state: string;
         };
         /**
          * ResolveConflictRequest
@@ -3230,6 +3478,25 @@ export type components = {
             leased_jobs: number;
             /** Worker Id */
             worker_id: string;
+        };
+        /** PreviewRequest */
+        routers__admin_preview__PreviewRequest: {
+            /** Query */
+            query: string;
+            /**
+             * Top K
+             * @default 5
+             */
+            top_k: number;
+            /** Version */
+            version?: number | null;
+        };
+        /** PreviewRequest */
+        src__routers__admin_previews__PreviewRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Record Id */
+            record_id: string;
         };
     };
     responses: never;
@@ -3818,6 +4085,41 @@ export interface operations {
             };
         };
     };
+    create_preview_admin_previews_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["src__routers__admin_previews__PreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_records_admin_records_get: {
         parameters: {
             query?: {
@@ -4048,7 +4350,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PreviewRequest"];
+                "application/json": components["schemas"]["routers__admin_preview__PreviewRequest"];
             };
         };
         responses: {
@@ -4574,6 +4876,158 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UploadReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_block_admin_source_documents__document_id__blocks__block_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                /** @description Repo-relative source document id */
+                document_id: string;
+                /** @description Block id */
+                block_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchBlockRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PatchBlockResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    insert_missing_rows_admin_source_documents__document_id__blocks__block_id__insert_missing_rows_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                /** @description Repo-relative source document id */
+                document_id: string;
+                /** @description Block id */
+                block_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InsertMissingRowsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsertMissingRowsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_exceptions_admin_source_documents__document_id__exceptions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                /** @description Repo-relative source document id */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionsListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reocr_admin_source_documents__document_id__reocr_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                /** @description Repo-relative source document id */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReocrRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReocrResponse"];
                 };
             };
             /** @description Validation Error */

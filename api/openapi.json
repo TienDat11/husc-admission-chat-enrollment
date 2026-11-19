@@ -262,6 +262,90 @@
         "title": "BlindCitationListView",
         "type": "object"
       },
+      "BlockView": {
+        "properties": {
+          "block_id": {
+            "title": "Block Id",
+            "type": "string"
+          },
+          "block_type": {
+            "title": "Block Type",
+            "type": "string"
+          },
+          "coordinate_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinate Key"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "missing_pypdf_rows": {
+            "default": [],
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Missing Pypdf Rows",
+            "type": "array"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "block_id",
+          "document_id",
+          "page",
+          "ordinal",
+          "block_type",
+          "text",
+          "version"
+        ],
+        "title": "BlockView",
+        "type": "object"
+      },
       "Body_upload_source_document_admin_source_documents_upload_post": {
         "properties": {
           "file": {
@@ -1432,6 +1516,36 @@
         "title": "EditRecordRequest",
         "type": "object"
       },
+      "ExceptionsListResponse": {
+        "properties": {
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/BlockView"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "unanchored": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Unanchored",
+            "type": "array"
+          }
+        },
+        "required": [
+          "document_id",
+          "blocks"
+        ],
+        "title": "ExceptionsListResponse",
+        "type": "object"
+      },
       "FeedbackRequest": {
         "description": "Feedback on a served answer (public endpoint for the student).",
         "properties": {
@@ -1908,6 +2022,55 @@
         "title": "IndexJobsResponse",
         "type": "object"
       },
+      "InsertMissingRowsRequest": {
+        "properties": {
+          "expected_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          }
+        },
+        "title": "InsertMissingRowsRequest",
+        "type": "object"
+      },
+      "InsertMissingRowsResponse": {
+        "properties": {
+          "block_id": {
+            "title": "Block Id",
+            "type": "string"
+          },
+          "cleared_blockers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cleared Blockers",
+            "type": "array"
+          },
+          "inserted": {
+            "title": "Inserted",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "block_id",
+          "inserted",
+          "state"
+        ],
+        "title": "InsertMissingRowsResponse",
+        "type": "object"
+      },
       "JobSummary": {
         "properties": {
           "attempt": {
@@ -2166,22 +2329,31 @@
         "title": "MetaResponse",
         "type": "object"
       },
-      "PreviewRequest": {
+      "PatchBlockRequest": {
         "properties": {
-          "query": {
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Query",
-            "type": "string"
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
           },
-          "top_k": {
-            "default": 5,
-            "maximum": 20.0,
-            "minimum": 1.0,
-            "title": "Top K",
-            "type": "integer"
+          "coordinate_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinate Key"
           },
-          "version": {
+          "expected_version": {
             "anyOf": [
               {
                 "minimum": 1.0,
@@ -2191,13 +2363,166 @@
                 "type": "null"
               }
             ],
-            "title": "Version"
+            "title": "Expected Version"
+          },
+          "table_tsv": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Tsv"
+          }
+        },
+        "title": "PatchBlockRequest",
+        "type": "object"
+      },
+      "PatchBlockResponse": {
+        "properties": {
+          "block_id": {
+            "title": "Block Id",
+            "type": "string"
+          },
+          "cleared_blockers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cleared Blockers",
+            "type": "array"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
           }
         },
         "required": [
-          "query"
+          "block_id",
+          "state"
         ],
-        "title": "PreviewRequest",
+        "title": "PatchBlockResponse",
+        "type": "object"
+      },
+      "PreviewItem": {
+        "properties": {
+          "chunk_id": {
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Metadata",
+            "type": "object"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "parent_unit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Unit Id"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "token_count": {
+            "title": "Token Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "record_id",
+          "record_version",
+          "ordinal",
+          "text",
+          "token_count"
+        ],
+        "title": "PreviewItem",
+        "type": "object"
+      },
+      "PreviewResponse": {
+        "properties": {
+          "histogram": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Histogram",
+            "type": "object"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "preview_id": {
+            "title": "Preview Id",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "preview_id",
+          "record_id",
+          "record_version",
+          "status",
+          "items",
+          "histogram"
+        ],
+        "title": "PreviewResponse",
         "type": "object"
       },
       "QueryResponse": {
@@ -2824,6 +3149,49 @@
           "forced_while_in_flight"
         ],
         "title": "ReloadTableResponse",
+        "type": "object"
+      },
+      "ReocrRequest": {
+        "properties": {
+          "page_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Page Numbers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "page_numbers"
+        ],
+        "title": "ReocrRequest",
+        "type": "object"
+      },
+      "ReocrResponse": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "page_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Page Numbers",
+            "type": "array"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "state",
+          "page_numbers"
+        ],
+        "title": "ReocrResponse",
         "type": "object"
       },
       "ResolveConflictRequest": {
@@ -4005,6 +4373,60 @@
         ],
         "title": "WorkerStatus",
         "type": "object"
+      },
+      "routers__admin_preview__PreviewRequest": {
+        "properties": {
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 5,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "PreviewRequest",
+        "type": "object"
+      },
+      "src__routers__admin_previews__PreviewRequest": {
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "record_id": {
+            "minLength": 1,
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "expected_version"
+        ],
+        "title": "PreviewRequest",
+        "type": "object"
       }
     }
   },
@@ -5063,6 +5485,67 @@
         ]
       }
     },
+    "/admin/previews": {
+      "post": {
+        "description": "Build and persist a chunk preview for one record version.",
+        "operationId": "create_preview_admin_previews_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/src__routers__admin_previews__PreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Preview",
+        "tags": [
+          "admin",
+          "admin-previews"
+        ]
+      }
+    },
     "/admin/records": {
       "get": {
         "description": "Every stored record's latest version, filtered by ngành / năm / trạng thái.\n\nFilters combine with AND; an absent filter matches everything. Newest\nadmission year first, then ``record_id`` — a total order, so the same store\nlists in the same order on every call.",
@@ -5537,7 +6020,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PreviewRequest"
+                "$ref": "#/components/schemas/routers__admin_preview__PreviewRequest"
               }
             }
           },
@@ -6477,6 +6960,306 @@
         "tags": [
           "admin",
           "admin-document-upload"
+        ]
+      }
+    },
+    "/admin/source-documents/{document_id}/blocks/{block_id}": {
+      "patch": {
+        "description": "Edit a block's content / pasted Excel TSV / assigned coordinate_key.\n\nOptimistic concurrency via ``expected_version`` (409 VERSION_CONFLICT when\nstale). Assigning a ``coordinate_key`` to an unanchored record creates the\ncanonical record at version 1 (draft) and withdraws the quarantined record.",
+        "operationId": "patch_block_admin_source_documents__document_id__blocks__block_id__patch",
+        "parameters": [
+          {
+            "description": "Repo-relative source document id",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "Repo-relative source document id",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Block id",
+            "in": "path",
+            "name": "block_id",
+            "required": true,
+            "schema": {
+              "description": "Block id",
+              "title": "Block Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatchBlockResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Block",
+        "tags": [
+          "admin",
+          "admin-exceptions"
+        ]
+      }
+    },
+    "/admin/source-documents/{document_id}/blocks/{block_id}/insert-missing-rows": {
+      "post": {
+        "description": "1-click insertion of ``payload.missing_pypdf_rows`` into the block's table data.\n\nMarks the block resolved and clears ``TABLE_CELL_DROP_SUSPECTED``.",
+        "operationId": "insert_missing_rows_admin_source_documents__document_id__blocks__block_id__insert_missing_rows_post",
+        "parameters": [
+          {
+            "description": "Repo-relative source document id",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "Repo-relative source document id",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Block id",
+            "in": "path",
+            "name": "block_id",
+            "required": true,
+            "schema": {
+              "description": "Block id",
+              "title": "Block Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InsertMissingRowsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsertMissingRowsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Insert Missing Rows",
+        "tags": [
+          "admin",
+          "admin-exceptions"
+        ]
+      }
+    },
+    "/admin/source-documents/{document_id}/exceptions": {
+      "get": {
+        "description": "List the exception blocks and quarantined unanchored records of a document.",
+        "operationId": "list_exceptions_admin_source_documents__document_id__exceptions_get",
+        "parameters": [
+          {
+            "description": "Repo-relative source document id",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "Repo-relative source document id",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionsListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Exceptions",
+        "tags": [
+          "admin",
+          "admin-exceptions"
+        ]
+      }
+    },
+    "/admin/source-documents/{document_id}/reocr": {
+      "post": {
+        "description": "Re-OCR the requested pages only, via rapidocr through the page router.\n\nCreates/enqueues a ``reocr`` parse job in ``ingestion_jobs`` and returns\nHTTP 202 with ``{job_id, state, page_numbers}``.",
+        "operationId": "reocr_admin_source_documents__document_id__reocr_post",
+        "parameters": [
+          {
+            "description": "Repo-relative source document id",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "Repo-relative source document id",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Admin-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReocrRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReocrResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reocr",
+        "tags": [
+          "admin",
+          "admin-exceptions"
         ]
       }
     },
