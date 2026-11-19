@@ -29,6 +29,7 @@ const History = lazy(() => import("./pages/teacher/History"));
 const Accounts = lazy(() => import("./pages/teacher/Accounts"));
 const LoginGate = lazy(() => import("./pages/teacher/LoginGate"));
 const Ops = lazy(() => import("./pages/teacher/Ops"));
+const TableFix = lazy(() => import("./pages/teacher/TableFix"));
 
 const queryClient = new QueryClient();
 
@@ -98,6 +99,7 @@ const App = () => (
               </Route>
               <Route path="them" element={<RecordsGate />}>
                 <Route index element={<AddInfo />} />
+                <Route path="ngoai-le" element={<TableFix />} />
                 <Route path="qa" element={<QAForm />} />
               </Route>
               <Route path="cho-duyet" element={<RecordsGate />}>

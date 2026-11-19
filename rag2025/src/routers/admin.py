@@ -975,6 +975,47 @@ async def transition_record(
     enforce(identity, action_for_transition(payload.action))
     service = _lifecycle_service(request)
 
+    # Unit U7: submit is blocked while the record or its source-document block
+    # still carries an unresolved blocker (TABLE_CELL_DROP_SUSPECTED,
+    # OCR_LOW_CONFIDENCE, LAYOUT_UNKNOWN, UNANCHORED_DRAFT, …).
+    if payload.action == "submit":
+        try:
+            current = service.get(record_id)
+        except RecordNotFound:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "NOT_FOUND", "message": "không tìm thấy bản ghi"},
+            )
+        engine = getattr(request.app.state, "db_engine", None)
+        if engine is not None:
+            from src.infrastructure.db import make_session_factory
+            from sqlalchemy import text
+
+            session_factory = make_session_factory(engine)
+            async with session_factory() as session:
+                blocker_rows = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT warnings FROM document_blocks
+                            WHERE document_id = :document_id
+                            """
+                        ),
+                        {"document_id": current.source_document_id or ""},
+                    )
+                ).mappings().all()
+            from src.routers.admin_exceptions import _has_unresolved_blocker, _blocker_codes
+
+            for br in blocker_rows:
+                if _has_unresolved_blocker(_blocker_codes(br["warnings"])):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "SUBMIT_BLOCKED_BY_EXCEPTIONS",
+                            "message": "không thể gửi duyệt khi còn blocker chưa xử lý",
+                        },
+                    )
+
     guard = IdempotencyGuard(
         request,
         identity,
@@ -1411,3 +1452,14 @@ router.include_router(url_ingest_router)
 from src.routers.admin_overview import router as overview_router  # noqa: E402
 
 router.include_router(overview_router)
+
+# Unit U7: the exceptions / blocker surface (prefix /source-documents, shared
+# with the registry and upload surfaces — only full paths must be unique) and
+# the chunk-preview surface (POST /admin/previews).
+from src.routers.admin_exceptions import router as admin_exceptions_router  # noqa: E402
+
+router.include_router(admin_exceptions_router)
+
+from src.routers.admin_previews import router as admin_previews_router  # noqa: E402
+
+router.include_router(admin_previews_router)
