@@ -563,7 +563,7 @@ export interface IndexJobsStatus {
 /** How often the job screen re-reads its state. Polling, not a page reload. */
 export const INDEX_JOBS_REFETCH_MS = 5000;
 
-/** What `POST /admin/rollback` answers. */
+/** What `POST /admin/releases/previous/rollback` answers. */
 export interface RollbackResult {
   release_id: string;
   previous_release_id: string;
@@ -580,7 +580,7 @@ export async function fetchIndexJobs(token: string | null): Promise<IndexJobsSta
 }
 
 /**
- * Roll back to the previous release, or to a named one.
+ * Roll back to the previous release.
  *
  * `reason` is required by the route (`RollbackRequest.reason`, min length 1) and
  * is required here too — a rollback with no stated reason is not a thing this
@@ -592,7 +592,7 @@ export async function rollbackRelease(
   body: { reason: string; target_release_id?: string },
   options: { idempotencyKey?: string } = {},
 ): Promise<RollbackResult> {
-  return adminRequest<RollbackResult>(token, "/admin/rollback", {
+  return adminRequest<RollbackResult>(token, "/admin/releases/previous/rollback", {
     method: "POST",
     body: JSON.stringify(body),
     ...(options.idempotencyKey

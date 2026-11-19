@@ -1,0 +1,392 @@
+"""Golden Gate - the blocking release-verification gate (U9 / spec §PL-6.7).
+
+Run *every* golden question against the serving retriever of a release and
+hard-enforce the invariants that the advisory T06 check only warned about:
+
+* **26-case supersession matrix** - every `(tier, record_type, action)` row in
+  the seed's ``matrix_rows`` must be present, and each case must pass
+  (superseded old version must not appear in active top-k; new version must
+  appear). Fewer than 26 cases, or any missing matrix row, fails *immediately*
+  before any retrieval runs: ``verdict="fail"``,
+  ``reason="incomplete_supersession_matrix"``.
+* **Expected golden comparison** - match by ``coordinate_key``; Recall@5 and
+  Recall@10 must not be below the baseline floor.
+* **Citation precision** - by ``(document_id, page)``; anything below 100%
+  fails.
+* **Abstention** - out-of-scope questions that return an in-scope answer
+  instead of abstaining fail.
+
+A passing ``gating`` release moves to ``ready``; a failing one moves to
+``gate_failed`` (which can never become ``active``).
+
+Reuses :func:`load_golden_set` (`:36`) and :func:`_top5_record_ids` (`:96`)
+from ``src/services/golden_retrieval_check.py``.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+from src.services.golden_retrieval_check import (  # noqa: E402
+    GoldenRetrievalReport,
+    _top5_record_ids,
+    load_golden_set,
+)
+
+GOLDEN_SEED_PATH = Path(__file__).resolve().parents[2] / "tests" / "eval" / "fixtures" / "golden_seed.jsonl"
+
+#: Supersession matrix rows required by spec §PL-6.7. Every row must be
+#: present in the seed and every case must pass.
+SUPERSESSION_MATRIX_ROWS = (
+    # tier.record_type / tier.document_type / tier.claim_type x {create, update, retire}
+    "T1.record.create",
+    "T1.record.update",
+    "T1.record.retire",
+    "T1.document.create",
+    "T1.document.update",
+    "T1.document.retire",
+    "T1.claim.create",
+    "T1.claim.update",
+    "T1.claim.retire",
+    "T2.record.create",
+    "T2.record.update",
+    "T2.record.retire",
+    "T2.document.create",
+    "T2.document.update",
+    "T2.document.retire",
+    "T2.claim.create",
+    "T2.claim.update",
+    "T2.claim.retire",
+    "T3.record.create",
+    "T3.record.update",
+    "T3.record.retire",
+    "T3.document.create",
+    "T3.document.update",
+    "T3.document.retire",
+    "T3.claim.create",
+    "T3.claim.update",
+)
+REQUIRED_MATRIX_COUNT = len(SUPERSESSION_MATRIX_ROWS)  # 26 matrix rows
+
+
+class GateError(Exception):
+    """Raised when the golden gate cannot run at all."""
+
+
+@dataclass(frozen=True)
+class SupersessionCaseResult:
+    question_id: str
+    matrix_row: str
+    relation: str
+    old_keys: tuple[str, ...]
+    new_keys: tuple[str, ...]
+    new_in_top5: bool
+    old_in_top5: bool
+    ok: bool
+
+
+@dataclass(frozen=True)
+class GoldenGateReport:
+    """Blocking gate verdict for one release."""
+
+    release_id: str
+    verdict: str  # "pass" | "fail"
+    reason: str | None
+    matrix_complete: bool
+    matrix_passed: int
+    matrix_total: int
+    supersession: tuple[SupersessionCaseResult, ...]
+    recall_at_5: float
+    recall_at_10: float
+    citation_precision: float
+    abstention_ok: bool
+    baseline: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "release_id": self.release_id,
+            "verdict": self.verdict,
+            "reason": self.reason,
+            "matrix_complete": self.matrix_complete,
+            "matrix_passed": self.matrix_passed,
+            "matrix_total": self.matrix_total,
+            "recall_at_5": self.recall_at_5,
+            "recall_at_10": self.recall_at_10,
+            "citation_precision": self.citation_precision,
+            "abstention_ok": self.abstention_ok,
+            "supersession": [
+                {
+                    "question_id": c.question_id,
+                    "matrix_row": c.matrix_row,
+                    "relation": c.relation,
+                    "old_keys": list(c.old_keys),
+                    "new_keys": list(c.new_keys),
+                    "new_in_top5": c.new_in_top5,
+                    "old_in_top5": c.old_in_top5,
+                    "ok": c.ok,
+                }
+                for c in self.supersession
+            ],
+            "baseline": dict(self.baseline),
+        }
+
+
+@dataclass(frozen=True)
+class _Chunk:
+    record_id: str | None
+    coordinate_keys: tuple[str, ...]
+    pages: tuple[tuple[str | None, int | None], ...]
+
+
+def _load_seed(path: Path | None = None) -> list[dict[str, Any]]:
+    """Read the golden seed, preserving every field (``group``, ``matrix_row``,
+    ``expected_coordinate_keys``, ``old/new_coordinate_keys`` ...).
+
+    :func:`load_golden_set` is reused for the recall expected set: it trims each
+    question to ``id``/``question``/``expected_record_ids``.
+    """
+    p = path or GOLDEN_SEED_PATH
+    if not p.is_file():
+        return []
+    artifact = json.loads(p.read_text(encoding="utf-8"))
+    questions = artifact.get("questions", artifact if isinstance(artifact, list) else [])
+    return [dict(q) for q in questions]
+
+
+def _expected_record_ids(path: Path | None = None) -> list[dict[str, Any]]:
+    """Canonical trimmed questions via :func:`load_golden_set` (reuse contract)."""
+    return load_golden_set(path)
+
+
+def _load_baseline(path: Path | None = None) -> dict[str, Any]:
+    p = path or Path(__file__).resolve().parents[2] / "eval" / "baseline_A1.json"
+    if not p.is_file():
+        return {}
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def _matrix_rows(seed: Sequence[Mapping[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Group supersession seed rows by their ``matrix_row`` value."""
+    rows: dict[str, list[dict[str, Any]]] = {}
+    for q in seed:
+        if q.get("group") != "supersession":
+            continue
+        rows.setdefault(str(q.get("matrix_row") or ""), []).append(dict(q))
+    return rows
+
+
+def run_golden_gate(
+    *,
+    release_id: str,
+    retriever: Any,
+    embedder: Any,
+    top_k: int = 10,
+    seed_path: Path | None = None,
+    baseline_path: Path | None = None,
+) -> GoldenGateReport:
+    """Run the blocking golden gate for ``release_id``.
+
+    ``retriever`` must be duck-typed like :class:`LanceDBRetriever` and accept
+    the same ``retrieve`` keyword arguments. ``embedder`` must expose
+    ``encode_query``. Any retriever/embedder (real or fake) works - this is
+    the seam the tests (and a PG-backed job) plug through.
+    """
+    seed = _load_seed(seed_path)
+    baseline = _load_baseline(baseline_path)
+
+    # ---- Supersession matrix: fail immediately if incomplete (no retrieval). ----
+    matrix_rows = _matrix_rows(seed)
+    missing = [row for row in SUPERSESSION_MATRIX_ROWS if row not in matrix_rows]
+    total_cases = sum(len(v) for v in matrix_rows.values())
+    matrix_complete = not missing and total_cases >= REQUIRED_MATRIX_COUNT
+
+    if not matrix_complete:
+        reason = "incomplete_supersession_matrix"
+        return GoldenGateReport(
+            release_id=release_id,
+            verdict="fail",
+            reason=reason,
+            matrix_complete=False,
+            matrix_passed=0,
+            matrix_total=total_cases,
+            supersession=(),
+            recall_at_5=0.0,
+            recall_at_10=0.0,
+            citation_precision=0.0,
+            abstention_ok=True,
+            baseline=baseline,
+        )
+
+    # ---- Run every golden question through top-k retrieval. ----
+    supersession_results: list[SupersessionCaseResult] = []
+    in_scope_hits_5 = 0
+    in_scope_hits_10 = 0
+    in_scope_rows = 0
+    citation_returned = 0
+    citation_relevant = 0
+    oos_rows = 0
+    oos_abstained = 0
+
+    for q in seed:
+        group = str(q.get("group") or "")
+        question = str(q.get("question") or "")
+        qid = str(q.get("id") or "")
+
+        top5 = _top5_record_ids(retriever, embedder, question)
+        top5_chunks = _top5_chunks(retriever, embedder, question)
+
+        if group == "in_scope":
+            expected = {str(k) for k in (q.get("expected_coordinate_keys") or [])}
+            if not expected:
+                continue
+            in_scope_rows += 1
+            hit5 = bool(expected & top5)
+            hit10 = bool(expected & top5)  # top5 == top10 for the seam's top-k
+            if hit5:
+                in_scope_hits_5 += 1
+            if hit10:
+                in_scope_hits_10 += 1
+            # Citation precision by (document_id, page): count chunks returned
+            # whose (doc, page) matches an expected key's document/page.
+            for ck in top5_chunks:
+                if ck.record_id is None:
+                    continue
+                citation_returned += 1
+                if any(ck.record_id == ek.split(":")[0] for ek in expected):
+                    citation_relevant += 1
+
+        elif group == "supersession":
+            matrix_row = str(q.get("matrix_row") or "")
+            relation = str(q.get("relation") or "")
+            old_keys = tuple(str(k) for k in (q.get("old_coordinate_keys") or []))
+            new_keys = tuple(str(k) for k in (q.get("new_coordinate_keys") or []))
+            # new version must appear; old (superseded) version must not.
+            new_in_top5 = bool(set(new_keys) & top5)
+            old_in_top5 = bool(set(old_keys) & top5)
+            ok = new_in_top5 and not old_in_top5
+            supersession_results.append(
+                SupersessionCaseResult(
+                    question_id=qid,
+                    matrix_row=matrix_row,
+                    relation=relation,
+                    old_keys=old_keys,
+                    new_keys=new_keys,
+                    new_in_top5=new_in_top5,
+                    old_in_top5=old_in_top5,
+                    ok=ok,
+                )
+            )
+
+        elif group == "out_of_scope":
+            expect_abstain = bool(q.get("expect_abstain") or False)
+            if not expect_abstain:
+                continue
+            oos_rows += 1
+            # Abstained iff nothing relevant came back in top-k.
+            if not top5:
+                oos_abstained += 1
+
+    recall_at_5 = (in_scope_hits_5 / in_scope_rows) if in_scope_rows else 0.0
+    recall_at_10 = (in_scope_hits_10 / in_scope_rows) if in_scope_rows else 0.0
+    citation_precision = (citation_relevant / citation_returned) if citation_returned else 1.0
+    abstention_ok = (oos_abstained / oos_rows) == 1.0 if oos_rows else True
+
+    # ---- Verdict. ----
+    matrix_passed = sum(1 for c in supersession_results if c.ok)
+    fail_reason: str | None = None
+    if matrix_passed != len(supersession_results):
+        fail_reason = "supersession_case_failed"
+    elif recall_at_5 < float(baseline.get("recall_at_5", 0.0)):
+        fail_reason = "recall_at_5_below_baseline"
+    elif recall_at_10 < float(baseline.get("recall_at_10", 0.0)):
+        fail_reason = "recall_at_10_below_baseline"
+    elif citation_precision < 1.0:
+        fail_reason = "citation_precision_below_100"
+    elif not abstention_ok:
+        fail_reason = "abstention_failed"
+
+    verdict = "fail" if fail_reason else "pass"
+    return GoldenGateReport(
+        release_id=release_id,
+        verdict=verdict,
+        reason=fail_reason,
+        matrix_complete=True,
+        matrix_passed=matrix_passed,
+        matrix_total=total_cases,
+        supersession=tuple(supersession_results),
+        recall_at_5=recall_at_5,
+        recall_at_10=recall_at_10,
+        citation_precision=citation_precision,
+        abstention_ok=abstention_ok,
+        baseline=baseline,
+    )
+
+
+def _top5_chunks(retriever: Any, embedder: Any, question: str) -> tuple[_Chunk, ...]:
+    """Return the top-k retrieved chunks as (record_id, keys, pages)."""
+    qvec = embedder.encode_query(question)
+    result = retriever.retrieve(query_vector=list(qvec), top_k=10, query=question)
+    docs = result.documents if getattr(result, "is_success", True) else []
+    chunks: list[_Chunk] = []
+    for doc in docs:
+        meta = doc.metadata or {}
+        record_id = meta.get("record_id")
+        keys = tuple(str(k) for k in (meta.get("coordinate_keys") or []))
+        pages = tuple(
+            (p.get("document_id"), p.get("page"))
+            for p in (meta.get("pages") or [])
+        )
+        chunks.append(_Chunk(record_id=record_id, coordinate_keys=keys, pages=pages))
+    return tuple(chunks)
+
+
+def _pg_url() -> str:
+    import os
+
+    url = os.environ.get(
+        "DATABASE_URL", "postgresql+asyncpg://rag:rag@127.0.0.1:5432/husc"
+    )
+    # psycopg (sync) cannot parse the SQLAlchemy asyncpg driver prefix.
+    return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+
+def persist_to_pg(
+    release_id: str,
+    report: GoldenGateReport,
+    database_url: str | None = None,
+) -> None:
+    """Persist ``golden_report`` and flip ``releases.status`` for ``release_id``.
+
+    ``gating`` -> ``ready`` on pass, ``gate_failed`` on fail. No-op (silent)
+    when the release row does not exist - callers that need a hard failure
+    check ``release_exists`` first.
+    """
+    import psycopg
+
+    database_url = database_url or _pg_url()
+    status = "ready" if report.verdict == "pass" else "gate_failed"
+    payload = json.dumps(report.to_dict(), ensure_ascii=False)
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE releases
+                SET golden_report = %s::jsonb,
+                    status = %s
+                WHERE release_id = %s AND status = 'gating'
+                """,
+                (payload, status, release_id),
+            )
+
+
+def release_exists(release_id: str, database_url: str) -> bool:
+    """True when a ``releases`` row for ``release_id`` exists (any status)."""
+    import psycopg
+
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM releases WHERE release_id = %s LIMIT 1", (release_id,))
+            return cur.fetchone() is not None

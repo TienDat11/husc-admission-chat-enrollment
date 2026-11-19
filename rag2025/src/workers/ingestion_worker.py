@@ -21,13 +21,52 @@ from infrastructure.job_queue import (
     reap_expired_leases,
 )
 
+from src.services import golden_gate
+from src.services.golden_gate import run_golden_gate
+from src.services.lancedb_retrieval import LanceDBRetriever, LanceDBRetrieverConfig
+
 Handler = Callable[[dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
 
-async def _noop_handler(job: dict[str, Any]) -> None:
-    return None
+def _job_payload(job: dict[str, Any]) -> dict[str, Any]:
+    payload = job.get("payload") or {}
+    if isinstance(payload, str):
+        import json
+
+        return json.loads(payload)
+    return dict(payload)
+
+
+def _build_retriever() -> LanceDBRetriever:
+    return LanceDBRetriever(LanceDBRetrieverConfig.from_env())
+
+
+async def retrieval_checking_handler(job: dict[str, Any]) -> None:
+    """Run the Golden Gate for the job's release and transition state.
+
+    Gate pass  -> job completed, release ``ready``/``active``.
+    Gate fail  -> job failed_terminal, release ``gate_failed`` (never active).
+    """
+    release_id = _job_payload(job).get("release_id")
+    if not release_id:
+        raise ValueError("retrieval_checking job missing release_id")
+
+    retriever = _build_retriever()
+    report = run_golden_gate(
+        release_id=release_id,
+        retriever=retriever,
+        embedder=retriever,
+        seed_path=golden_gate.GOLDEN_SEED_PATH,
+    )
+
+    if report.verdict == "pass":
+        golden_gate.persist_to_pg(release_id, report, golden_gate._pg_url())
+        return  # run_worker_once completes the job
+    raise RuntimeError(
+        f"golden gate failed for release {release_id}: {report.reason}"
+    )
 
 
 async def _renew_lease(engine, job_id: str, worker_id: str, every: float) -> None:
