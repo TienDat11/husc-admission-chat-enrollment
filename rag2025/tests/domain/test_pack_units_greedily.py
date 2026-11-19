@@ -130,3 +130,14 @@ def test_a_small_text_stays_one_chunk(sentence_count):
 
     assert len(chunks) == 1
     assert _tokens(chunks[0].text) <= HARD_MAX_TOKENS
+
+
+@pytest.mark.parametrize("small_words", [5, 10, 20])
+def test_a_short_mid_dieu_fragment_borrows_from_its_neighbour(small_words):
+    """A short fragment between two large pieces must not stand alone under the floor."""
+    big = " ".join(f"Thí sinh nộp hồ sơ đúng hạn số {i}." for i in range(120))
+    small = " ".join(["ngắn"] * small_words)
+    text = "Điều 3. Hồ sơ dự tuyển\n" + big + "\n" + small + "\n" + big
+    chunks = _pack(text)
+    for index, chunk in enumerate(chunks[:-1]):
+        assert MIN_TOKENS <= _tokens(chunk.text) <= HARD_MAX_TOKENS, (index, _tokens(chunk.text))

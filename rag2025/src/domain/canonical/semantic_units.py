@@ -600,6 +600,28 @@ def _fit_piece(
     return pieces
 
 
+def _rebalance_pair(
+    span: tuple[int, int],
+    cuts: Sequence[int],
+    min_tokens: int,
+    hard: int,
+    tokens: Callable[[int, int], int],
+) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    """Re-cut an over-cap pair at a piece boundary so the short head reaches the floor.
+
+    The neighbour gives up its leading pieces to the head; both halves must fit the
+    hard cap. Returns ``None`` when no boundary satisfies that.
+    """
+    start, end = span
+    for cut in cuts:
+        if not start < cut < end:
+            continue
+        head, tail = (start, cut), (cut, end)
+        if min_tokens <= tokens(*head) <= hard and tokens(*tail) <= hard:
+            return head, tail
+    return None
+
+
 def _pack_scope(
     text: str,
     scope: _Scope,
@@ -648,12 +670,20 @@ def _pack_scope(
             cur_start, cur_end = piece_start, piece_end
     ranges.append((cur_start, cur_end))
 
+    cuts = sorted({edge for piece in pieces for edge in piece})
     merged: list[tuple[int, int]] = []
     for start, end in ranges:
-        if merged and tokens(*merged[-1]) < min_tokens and tokens(merged[-1][0], end) <= hard:
-            merged[-1] = (merged[-1][0], end)
-        else:
-            merged.append((start, end))
+        if merged and tokens(*merged[-1]) < min_tokens:
+            joined = (merged[-1][0], end)
+            if tokens(*joined) <= hard:
+                merged[-1] = joined
+                continue
+            split = _rebalance_pair(joined, cuts, min_tokens, hard, tokens)
+            if split is not None:
+                merged[-1], tail = split
+                merged.append(tail)
+                continue
+        merged.append((start, end))
     return merged
 
 
