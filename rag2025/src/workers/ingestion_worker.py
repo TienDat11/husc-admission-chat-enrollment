@@ -77,6 +77,11 @@ async def _renew_lease(engine, job_id: str, worker_id: str, every: float) -> Non
         await heartbeat(engine, job_id, worker_id)
 
 
+async def _noop_handler(job: dict[str, Any]) -> None:
+    """Default handler: the skeleton loop completes claimed jobs without work."""
+    return None
+
+
 async def run_worker_once(
     engine,
     worker_id: str,

@@ -80,8 +80,7 @@ export function ChatLayout() {
   const followUps = useMemo(() => deriveFollowUpQuestions(messages), [messages]);
 
   const isOutOfScope = (message: Message) =>
-    message.statusCode === 'NOT_IN_HUSC_SCOPE' ||
-    message.statusCode === 'HUSC_ENTITY_NOT_FOUND';
+    message.statusCode === 'NOT_IN_HUSC_SCOPE';
 
   const isNoActiveRelease = error === LOCALIZED_ERROR_COPY.no_active_release;
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+import json
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -12,18 +13,28 @@ if str(ROOT) not in sys.path:
 from fastapi.testclient import TestClient
 
 from config.settings import RAGSettings
-from rag2025.src.app.lifecycle import configure_canonical_record_store
+from src.app.lifecycle import configure_canonical_record_store
 
 MAIN_PATH = ROOT / "src" / "main.py"
 
 
+ADMIN_TOKEN = "batch-test-admin-token"
+ADMIN_ACTOR = "batch-test-admin"
+
+
 def _make_app(tmp_path, monkeypatch):
-    """Build the real app over a throwaway store root."""
-    settings = RAGSettings()
+    """Build the real app over a throwaway store root, with one admin identity."""
+    monkeypatch.setenv(
+        "ADMIN_IDENTITIES",
+        json.dumps([{"token": ADMIN_TOKEN, "actor_id": ADMIN_ACTOR, "role": "admin"}]),
+    )
+    monkeypatch.delenv("ADMIN_API_TOKEN", raising=False)
+    monkeypatch.setenv("ADMIN_FOUR_EYES", "0")
     app_module = __import__("src.main", fromlist=["app"])
-    store = configure_canonical_record_store(settings, tmp_path / "store")
-    app_module.app.state.record_store = store
-    app_module.app.state.lifecycle_service = None
+    configure_canonical_record_store(
+        app_module.app,
+        settings=RAGSettings(CANONICAL_STORE_ROOT=tmp_path / "store"),
+    )
     return app_module.app
 
 
@@ -36,8 +47,8 @@ def _post_batch(client, payload):
 # ------------------------------------------------------------------
 def test_batch_transition_requires_records_read(tmp_path, monkeypatch):
     app = _make_app(tmp_path, monkeypatch)
-    client = TestClient(app)
-    # No admin token -> 401
+    client = TestClient(app, headers={"X-Admin-Token": "not-a-registered-credential"})
+    # Unregistered credential -> 401/403
     r = _post_batch(client, {"items": []})
     assert r.status_code in (401, 403)
 
@@ -47,7 +58,7 @@ def test_batch_transition_requires_records_read(tmp_path, monkeypatch):
 # ------------------------------------------------------------------
 def test_empty_batch_returns_empty_lists(tmp_path, monkeypatch):
     app = _make_app(tmp_path, monkeypatch)
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-Admin-Token": ADMIN_TOKEN})
     r = _post_batch(client, {"items": []})
     assert r.status_code == 200
     body = r.json()
@@ -61,7 +72,7 @@ def test_empty_batch_returns_empty_lists(tmp_path, monkeypatch):
 # ------------------------------------------------------------------
 def test_unknown_action_rejected(tmp_path, monkeypatch):
     app = _make_app(tmp_path, monkeypatch)
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-Admin-Token": ADMIN_TOKEN})
     r = _post_batch(client, {"items": [{"record_id": "r1", "action": "nope"}]})
     assert r.status_code == 200
     rej = r.json()["rejected"]

@@ -385,10 +385,10 @@ def test_cli_invocation(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # F. gate_failed release cannot be activated (409 RELEASE_GATE_FAILED)
 # ---------------------------------------------------------------------------
-def test_gate_failed_release_cannot_be_activated(monkeypatch):
+def test_gate_failed_release_cannot_be_activated(monkeypatch, tmp_path):
     from src.routers.admin import router as admin_router
 
-    app = _app_with_activate_route()
+    app = _app_with_activate_route(monkeypatch, tmp_path)
     client = TestClient(app)
 
     # Flip the existing release to gate_failed via PG, then attempt activation.
@@ -424,11 +424,23 @@ def test_gate_failed_release_cannot_be_activated(monkeypatch):
                 )
 
 
-def _app_with_activate_route():
+def _app_with_activate_route(monkeypatch, tmp_path):
+    """Admin routes over the PostgreSQL-backed canonical store, as in sql_admin_client."""
     from fastapi import FastAPI
 
+    from config.settings import RAGSettings
+    from src.app.lifecycle import configure_canonical_record_store
     from src.routers.admin import router as admin_router
 
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://rag:rag@127.0.0.1:5432/husc")
+    monkeypatch.setenv("ADMIN_FOUR_EYES", "0")
     app = FastAPI()
     app.include_router(admin_router)  # router already carries prefix="/admin"
+    configure_canonical_record_store(
+        app,
+        settings=RAGSettings(
+            CANONICAL_STORE_ROOT=tmp_path / "canonical_store",
+            STORE_BACKEND="postgres",
+        ),
+    )
     return app

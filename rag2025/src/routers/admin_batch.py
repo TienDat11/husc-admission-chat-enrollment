@@ -97,11 +97,15 @@ class BatchTransitionResponse(BaseModel):
 
 
 def _lifecycle_service(request: Request) -> AdminLifecycleService:
-    service = getattr(request.app.state, "lifecycle_service", None)
+    """The lifecycle service wired by ``configure_canonical_record_store``.
+
+    Same service the single-item admin routes use, so batch transitions share
+    the audit ledger and four-eyes switch. Refused when unwired rather than
+    building a second service over a different store.
+    """
+    service = getattr(request.app.state, "admin_lifecycle_service", None)
     if service is None:
-        store = request.app.state.record_store
-        service = AdminLifecycleService(store)
-        request.app.state.lifecycle_service = service
+        raise HTTPException(status_code=503, detail="admin lifecycle service is not configured")
     return service
 
 

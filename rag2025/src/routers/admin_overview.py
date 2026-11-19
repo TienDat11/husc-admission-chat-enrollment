@@ -76,7 +76,7 @@ async def _postgres_overview(engine) -> OverviewResponse:
     return OverviewResponse(**dict(row._mapping))
 
 
-def _file_overview(request: Request) -> OverviewResponse:
+async def _file_overview(request: Request) -> OverviewResponse:
     store = getattr(request.app.state, "canonical_record_store", None)
     queue = getattr(request.app.state, "unanswered_queue", None)
     if store is None or queue is None:
@@ -91,7 +91,7 @@ def _file_overview(request: Request) -> OverviewResponse:
         1 for item in _conflict_service(request).items() if item.status == STATUS_OPEN
     )
     now = datetime.now(timezone.utc)
-    open_items = [item for item in queue.items() if not item.resolved and not item.out_of_scope]
+    open_items = [item for item in await queue.items() if not item.resolved and not item.out_of_scope]
     overdue = sum(
         1
         for item in open_items
@@ -114,4 +114,4 @@ async def get_overview(request: Request) -> OverviewResponse:
     engine = getattr(request.app.state, "db_engine", None)
     if engine is not None:
         return await _postgres_overview(engine)
-    return _file_overview(request)
+    return await _file_overview(request)

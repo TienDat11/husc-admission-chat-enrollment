@@ -129,6 +129,14 @@ async def rollback_release(release_id: str, payload: RollbackRequest, request: R
     with store._connect() as conn:
         with conn.transaction():
             conn.execute("SELECT pg_advisory_xact_lock(hashtext('release_pointer'))")
+            if release_id == "previous":
+                latest = conn.execute(
+                    "SELECT release_id FROM releases WHERE status = 'superseded' "
+                    "ORDER BY activated_at DESC NULLS LAST, updated_at DESC LIMIT 1"
+                ).mappings().first()
+                if latest is None:
+                    raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "không tìm thấy bản phát hành đã thay thế"})
+                release_id = latest["release_id"]
             target = conn.execute("SELECT status, golden_report, corpus_stamp FROM releases WHERE release_id = %s FOR UPDATE", [release_id]).mappings().first()
             if target is None:
                 raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "không tìm thấy bản phát hành"})

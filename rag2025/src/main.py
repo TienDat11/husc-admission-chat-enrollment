@@ -1345,6 +1345,7 @@ class UnifiedQueryResponse(BaseModel):
     graph_stats: Optional[Dict[str, Any]] = None
     latency_ms: float
     trace_id: str
+    student_profile: Optional[Dict[str, Any]] = None
 
     # G2 contract — mirror /query's status surface so the FE ChatLayout
     # banner + gap-hint UX behaves identically on /v2. All Optional with
