@@ -116,7 +116,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         for err in errors
     ]
     body = error_envelope("VALIDATION_FAILED", "Dữ liệu gửi lên không hợp lệ", request_id, field_errors, detail=errors)
-    return JSONResponse(status_code=422, content=body, headers={REQUEST_ID_HEADER: request_id})
+    return JSONResponse(status_code=400, content=body, headers={REQUEST_ID_HEADER: request_id})
 
 
 def _is_frozen_admin_write(request: Request) -> bool:

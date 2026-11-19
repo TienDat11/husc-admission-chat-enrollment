@@ -55,7 +55,7 @@ def test_generated_request_id_when_header_missing_or_invalid() -> None:
 def test_validation_error_uses_plan_shape_with_field_errors() -> None:
     client = TestClient(_app())
     res = client.get("/needs-int", params={"q": "not-a-number"})
-    assert res.status_code == 422
+    assert res.status_code == 400
     body = res.json()
     assert body["code"] == "VALIDATION_FAILED"
     assert body["request_id"] == res.headers["X-Request-ID"]
