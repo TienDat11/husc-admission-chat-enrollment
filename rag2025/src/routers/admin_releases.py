@@ -50,6 +50,7 @@ class ReleaseView(BaseModel):
     status: str
     golden_report: dict[str, Any] | None = None
     corpus_stamp: list[dict[str, Any]] | None = None
+    previous_release_id: str | None = None
 
 
 class RollbackRequest(BaseModel):
@@ -169,6 +170,7 @@ async def rollback_release(release_id: str, payload: RollbackRequest, request: R
                 raise HTTPException(status_code=409, detail={"code": "RELEASE_NOT_ACTIVATABLE", "message": "chỉ có thể rollback về bản ở trạng thái superseded"})
             stamp = target["corpus_stamp"] or []
             current = conn.execute("SELECT release_id FROM releases WHERE status = 'active' FOR UPDATE").fetchone()
+            previous_release_id = current["release_id"] if current else None
             if current:
                 conn.execute("UPDATE releases SET status = 'rolled_back', updated_at = now() WHERE release_id = %s AND status = 'active'", [current["release_id"]])
             current_ids = conn.execute("SELECT record_id, version FROM canonical_records WHERE status = 'published'").fetchall()
@@ -209,4 +211,4 @@ async def rollback_release(release_id: str, payload: RollbackRequest, request: R
             )
     with store._connect() as conn2:
         row = conn2.execute("SELECT release_id, status, golden_report, corpus_stamp FROM releases WHERE release_id = %s", [release_id]).fetchone()
-    return ReleaseView(**dict(row))
+    return ReleaseView(**dict(row), previous_release_id=previous_release_id)

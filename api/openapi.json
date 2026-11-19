@@ -3419,6 +3419,17 @@
             ],
             "title": "Golden Report"
           },
+          "previous_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Release Id"
+          },
           "release_id": {
             "title": "Release Id",
             "type": "string"

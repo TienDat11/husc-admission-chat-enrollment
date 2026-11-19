@@ -3266,6 +3266,8 @@ export type components = {
             golden_report?: {
                 [key: string]: unknown;
             } | null;
+            /** Previous Release Id */
+            previous_release_id?: string | null;
             /** Release Id */
             release_id: string;
             /** Status */
@@ -4022,7 +4024,10 @@ export type components = {
         };
         /** RollbackRequest */
         src__routers__admin_releases__RollbackRequest: {
-            /** Reason */
+            /**
+             * Reason
+             * @default
+             */
             reason: string;
         };
     };

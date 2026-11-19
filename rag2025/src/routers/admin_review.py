@@ -13,10 +13,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from src.config.admin_identity import four_eyes_enabled
 from src.domain.admin_identity import AdminAction, Identity
 from src.infrastructure.sql_record_store import SqlRecordStore
 from src.routers.admin_auth import current_identity, require_action
-from src.config.admin_identity import four_eyes_enabled
 from src.services.retrieval_sandbox import Chunk, Query, compute_diff
 
 router = APIRouter(tags=["admin-review"])
@@ -138,11 +138,12 @@ async def list_supersession_candidates(
     status: str = "open",
     identity: Identity = Depends(current_identity),
 ) -> list[SupersessionCandidate]:
+    db_status = "pending_review" if status == "open" else status
     store = _require_pg_store(request)
     with store._connect() as conn:
         rows = conn.execute(
             "SELECT candidate_id, old_record_id, old_record_version, new_record_id, new_record_version, decision, status FROM supersession_candidates WHERE status = %s ORDER BY created_at DESC",
-            [status],
+            [db_status],
         ).fetchall()
     return [_candidate(r) for r in rows]
 
