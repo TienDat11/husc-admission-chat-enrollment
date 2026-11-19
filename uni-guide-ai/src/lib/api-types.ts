@@ -1082,15 +1082,82 @@ export type paths = {
         };
         /**
          * List Unanswered
-         * @description Open unanswered questions, newest first, with the resolution markers.
+         * @description Open unanswered questions, newest first.
          *
-         *     By default only open items are returned (the ones the team still needs to
-         *     review); pass ``resolved=true`` to see everything, including items T15
-         *     already resolved.
+         *     Default excludes resolved items and out-of-scope items. Pass
+         *     ``resolved=true`` to also surface resolved rows.
          */
         get: operations["list_unanswered_admin_unanswered__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/unanswered/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Feedback
+         * @description Recent chat_feedback rows, newest first.
+         */
+        get: operations["list_feedback_admin_unanswered_feedback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/unanswered/{trace_id}/out-of-scope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Out Of Scope
+         * @description Mark a question out of scope without deleting the row.
+         *
+         *     Returns ``409 VERSION_CONFLICT`` when the question is already out of scope.
+         */
+        post: operations["mark_out_of_scope_admin_unanswered__trace_id__out_of_scope_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/unanswered/{trace_id}/promote-golden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote Golden
+         * @description Promote one unanswered question to a draft record + golden query.
+         *
+         *     Runs in one atomic SQL transaction:
+         *       1. insert a ``draft`` canonical record (never auto-publishes),
+         *       2. insert ``golden_queries(origin='promoted')``,
+         *       3. stamp ``resolved_by_record_id`` + ``resolved_at`` on the question,
+         *       4. append an audit event.
+         */
+        post: operations["promote_golden_admin_unanswered__trace_id__promote_golden_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2271,6 +2338,30 @@ export type components = {
                 [key: string]: unknown;
             } | null;
         };
+        /** FeedbackItem */
+        FeedbackItem: {
+            /** Answered At */
+            answered_at: string;
+            /** Created At */
+            created_at: string;
+            /** Feedback Id */
+            feedback_id: string;
+            /** Helpful */
+            helpful: boolean;
+            /** Linked Item */
+            linked_item: boolean;
+            /** Reason */
+            reason: string | null;
+            /** Trace Id */
+            trace_id: string;
+        };
+        /** FeedbackList */
+        FeedbackList: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["FeedbackItem"][];
+        };
         /**
          * FeedbackRequest
          * @description Feedback on a served answer (public endpoint for the student).
@@ -2611,6 +2702,13 @@ export type components = {
             /** Total Notifications */
             total_notifications: number | null;
         };
+        /** OutOfScopeResult */
+        OutOfScopeResult: {
+            /** Out Of Scope */
+            out_of_scope: boolean;
+            /** Trace Id */
+            trace_id: string;
+        };
         /**
          * OverviewResponse
          * @description Counts behind the sidebar badges and the Frame 5 cards.
@@ -2638,6 +2736,45 @@ export type components = {
             top_k: number;
             /** Version */
             version?: number | null;
+        };
+        /** PromoteGoldenBody */
+        PromoteGoldenBody: {
+            /**
+             * Admission Year
+             * @default 2026
+             */
+            admission_year: number;
+            /**
+             * Answer
+             * @description The officer's answer text.
+             */
+            answer: string;
+            /**
+             * Coordinate Key
+             * @description Stable coordinate key for the new draft record.
+             */
+            coordinate_key: string;
+            /**
+             * Scope
+             * @default tuyen_sinh
+             */
+            scope: string;
+            /**
+             * Subject
+             * @default cau_hoi_chua_tra_loi
+             */
+            subject: string;
+        };
+        /** PromoteGoldenResult */
+        PromoteGoldenResult: {
+            /** Golden Query Id */
+            golden_query_id: string;
+            /** Record Id */
+            record_id: string;
+            /** Status */
+            status: string;
+            /** Trace Id */
+            trace_id: string;
         };
         /**
          * QueryResponse
@@ -3181,6 +3318,16 @@ export type components = {
             /** Asked At */
             asked_at: string;
             /**
+             * Is Overdue
+             * @default false
+             */
+            is_overdue: boolean;
+            /**
+             * Occurrence Count
+             * @default 1
+             */
+            occurrence_count: number;
+            /**
              * Out Of Scope
              * @default false
              */
@@ -3195,6 +3342,8 @@ export type components = {
             resolved_by_record_id?: string | null;
             /** Route */
             route: string;
+            /** Sla Due At */
+            sla_due_at?: string | null;
             /** Status Code */
             status_code: string;
             /** Trace Id */
@@ -5227,7 +5376,7 @@ export interface operations {
     list_unanswered_admin_unanswered__get: {
         parameters: {
             query?: {
-                /** @description Include resolved items too */
+                /** @description Include resolved items too when true */
                 resolved?: boolean | null;
             };
             header?: {
@@ -5245,6 +5394,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnansweredList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_feedback_admin_unanswered_feedback_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_out_of_scope_admin_unanswered__trace_id__out_of_scope_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutOfScopeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_golden_admin_unanswered__trace_id__promote_golden_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
+            path: {
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromoteGoldenBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoteGoldenResult"];
                 };
             };
             /** @description Validation Error */

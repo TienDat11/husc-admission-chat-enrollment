@@ -37,6 +37,10 @@ import tiktoken
 import numpy as np
 from pydantic import BaseModel, Field
 
+from sqlalchemy import text
+
+from infrastructure.db import make_session_factory
+
 # Import new services
 from src.services.query_enhancer import query_enhancer
 from src.services.lancedb_retrieval import (
@@ -2120,9 +2124,7 @@ async def _queue_unanswered(svc: Any, trace_id: str, query: str, route: str,
     if svc is None:
         return
     try:
-        await asyncio.to_thread(
-            svc.push, redact_pii(query), trace_id, route, status_code
-        )
+        await svc.push(redact_pii(query), trace_id, route, status_code)
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"unanswered_queue push failed: {exc}")
 
@@ -2675,15 +2677,49 @@ async def feedback(
     register as a server fault.
     """
     svc = getattr(raw_request.app.state, "unanswered_queue", None)
-    if svc is None:
+    engine = getattr(raw_request.app.state, "db_engine", None)
+    if svc is None and engine is None:
         return FeedbackResponse(
             trace_id=request.trace_id,
             helpful=request.helpful,
             recorded=False,
             reason=request.reason,
         )
+    if engine is not None:
+        # SQL mode (table 20 chat_feedback): persist with PII redacted on reason.
+        try:
+            factory = make_session_factory(engine)
+            async with factory() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO chat_feedback "
+                        "(feedback_id, trace_id, helpful, reason, answered_at, linked_item, release_id, created_at) "
+                        "VALUES (:feedback_id, :trace_id, :helpful, :reason, now(), false, NULL, now())"
+                    ),
+                    {
+                        "feedback_id": str(uuid.uuid4()),
+                        "trace_id": request.trace_id,
+                        "helpful": bool(request.helpful),
+                        "reason": redact_pii(request.reason) if request.reason else None,
+                    },
+                )
+                await conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"chat_feedback insert failed: {exc}")
+            return FeedbackResponse(
+                trace_id=request.trace_id,
+                helpful=request.helpful,
+                recorded=False,
+                reason=request.reason,
+            )
+        return FeedbackResponse(
+            trace_id=request.trace_id,
+            helpful=request.helpful,
+            recorded=True,
+            reason=redact_pii(request.reason) if request.reason else None,
+        )
     try:
-        stored = svc.feedback(
+        stored = await svc.feedback(
             request.trace_id,
             request.helpful,
             request.reason,

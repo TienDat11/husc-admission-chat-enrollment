@@ -1,7 +1,12 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { listUnanswered, type UnansweredItem } from "@/lib/teacherApi";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useAdminSession } from "@/hooks/useAdminSession";
+import {
+  listUnanswered,
+  markOutOfScope,
+  promoteToGolden,
+  type UnansweredItem,
+} from "@/lib/teacherApi";
 
 const REASON_LABELS: Record<string, string> = {
   OUT_OF_DOMAIN: "Ngoài phạm vi",
@@ -10,16 +15,44 @@ const REASON_LABELS: Record<string, string> = {
   GENERATION_FAILED: "Không sinh được câu trả lời",
 };
 
+const overdueStyle = {
+  background: "#8b1a1a",
+  color: "#fff",
+  padding: "2px 8px",
+  borderRadius: 4,
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  display: "inline-block",
+} as React.CSSProperties;
+
+const okStyle = {
+  ...overdueStyle,
+  background: "#1b5e20",
+} as React.CSSProperties;
+
+const chipStyle = {
+  background: "#6b7280",
+  color: "#fff",
+  padding: "1px 7px",
+  borderRadius: 4,
+  fontSize: "0.8rem",
+  display: "inline-block",
+} as React.CSSProperties;
+
+const scopeChipStyle = {
+  ...chipStyle,
+  background: "#9aa0a8",
+} as React.CSSProperties;
+
 /**
- * Ticket T09 — "Câu hỏi bot chưa trả lời được" (mockup 05, 05 §4.5):
- * the open questions the bot could not answer, with the reason in plain
- * words, and one action per row — "Bổ sung thông tin" (pre-filled into the
- * QA form) or "Không cần trả lời" (short required reason).
+ * Frame 7 — "Câu hỏi bot chưa trả lời được": open unanswered questions with
+ * SLA and occurrence markers, plus the "Ngoài phạm vi" and
+ * "Trả lời & Đưa vào bộ câu hỏi chuẩn" actions.
  */
 const Unanswered = () => {
-  const [noNeedOpen, setNoNeedOpen] = useState<UnansweredItem | null>(null);
-  const [noNeedReason, setNoNeedReason] = useState("");
-  const [noNeedConfirmed, setNoNeedConfirmed] = useState(false);
+  const { can } = useAdminSession();
+  const canEdit = can("records.edit");
+  const canCreate = can("records.create");
 
   const list = useQuery({
     queryKey: ["admin", "unanswered"],
@@ -27,9 +60,26 @@ const Unanswered = () => {
     retry: false,
   });
 
-  const rows = list.data?.items.filter((item) => !item.resolved) ?? [];
+  const rows = (list.data?.items ?? []).filter((item) => !item.resolved);
 
-  const reasonFor = (item: UnansweredItem) =>
+  const outOfScope = useMutation({
+    mutationFn: (traceId: string) => markOutOfScope(null, traceId),
+    onSuccess: () => list.refetch(),
+  });
+
+  const promote = useMutation({
+    mutationFn: (traceId: string) =>
+      promoteToGolden(null, traceId, {
+        admission_year: 2026,
+        answer: "",
+        coordinate_key: `gq-${traceId}`,
+        scope: "tuyen_sinh",
+        subject: "cau_hoi_chua_tra_loi",
+      }),
+    onSuccess: () => list.refetch(),
+  });
+
+  const reasonLabel = (item: UnansweredItem) =>
     REASON_LABELS[item.status_code] ?? "Không có thông tin";
 
   if (list.isPending) {
@@ -71,86 +121,87 @@ const Unanswered = () => {
               <tr>
                 <th scope="col">Câu hỏi</th>
                 <th scope="col">Lý do</th>
-                <th scope="col">Lần cuối</th>
+                <th scope="col">SLA</th>
+                <th scope="col">Lần hỏi</th>
                 <th scope="col">Việc cần làm</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((item) => (
-                <tr key={item.trace_id}>
-                  <td>{item.question}</td>
-                  <td>{reasonFor(item)}</td>
-                  <td>
-                    {new Date(item.asked_at).toLocaleString("vi-VN", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </td>
-                  <td>
-                    <div className="flex gap-2">
-                      <Link
-                        to={`/quan-ly/them/qa?question=${encodeURIComponent(item.question)}&trace_id=${encodeURIComponent(item.trace_id)}`}
-                        className="btn btn-primary"
+              {rows.map((item) => {
+                const overdue = item.is_overdue ?? new Date(item.sla_due_at).getTime() < Date.now();
+                return (
+                  <tr key={item.trace_id}>
+                    <td>{item.question}</td>
+                    <td>{reasonLabel(item)}</td>
+                    <td>
+                      <span
+                        style={overdue ? overdueStyle : okStyle}
+                        aria-label={overdue ? "Quá hạn xử lý" : "Còn hạn xử lý"}
                       >
-                        Bổ sung thông tin
-                      </Link>
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => {
-                          setNoNeedOpen(item);
-                          setNoNeedReason("");
-                          setNoNeedConfirmed(false);
-                        }}
+                        {overdue ? "Quá han" : "Còn hạn"}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        style={chipStyle}
+                        aria-label={`${item.occurrence_count} lần hỏi`}
                       >
-                        Không cần trả lời
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {item.occurrence_count} lần
+                      </span>
+                    </td>
+                    <td>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:gap-2">
+                        {item.out_of_scope ? (
+                          <span
+                            style={scopeChipStyle}
+                            aria-label="Đã đánh dấu ngoài phạm vi"
+                          >
+                            Ngoài phạm vi
+                          </span>
+                        ) : (
+                          <>
+                            {canEdit ? (
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                disabled={outOfScope.isPending}
+                                onClick={() => void outOfScope.mutate(item.trace_id)}
+                              >
+                                Ngoài phạm vi
+                              </button>
+                            ) : (
+                              <button type="button" className="btn" disabled>
+                                Ngoài phạm vi
+                              </button>
+                            )}
+                            {canCreate ? (
+                              <Link
+                                to={`/quan-ly/them/qa?question=${encodeURIComponent(item.question)}&trace_id=${encodeURIComponent(item.trace_id)}&promote=1`}
+                                className="btn btn-primary"
+                                disabled={promote.isPending}
+                              >
+                                Trả lời & Đưa vào bộ câu hỏi chuẩn
+                              </Link>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn"
+                                disabled
+                              >
+                                Trả lời & Đưa vào bộ câu hỏi chuẩn
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
-
-      {noNeedOpen ? (
-        <div className="space-y-3" role="dialog" aria-label="Không cần trả lời">
-          <p className="note info">
-            <strong>{noNeedOpen.question}</strong>
-          </p>
-          <div className="field">
-            <label htmlFor="co-can-trali-ly-do">Lý do ngắn (bắt buộc)</label>
-            <input
-              id="co-can-trali-ly-do"
-              type="text"
-              value={noNeedReason}
-              onChange={(event) => setNoNeedReason(event.target.value)}
-            />
-          </div>
-          <div className="actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={!noNeedReason.trim()}
-              onClick={() => setNoNeedConfirmed(true)}
-            >
-              Xác nhận
-            </button>
-            <button type="button" className="btn" onClick={() => setNoNeedOpen(null)}>
-              Hủy
-            </button>
-          </div>
-          {noNeedConfirmed ? (
-            <p role="status" className="note ok">
-              <span aria-hidden="true">✓</span> Đã đánh dấu câu hỏi này là
-              không cần trả lời.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
 
       <p className="text-sm text-zinc-600">
         Về <Link to="/quan-ly">Tổng quan</Link>

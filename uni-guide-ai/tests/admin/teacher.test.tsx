@@ -865,7 +865,9 @@ describe("Câu hỏi bot chưa trả lời được", () => {
       return defaultHandler(url);
     });
     expect(await screen.findByText("Trường có ký túc xá không?")).toBeInTheDocument();
-    expect(screen.getByText("Bổ sung thông tin")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Trả lời & Đưa vào bộ câu hỏi chuẩn/)
+    ).toBeInTheDocument();
   });
 });
 
