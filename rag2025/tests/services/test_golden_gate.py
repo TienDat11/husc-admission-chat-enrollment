@@ -35,6 +35,9 @@ for p in (ROOT, SRC):
 from src.services.golden_gate import (  # noqa: E402
     GOLDEN_SEED_PATH,
     REQUIRED_MATRIX_COUNT,
+    _load_seed,
+    _matrix_complete,
+    _matrix_rows,
     run_golden_gate,
 )
 from src.services.golden_retrieval_check import (  # noqa: E402
@@ -152,34 +155,19 @@ def _oos(qid, expect_abstain=True):
     }
 
 
-MATRIX_ROWS = [
-    "T1.record.create",
-    "T1.record.update",
-    "T1.record.retire",
-    "T1.document.create",
-    "T1.document.update",
-    "T1.document.retire",
-    "T1.claim.create",
-    "T1.claim.update",
-    "T1.claim.retire",
-    "T2.record.create",
-    "T2.record.update",
-    "T2.record.retire",
-    "T2.document.create",
-    "T2.document.update",
-    "T2.document.retire",
-    "T2.claim.create",
-    "T2.claim.update",
-    "T2.claim.retire",
-    "T3.record.create",
-    "T3.record.update",
-    "T3.record.retire",
-    "T3.document.create",
-    "T3.document.update",
-    "T3.document.retire",
-    "T3.claim.create",
-    "T3.claim.update",
-]
+# The 26 §PL-6.7 cases, grouped by the 10 matrix rows (3,3,5,2,3,2,3,2,1,2).
+MATRIX_ROWS = (
+    ["1to1_same_id"] * 3
+    + ["1to1_diff_id"] * 3
+    + ["amends_dieu"] * 5
+    + ["corrects"] * 2
+    + ["repeals_expires"] * 3
+    + ["split_1_to_n"] * 2
+    + ["merge_n_to_1"] * 3
+    + ["chain_a_b_c"] * 2
+    + ["temporal_handoff"]
+    + ["coexist_revoke"] * 2
+)
 
 
 def _full_seed() -> list[dict]:
@@ -261,8 +249,8 @@ def test_full_pass_ready(tmp_path):
 def test_missing_matrix_row_fails_immediately(tmp_path):
     """Drop one matrix row: gate fails before any retrieval runs."""
     rows = _full_seed()
-    # Remove every row whose matrix_row == "T1.claim.update" (a real matrix row).
-    rows = [r for r in rows if r.get("matrix_row") != "T1.claim.update"]
+    # Remove every case of the amends_dieu matrix row (a real matrix row).
+    rows = [r for r in rows if r.get("matrix_row") != "amends_dieu"]
     seed_path = tmp_path / "seed.jsonl"
     seed_path.write_text(_seed_text(rows), encoding="utf-8")
 
@@ -448,3 +436,30 @@ def _app_with_activate_route(monkeypatch, tmp_path):
         ),
     )
     return app
+
+
+# ---------------------------------------------------------------------------
+# G. seed loading: real fixture and JSONL / JSON layouts
+# ---------------------------------------------------------------------------
+def test_real_golden_seed_loads_all_rows_and_matrix_is_complete():
+    rows = _load_seed(GOLDEN_SEED_PATH)
+
+    assert len(rows) == 84
+    missing, total_cases, complete = _matrix_complete(_matrix_rows(rows))
+    assert missing == []
+    assert total_cases == 26 == REQUIRED_MATRIX_COUNT
+    assert complete is True
+
+
+@pytest.mark.parametrize("layout", ["jsonl", "array", "questions"])
+def test_load_seed_accepts_jsonl_and_json_layouts(tmp_path, layout):
+    rows = [_in_scope("q001", ["K001"]), _oos("oos001")]
+    path = tmp_path / "seed.json"
+    if layout == "jsonl":
+        path.write_text(_seed_text(rows), encoding="utf-8")
+    elif layout == "array":
+        path.write_text(json.dumps(rows), encoding="utf-8")
+    else:
+        path.write_text(json.dumps({"questions": rows}), encoding="utf-8")
+
+    assert _load_seed(path) == rows

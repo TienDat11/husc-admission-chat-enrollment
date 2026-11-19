@@ -3,10 +3,10 @@
 Run *every* golden question against the serving retriever of a release and
 hard-enforce the invariants that the advisory T06 check only warned about:
 
-* **26-case supersession matrix** - every `(tier, record_type, action)` row in
-  the seed's ``matrix_rows`` must be present, and each case must pass
+* **26-case supersession matrix** - each of the 10 ``matrix_row`` values of
+  §PL-6.7 must be present in the seed, and each case must pass
   (superseded old version must not appear in active top-k; new version must
-  appear). Fewer than 26 cases, or any missing matrix row, fails *immediately*
+  appear). Any count other than 26 cases, or any missing matrix row, fails *immediately*
   before any retrieval runs: ``verdict="fail"``,
   ``reason="incomplete_supersession_matrix"``.
 * **Expected golden comparison** - match by ``coordinate_key``; Recall@5 and
@@ -38,38 +38,21 @@ from src.services.golden_retrieval_check import (  # noqa: E402
 
 GOLDEN_SEED_PATH = Path(__file__).resolve().parents[2] / "tests" / "eval" / "fixtures" / "golden_seed.jsonl"
 
-#: Supersession matrix rows required by spec §PL-6.7. Every row must be
-#: present in the seed and every case must pass.
+#: Supersession matrix rows (``matrix_row`` values) required by spec §PL-6.7.
+#: Every row must be present in the seed and every case must pass.
 SUPERSESSION_MATRIX_ROWS = (
-    # tier.record_type / tier.document_type / tier.claim_type x {create, update, retire}
-    "T1.record.create",
-    "T1.record.update",
-    "T1.record.retire",
-    "T1.document.create",
-    "T1.document.update",
-    "T1.document.retire",
-    "T1.claim.create",
-    "T1.claim.update",
-    "T1.claim.retire",
-    "T2.record.create",
-    "T2.record.update",
-    "T2.record.retire",
-    "T2.document.create",
-    "T2.document.update",
-    "T2.document.retire",
-    "T2.claim.create",
-    "T2.claim.update",
-    "T2.claim.retire",
-    "T3.record.create",
-    "T3.record.update",
-    "T3.record.retire",
-    "T3.document.create",
-    "T3.document.update",
-    "T3.document.retire",
-    "T3.claim.create",
-    "T3.claim.update",
+    "1to1_same_id",
+    "1to1_diff_id",
+    "amends_dieu",
+    "corrects",
+    "repeals_expires",
+    "split_1_to_n",
+    "merge_n_to_1",
+    "chain_a_b_c",
+    "temporal_handoff",
+    "coexist_revoke",
 )
-REQUIRED_MATRIX_COUNT = len(SUPERSESSION_MATRIX_ROWS)  # 26 matrix rows
+REQUIRED_MATRIX_COUNT = 26  # total supersession cases across the 10 rows
 
 
 class GateError(Exception):
@@ -151,9 +134,17 @@ def _load_seed(path: Path | None = None) -> list[dict[str, Any]]:
     p = path or GOLDEN_SEED_PATH
     if not p.is_file():
         return []
-    artifact = json.loads(p.read_text(encoding="utf-8"))
-    questions = artifact.get("questions", artifact if isinstance(artifact, list) else [])
-    return [dict(q) for q in questions]
+    text = p.read_text(encoding="utf-8")
+    try:
+        artifact = json.loads(text)
+    except json.JSONDecodeError:
+        # JSONL: one question object per non-empty line.
+        return [json.loads(line) for line in text.splitlines() if line.strip()]
+    if isinstance(artifact, dict) and "questions" in artifact:
+        return [dict(q) for q in artifact["questions"]]
+    if isinstance(artifact, list):
+        return [dict(q) for q in artifact]
+    return [dict(artifact)]
 
 
 def _expected_record_ids(path: Path | None = None) -> list[dict[str, Any]]:
@@ -178,6 +169,13 @@ def _matrix_rows(seed: Sequence[Mapping[str, Any]]) -> dict[str, list[dict[str, 
     return rows
 
 
+def _matrix_complete(matrix_rows: Mapping[str, Sequence[Any]]) -> tuple[list[str], int, bool]:
+    """Return ``(missing_rows, total_cases, complete)`` for the §PL-6.7 matrix."""
+    missing = [row for row in SUPERSESSION_MATRIX_ROWS if row not in matrix_rows]
+    total_cases = sum(len(v) for v in matrix_rows.values())
+    return missing, total_cases, not missing and total_cases == REQUIRED_MATRIX_COUNT
+
+
 def run_golden_gate(
     *,
     release_id: str,
@@ -199,9 +197,7 @@ def run_golden_gate(
 
     # ---- Supersession matrix: fail immediately if incomplete (no retrieval). ----
     matrix_rows = _matrix_rows(seed)
-    missing = [row for row in SUPERSESSION_MATRIX_ROWS if row not in matrix_rows]
-    total_cases = sum(len(v) for v in matrix_rows.values())
-    matrix_complete = not missing and total_cases >= REQUIRED_MATRIX_COUNT
+    missing, total_cases, matrix_complete = _matrix_complete(matrix_rows)
 
     if not matrix_complete:
         reason = "incomplete_supersession_matrix"
