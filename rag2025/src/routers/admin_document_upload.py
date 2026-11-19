@@ -67,6 +67,7 @@ class UploadReport(BaseModel):
     report: UploadParseReport
     draft_record_ids: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    parse_job_id: str
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -85,10 +86,16 @@ class UploadParseReport(BaseModel):
     table_count: int
 
 
+def _parse_job_id(sha256: str) -> str:
+    """Deterministic id of the parse job for these bytes; a retry names the same job."""
+    return f"parse-{sha256[:32]}"
+
+
 def _view(result: UploadResult) -> UploadReport:
     return UploadReport(
         document_id=result.document_id,
         sha256=result.sha256,
+        parse_job_id=_parse_job_id(result.sha256),
         kind=result.kind,
         report=UploadParseReport(
             page_count=result.page_count,
@@ -105,7 +112,7 @@ def _view(result: UploadResult) -> UploadReport:
 @router.post(
     "/upload",
     response_model=UploadReport,
-    status_code=201,
+    status_code=202,
     dependencies=[
         Depends(require_action(AdminAction.RECORDS_CREATE)),
         Depends(upload_rate_limit),
