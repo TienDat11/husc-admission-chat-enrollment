@@ -7,6 +7,9 @@ pandas==2.3.3  # has_current_year_data (lancedb_retrieval.py) imports pandas; ab
 sentence-transformers==5.4.1
 rank-bm25==0.2.2
 pypdf==6.10.2
+docling==2.150.1  # U4: page-scoped Docling tier for table pages (pdf_pipeline.docling_pages)
+rapidocr==3.10.0  # U4: OCR for scan pages; replaces rapidocr-onnxruntime
+reportlab==5.1.0  # U4: test-fixture PDF generator, pin from .scratch/freeze-gate/U4.md
 python-docx==1.2.0
 openpyxl==3.1.5  # T17: XLSX uploads parsed in the subprocess worker.
 et-xmlfile==2.0.0  # T17: openpyxl's only runtime dependency (pin per requirements policy).

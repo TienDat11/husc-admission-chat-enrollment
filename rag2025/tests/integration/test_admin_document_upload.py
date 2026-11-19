@@ -3,8 +3,8 @@
 The endpoint is asserted at the HTTP seam, on a hand-mounted admin app over
 a throwaway store root (the shape ``test_admin_conflicts_api.py`` uses):
 
-1. a sample DOCX → 201 + non-empty report + a stored draft record;
-2. an all-scan PDF → 201 with the "trang ảnh" warning and *no* draft;
+1. a sample DOCX → 202 + non-empty report + a stored draft record;
+2. an all-scan PDF → 202 with the "trang ảnh" warning and *no* draft;
 3. the same bytes again → 409;
 4. an ``.exe`` renamed ``.pdf`` (PE magic) → 415;
 5. a decompression-bomb DOCX → 400, while a concurrent ``/v2/query``
@@ -230,7 +230,7 @@ def test_docx_upload_creates_draft_and_report(
 ) -> None:
     content = _make_docx("Hoc phi nam hoc 2026-2027: Khoa hoc Hue, diem chuan CNTT 25.")
     response = _upload(client, "hoc-phi.docx", content)
-    assert response.status_code == 201, response.text
+    assert response.status_code == 202, response.text
     payload = response.json()
     assert payload["kind"] == "docx"
     assert payload["document_id"].startswith("uploads/")
@@ -270,7 +270,7 @@ def test_scan_pdf_upload_warns_and_skips_draft(
 ) -> None:
     content = _make_pdf(["", "", ""])
     response = _upload(client, "scan.pdf", content)
-    assert response.status_code == 201, response.text
+    assert response.status_code == 202, response.text
     payload = response.json()
     assert payload["report"]["page_count"] == 3
     assert payload["report"]["scan_pages"] == [1, 2, 3]
@@ -289,7 +289,7 @@ def test_scan_pdf_upload_warns_and_skips_draft(
 def test_reupload_same_bytes_is_409(client: TestClient) -> None:
     content = _make_docx("Tong dieu kiem tra: diem chuan 2026, thoi han dang ky.")
     first = _upload(client, "check.docx", content)
-    assert first.status_code == 201, first.text
+    assert first.status_code == 202, first.text
     second = _upload(client, "check-copy.docx", content)
     assert second.status_code == 409, second.text
     assert "already registered" in second.json()["detail"].lower()
@@ -385,7 +385,7 @@ def test_xlsx_diem_chuan_creates_one_draft_per_row(
         ],
     )
     response = _upload(client, "diem-chuan.xlsx", content)
-    assert response.status_code == 201, response.text
+    assert response.status_code == 202, response.text
     payload = response.json()
     assert payload["kind"] == "xlsx"
     assert payload["document_id"].endswith(".xlsx")
@@ -431,7 +431,7 @@ def test_xlsx_chi_tieu_kind_and_deterministic_record_ids(
         [["7220201", 120], ["7340101", 90]],
     )
     response = _upload(client, "chi-tieu.xlsx", content)
-    assert response.status_code == 201, response.text
+    assert response.status_code == 202, response.text
     drafts = response.json()["draft_record_ids"]
 
     assert drafts == [
@@ -445,7 +445,7 @@ def test_xlsx_chi_tieu_kind_and_deterministic_record_ids(
 
 def test_xlsx_reupload_same_bytes_is_409(client: TestClient) -> None:
     content = _make_xlsx(["Mã ngành", "Điểm chuẩn"], [["7220201", 25.5]])
-    assert _upload(client, "dc.xlsx", content).status_code == 201
+    assert _upload(client, "dc.xlsx", content).status_code == 202
     second = _upload(client, "dc-again.xlsx", content)
     assert second.status_code == 409, second.text
     assert "already registered" in second.json()["detail"].lower()
@@ -455,7 +455,7 @@ def test_xlsx_empty_sheet_drafts_nothing(client: TestClient) -> None:
     """Header only, no data rows → registered, reported, no draft."""
     content = _make_xlsx(["Mã ngành", "Điểm chuẩn"], [])
     response = _upload(client, "empty.xlsx", content)
-    assert response.status_code == 201, response.text
+    assert response.status_code == 202, response.text
     payload = response.json()
     assert payload["draft_record_ids"] == []
     assert payload["draft_record_id"] is None

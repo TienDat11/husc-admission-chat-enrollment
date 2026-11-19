@@ -686,15 +686,17 @@ class SourceDocumentService:
                         "header không nêu rõ loại (điểm chuẩn / chỉ tiêu); "
                         "nháp dùng THONG_BAO"
                     )
+            elif parse.blockers:
+                warnings.append(
+                    "cổng nguyên tử chặn bản nháp ("
+                    + ", ".join(parse.blockers)
+                    + "); không tạo bản nháp"
+                )
             elif text and not all_pages_scan and not parse.error:
-                draft_record_ids = (
-                    self._write_upload_draft(
-                        document_id=document_id,
-                        digest=digest,
-                        text=text,
-                        actor_id=actor_id,
-                        docx_headings=parse.headings,
-                    ),
+                draft_record_ids = self._write_upload_draft(
+                    document_id=document_id,
+                    pages=parse.pages or (text,),
+                    actor_id=actor_id,
                 )
             elif parse.error is None and all_pages_scan:
                 warnings.append(
@@ -741,48 +743,41 @@ class SourceDocumentService:
         self,
         *,
         document_id: str,
-        digest: str,
-        text: str,
+        pages: Sequence[str],
         actor_id: str,
-        docx_headings: Sequence[dict] | None = None,
-    ) -> str:
-        """The draft record an upload creates: one ``THONG_BAO`` version 1.
+    ) -> tuple[str, ...]:
+        """The drafts an upload creates: the decomposer's records (plan §PL-6.6).
 
-        The record cites the stored document by its registry id, so the
-        provenance and the blind-citation report behave exactly as for a
-        reference-registered document. ``record_id`` is stable per content
-        hash: a different file, a different record; the same file can only
-        ever draft once, because the registry refuses the second upload.
-
-        A retry after an interrupted first attempt (the draft was written
-        but the blob or registry entry was not committed) finds version 1
-        already there; reusing it — rather than appending a second v1 — is
-        what keeps the upload recoverable: the store is append-only, so a
-        ``write_record`` of an existing version is a hard
-        :class:`RecordVersionConflictError`.
+        Coordinate keys are stable, so a retry after an interrupted first attempt
+        reuses the version this document already wrote: the store is append-only,
+        and a second write of the same version is a hard
+        :class:`RecordVersionConflictError`. A coordinate held by a different
+        document gets the next version.
         """
-        record_id = f"upload:{digest[:16]}"
-        existing = self._store.versions(record_id)
-        if existing:
-            stored = self._store.get_version(record_id, 1)
-            if stored.source_document_id == document_id:
-                return record_id
+        from src.services.record_decomposer import decompose_with_blockers
+
         now = self._clock()
-        record = CanonicalRecord(
-            record_id=record_id,
-            record_type=RecordType.THONG_BAO,
-            version=1,
-            admission_year=now.year,
-            effective_from=date(now.year, 1, 1),
-            status=RecordStatus.DRAFT,
-            authority_level=AuthorityLevel.HUSC_OFFICIAL,
+        decomposition = decompose_with_blockers(
+            pages,
             source_document_id=document_id,
-            text=text,
             authored_by=actor_id,
-            docx_headings=docx_headings or (),
+            admission_year=now.year,
         )
-        self._store.write_record(record)
-        return record.record_id
+        written: list[str] = []
+        for record in decomposition.records:
+            existing = self._store.versions(record.record_id)
+            if existing:
+                owners = {
+                    self._store.get_version(record.record_id, number).source_document_id
+                    for number in range(1, len(existing) + 1)
+                }
+                if document_id in owners:
+                    written.append(record.record_id)
+                    continue
+                record = record.model_copy(update={"version": len(existing) + 1})
+            self._store.write_record(record)
+            written.append(record.record_id)
+        return tuple(written)
 
     def _write_xlsx_drafts(
         self,

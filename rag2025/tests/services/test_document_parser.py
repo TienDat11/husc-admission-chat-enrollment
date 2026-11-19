@@ -359,6 +359,9 @@ def test_pdf_text_is_returned_nfc_normalized(
         def extract_text(self) -> str:
             return nfd_text
 
+        def get_contents(self) -> None:
+            return None
+
     class _Reader:
         def __init__(self, _path: str) -> None:
             self.pages = [_Page()]
