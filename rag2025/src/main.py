@@ -23,6 +23,7 @@ from dataclasses import replace
 from asyncio import FIRST_COMPLETED, Lock, create_task
 import time
 import uuid
+import hashlib
 import json
 from contextlib import asynccontextmanager
 
@@ -32,6 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.errors import install_error_handling
 from fastapi.responses import StreamingResponse
 from loguru import logger
+import tiktoken
 import numpy as np
 from pydantic import BaseModel, Field
 
@@ -68,7 +70,7 @@ from src.services.rate_limit import FixedWindowLimiter
 # Keep existing imports for backward compatibility
 from config.settings import RAGSettings
 from config.request_context import set_request_id, reset_request_id
-from chunker import ChunkConfig, Chunker
+from src.domain.canonical.semantic_units import _pack_units_greedily
 
 # Embedding service for provider-aware query/document encoding
 from services.embedding import EmbeddingService
@@ -659,28 +661,19 @@ class ChunkPreviewRequest(BaseModel):
         description="Text to chunk (minimum 10 characters)",
         example="Trong công tác tuyển sinh năm 2025, Bộ GDĐT quy định tất cả thí sinh phải đăng ký xét tuyển trực tuyến."
     )
-    profile: str = Field(
-        default="auto",
-        description="Chunking profile to use",
-        pattern="^(auto|faq|policy)$",
-        example="auto"
-    )
 
 
 class ChunkPreview(BaseModel):
     """Individual chunk preview"""
-    chunk_id: int = Field(description="Chunk index")
+    chunk_id: str = Field(description="Content hash of the chunk text (sha256, first 16 hex)")
     text: str = Field(description="Chunk text")
     token_count: int = Field(description="Token count for this chunk")
     char_count: int = Field(description="Character count")
-    sparse_terms_count: int = Field(description="Number of BM25 sparse terms extracted")
 
 
 class ChunkPreviewResponse(BaseModel):
     """Chunk preview response model"""
     text_length: int = Field(description="Original text length in characters")
-    profile_used: str = Field(description="Chunking profile used")
-    profile_config: Dict[str, Any] = Field(description="Profile configuration details")
     chunks: List[ChunkPreview] = Field(description="List of chunk previews")
     total_chunks: int = Field(description="Total number of chunks generated")
     total_tokens: int = Field(description="Sum of tokens across all chunks")
@@ -703,9 +696,6 @@ unified_pipeline = None
 # Hybrid search service (dense + BM25 + RRF)
 hybrid_search_service: Optional["HybridSearchService"] = None
 
-# Debug tools
-chunk_config: ChunkConfig | None = None
-chunker: Chunker | None = None
 
 
 # ============================================================================
@@ -1266,87 +1256,32 @@ async def preview_chunks(request: ChunkPreviewRequest):
     """
     Preview chunking results without saving to disk
 
-    This endpoint is useful for UAT and testing chunking quality
+    Runs the canonical chunker, the one path that builds the corpus, so the
+    preview is the chunking the index would receive.
     """
-    global chunk_config, chunker
-
     try:
-        # Lazy load chunker on first use
-        if chunk_config is None or chunker is None:
-            config_path = Path(__file__).parent / "config" / "chunk_profiles.yaml"
-            if not config_path.exists():
-                config_path = Path(__file__).parent.parent / "config" / "chunk_profiles.yaml"
+        logger.info(f"Chunking text ({len(request.text)} chars)")
+        enc = tiktoken.get_encoding("cl100k_base")
+        packed = _pack_units_greedily(request.text, enc=enc)
 
-            if not config_path.exists():
-                raise HTTPException(
-                    status_code=500,
-                    detail="Chunk profiles config not found"
-                )
-
-            logger.info(f"Loading chunk config from: {config_path}")
-            chunk_config = ChunkConfig(config_path)
-            chunker = Chunker(chunk_config)
-
-        # Validate profile
-        profile_name = request.profile.lower()
-        if profile_name not in chunk_config.profiles:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid profile '{profile_name}'. Must be one of: {list(chunk_config.profiles.keys())}"
-            )
-
-        # Get profile config
-        profile_config = chunk_config.get_profile(profile_name)
-
-        # Create mock document
-        mock_doc = {
-            "id": "preview_doc",
-            "text": request.text,
-            "metadata": {"source": "preview_endpoint"}
-        }
-
-        # Chunk the document
-        logger.info(f"Chunking text ({len(request.text)} chars) with profile: {profile_name}")
-        chunks = chunker.chunk_document(mock_doc, profile_name=profile_name)
-
-        # Build preview response
-        chunk_previews: List[ChunkPreview] = []
-        total_tokens = 0
-
-        for chunk in chunks:
-            token_count = len(chunker.tokenizer.encode(chunk.text))
-            total_tokens += token_count
-
-            preview = ChunkPreview(
-                chunk_id=chunk.chunk_id,
+        chunk_previews = [
+            ChunkPreview(
+                chunk_id=hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()[:16],
                 text=chunk.text,
-                token_count=token_count,
+                token_count=len(enc.encode(chunk.text)),
                 char_count=len(chunk.text),
-                sparse_terms_count=len(chunk.sparse_terms)
             )
-            chunk_previews.append(preview)
-
-        # Calculate average
-        avg_tokens = total_tokens / len(chunks) if chunks else 0
+            for chunk in packed
+        ]
+        total_tokens = sum(preview.token_count for preview in chunk_previews)
 
         return ChunkPreviewResponse(
             text_length=len(request.text),
-            profile_used=profile_name,
-            profile_config={
-                "description": profile_config.description,
-                "chunk_size": profile_config.chunk_size,
-                "overlap": profile_config.overlap,
-                "min_tokens": profile_config.min_tokens,
-                "separator_priority": profile_config.separator_priority,
-            },
             chunks=chunk_previews,
-            total_chunks=len(chunks),
+            total_chunks=len(chunk_previews),
             total_tokens=total_tokens,
-            avg_tokens_per_chunk=avg_tokens
+            avg_tokens_per_chunk=total_tokens / len(chunk_previews) if chunk_previews else 0,
         )
-
-    except HTTPException:
-        raise
     except Exception as e:
         logger.exception(f"Chunk preview failed: {e}")
         raise HTTPException(status_code=500, detail="Chunk preview failed")

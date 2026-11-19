@@ -56,6 +56,7 @@ import tempfile
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+import unicodedata
 from types import ModuleType
 from typing import Iterable, Mapping, Sequence
 
@@ -67,7 +68,7 @@ from src.domain.canonical.semantic_units import (
     UnitKind,
     find_atomic_spans,
     split_field_units,
-    split_text_units,
+    _pack_units_greedily,
 )
 from src.services.chunk_identity import (
     CHUNKER_VERSION,
@@ -154,6 +155,7 @@ def build_chunk_index(
     records: Iterable[CanonicalRecord] | str | Path,
     output_root: str | Path,
     release_id: str,
+    allow_unpublished: bool = False,
 ) -> ChunkIndexResult:
     """Turn a release's materialized records into a chunk corpus.
 
@@ -180,7 +182,8 @@ def build_chunk_index(
     # must leave no artifact behind, not an empty directory a later reader could
     # mistake for a built corpus.
     loaded = _load_records(records)
-    _reject_unpublishable(loaded)
+    if not allow_unpublished:
+        _reject_unpublishable(loaded)
     output = Path(output_root)
     output.mkdir(parents=True, exist_ok=True)
 
@@ -332,26 +335,43 @@ def _record_chunks(
     record: CanonicalRecord, release_id: str, staging_dir: Path
 ) -> list[dict]:
     """Every chunk of one record version: structured atoms, text units, tables."""
-    text_body, table_blocks = _partition_blocks(record.text)
+    # NFC first: the chunk id and content hash are taken over this spelling, so an
+    # NFC copy and an NFD copy of the same fact share one id.
+    text = unicodedata.normalize("NFC", record.text)
+    text_body, table_blocks = _partition_blocks(text)
     # Structured units first: the record's declared assertions, one unit each.
     units: list[SemanticUnit] = list(split_field_units(record))
     # Text units come from the non-table body only: the table's rows belong to
     # the table chunker below, and letting the prose splitter see them would
     # index every row twice — once as a table chunk, once inside a text unit.
     if text_body.strip():
-        units.extend(
-            split_text_units(
-                text_body,
-                record_id=record.record_id,
-                record_type=record.record_type.value,
-                enc=_get_encoder(),
-            )
-        )
+        units.extend(_text_units(text_body, record))
 
     chunks = [_chunk_for(record, unit, release_id) for unit in units]
     if table_blocks:
         chunks.extend(_table_chunks(record, table_blocks, release_id, staging_dir))
     return chunks
+
+
+def _text_units(text_body: str, record: CanonicalRecord) -> list[SemanticUnit]:
+    """Prose units from the one chunking path: one unit per packed chunk.
+
+    The packed text (a Điều prefix included) is the unit value, so the chunk a
+    reader sees is the chunk that gets hashed and indexed. ``source_span`` is the
+    body span in the NFC text.
+    """
+    return [
+        SemanticUnit(
+            record_id=record.record_id,
+            record_type=record.record_type.value,
+            field="text",
+            slot=str(index),
+            value=packed.text,
+            kind=UnitKind.TEXT,
+            source_span=(packed.start, packed.end),
+        )
+        for index, packed in enumerate(_pack_units_greedily(text_body, enc=_get_encoder()))
+    ]
 
 
 def _chunk_for(record: CanonicalRecord, unit: SemanticUnit, release_id: str) -> dict:

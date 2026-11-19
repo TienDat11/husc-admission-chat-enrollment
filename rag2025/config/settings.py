@@ -330,13 +330,11 @@ class RAGSettings(BaseSettings):
     @field_validator("CHUNK_SIZE_TOKENS", mode="before")
     @classmethod
     def validate_chunk_size(cls, v):
-        """Enforce chunk size within 300-500 token range."""
+        """Coerce the target budget to int; its range is checked against the chunk gates."""
         try:
             v = int(v)
         except (ValueError, TypeError):
             pass
-        if not (300 <= v <= 500):
-            raise ValueError("CHUNK_SIZE_TOKENS must be between 300-500")
         return v
 
     @field_validator("HARD_MAX_TOKENS", "SOFT_MIN_TOKENS", mode="before")
@@ -356,6 +354,11 @@ class RAGSettings(BaseSettings):
             raise ValueError(
                 "HARD_MAX_TOKENS must be strictly greater than SOFT_MIN_TOKENS"
                 f" (got {self.HARD_MAX_TOKENS} <= {self.SOFT_MIN_TOKENS})"
+            )
+        if not (self.SOFT_MIN_TOKENS <= self.CHUNK_SIZE_TOKENS <= self.HARD_MAX_TOKENS):
+            raise ValueError(
+                f"CHUNK_SIZE_TOKENS must be between SOFT_MIN_TOKENS ({self.SOFT_MIN_TOKENS}) "
+                f"and HARD_MAX_TOKENS ({self.HARD_MAX_TOKENS})"
             )
         return self
 

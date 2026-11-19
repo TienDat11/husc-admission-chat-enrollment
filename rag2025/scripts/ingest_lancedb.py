@@ -534,7 +534,7 @@ def canonical_corpus_rows(
                 "status": "current",
                 "effective_from": 0,
                 "effective_to": 99991231,
-                "is_tombstone": False,
+                "is_tombstone": bool(chunk.get("is_tombstone", False)),
                 "superseded_by": None,
                 "metadata_json": json.dumps(meta_out, ensure_ascii=False, default=str),
                 "is_reference": False,

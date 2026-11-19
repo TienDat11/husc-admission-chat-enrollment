@@ -58,6 +58,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -115,14 +116,14 @@ def validate_version_stamp(value: str) -> str:
 
 
 def normalize_for_hash(text: str) -> str:
-    """Collapse whitespace only.
+    """Unicode-normalise to NFC, then collapse whitespace.
 
-    Deliberately not case-folding and not Unicode-normalizing: two records that
-    differ in case or in NFC/NFD spelling are different facts and must keep
-    different ids. Whitespace is collapsed because re-wrapping a line is not an
-    edit to the fact.
+    NFC before hashing (§PL-6.4 #3): NFC and NFD spellings of the same Vietnamese
+    text are the same fact and must produce the same id. Case is not folded:
+    two records that differ in case are different facts. Whitespace is collapsed
+    because re-wrapping a line is not an edit to the fact.
     """
-    return " ".join(text.split())
+    return " ".join(unicodedata.normalize("NFC", text).split())
 
 
 def chunk_id_hash_input(record_version_key: str, unit: SemanticUnit) -> bytes:

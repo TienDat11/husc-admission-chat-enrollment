@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from config.settings import settings
 from services.temporal_authority import get_current_admission_year
+from src.domain.canonical.semantic_units import _pack_units_greedily
 
 STAGING_HTML = Path(__file__).parent.parent / "data" / "staging" / "html"
 STAGING_PDF = Path(__file__).parent.parent / "data" / "staging" / "pdf"
@@ -1021,174 +1022,30 @@ _VI_PHRASE_END = re.compile(
 
 def chunk_text_sections(
     text: str, base_meta: dict, doc_id: str, enc, start_idx: int,
-    text_chunk_size: int | None = None, text_overlap: int | None = None,
+    text_chunk_size: int | None = None,
 ) -> list[dict]:
-    """Split non-table text with sentence-boundary awareness."""
-    budget = text_chunk_size if text_chunk_size is not None else settings.CHUNK_SIZE_TOKENS
-    overlap = text_overlap if text_overlap is not None else settings.CHUNK_OVERLAP
+    """Split non-table text through the single legal chunking path (PL-6.5).
 
-    # Split by double newlines first
-    paragraphs = re.split(r"\n\n+", text)
-    paragraphs = [p.strip() for p in paragraphs if p.strip()]
-
-    # Further split long paragraphs at sentence boundaries
-    parts = []
-    for p in paragraphs:
-        if count_tokens(p, enc) <= budget:
-            parts.append(p)
-        else:
-            # Split by lines first
-            lines = p.split("\n")
-            sub_parts = _pack_lines(lines, enc, budget, overlap)
-            parts.extend(sub_parts)
-
-    chunks = []
-    idx = start_idx
-    for part in parts:
-        tok = count_tokens(part, enc)
-        if tok < MIN_TOKENS:
-            continue
-        # Try to end at sentence boundary
-        part = _trim_to_sentence(part, enc, budget)
-        chunks.append(_make_chunk(
-            doc_id, idx, part, base_meta,
-            chunk_type="text_section", token_count=count_tokens(part, enc),
-        ))
-        idx += 1
-
-    return chunks
-
-
-def _pack_lines(
-    lines: list[str], enc, text_chunk_size: int | None = None, text_overlap: int | None = None,
-) -> list[str]:
-    """Pack lines into chunks respecting token budget and sentence boundaries."""
-    budget = text_chunk_size if text_chunk_size is not None else settings.CHUNK_SIZE_TOKENS
-    overlap = text_overlap if text_overlap is not None else settings.CHUNK_OVERLAP
-
-    parts = []
-    current: list[str] = []
-    current_tok = 0
-
-    for line in lines:
-        line = line.strip()
-        if not line:
-            if current:
-                current.append("")
-            continue
-
-        line_tok = count_tokens(line, enc)
-
-        if current_tok + line_tok > budget and current:
-            # Try to complete the sentence by scanning ahead
-            extended = list(current) + [line]
-            extended_tok = current_tok + line_tok
-            # Keep adding lines until we hit a sentence boundary or 2x budget
-            if extended_tok <= budget * 2.0:
-                chunk_text = _complete_sentence(extended, enc, budget * 2.0, budget)
-                if chunk_text:
-                    parts.append(chunk_text)
-                    current = []
-                    current_tok = 0
-                    continue
-
-            # Normal flush at current boundary
-            chunk_text = "\n".join(current).strip()
-            parts.append(chunk_text)
-            # Start new chunk with overlap
-            overlap_lines = _get_overlap_lines(current, enc, overlap)
-            current = overlap_lines + [line]
-            current_tok = sum(count_tokens(l, enc) for l in current if l.strip())
-        else:
-            current.append(line)
-            current_tok += line_tok
-
-    if current:
-        text = "\n".join(current).strip()
-        if text:
-            parts.append(text)
-
-    return parts
-
-
-def _complete_sentence(
-    lines: list[str], enc, max_tokens: int, text_chunk_size: int | None = None,
-) -> str | None:
-    """Try to extend lines until a sentence boundary is found within max_tokens.
-
-    Returns the completed chunk text if a boundary is found, None otherwise.
+    The packer in ``src.domain.canonical.semantic_units`` owns the boundaries,
+    the 50/350/512 budgets and the Điều / major-code prefixes. This only wraps
+    its chunks in the table chunker's chunk dict.
     """
     budget = text_chunk_size if text_chunk_size is not None else settings.CHUNK_SIZE_TOKENS
+    packed = _pack_units_greedily(
+        text,
+        enc=enc,
+        min_tokens=settings.SOFT_MIN_TOKENS,
+        target_tokens=min(budget, settings.HARD_MAX_TOKENS),
+        hard_max_tokens=settings.HARD_MAX_TOKENS,
+    )
+    return [
+        _make_chunk(
+            doc_id, start_idx + index, chunk.text, base_meta,
+            chunk_type="text_section", token_count=count_tokens(chunk.text, enc),
+        )
+        for index, chunk in enumerate(packed)
+    ]
 
-    result: list[str] = []
-    total_tok = 0
-
-    for line in lines:
-        line_tok = count_tokens(line, enc)
-        if total_tok + line_tok > max_tokens:
-            break
-        result.append(line)
-        total_tok += line_tok
-        # Check if this line ends at a sentence/phrase boundary
-        stripped = line.strip()
-        if stripped and (_SENT_END_SOFT.search(stripped) or _VI_PHRASE_END.search(stripped)):
-            text = "\n".join(result).strip()
-            # Only return if we actually extended past the original budget somewhat
-            if total_tok > budget * 0.8:
-                return text
-
-    return None
-
-
-def _get_overlap_lines(lines: list[str], enc, overlap_tokens: int) -> list[str]:
-    """Get last N tokens worth of lines for overlap."""
-    if not lines or overlap_tokens == 0:
-        return []
-
-    result: list[str] = []
-    total_tok = 0
-    for line in reversed(lines):
-        line = line.strip()
-        if not line:
-            continue
-        tok = count_tokens(line, enc)
-        if total_tok + tok > overlap_tokens:
-            break
-        result.insert(0, line)
-        total_tok += tok
-
-    return result
-
-
-def _trim_to_sentence(text: str, enc, text_chunk_size: int | None = None) -> str:
-    """Try to end text at a sentence boundary without exceeding chunk size."""
-    budget = text_chunk_size if text_chunk_size is not None else settings.CHUNK_SIZE_TOKENS
-
-    tok = count_tokens(text, enc)
-    if tok <= budget:
-        return text
-
-    # Find last sentence boundary within budget
-    lines = text.split("\n")
-    result: list[str] = []
-    total_tok = 0
-
-    for line in lines:
-        line_tok = count_tokens(line, enc)
-        if total_tok + line_tok > budget and result:
-            # Check if current result ends at sentence/phrase boundary
-            last_line = result[-1].strip()
-            if _SENT_END_SOFT.search(last_line) or _VI_PHRASE_END.search(last_line):
-                break
-            # If not, include this line to try to complete the sentence
-            if total_tok + line_tok <= budget * 1.3:  # allow 30% overflow
-                result.append(line)
-                total_tok += line_tok
-            break
-        result.append(line)
-        total_tok += line_tok
-
-    return "\n".join(result).strip()
 
 
 def _merge_consecutive_table_chunks(chunks: list[dict], base_meta: dict, doc_id: str, enc) -> list[dict]:
