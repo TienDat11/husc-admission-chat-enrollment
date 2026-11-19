@@ -240,7 +240,7 @@ def test_docx_upload_creates_draft_and_report(
     assert report["chars_per_page"] > 30  # not a scan-only document
     assert report["table_count"] == 1
     assert payload["draft_record_id"] is not None
-    assert payload["warnings"] == []
+    assert any("UNANCHORED_DRAFT" in w for w in payload["warnings"]), payload["warnings"]
 
     draft = disk.get_record(payload["draft_record_id"]).latest
     assert draft.status.value == "draft"

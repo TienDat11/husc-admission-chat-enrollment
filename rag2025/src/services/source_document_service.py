@@ -693,11 +693,17 @@ class SourceDocumentService:
                     + "); không tạo bản nháp"
                 )
             elif text and not all_pages_scan and not parse.error:
-                draft_record_ids = self._write_upload_draft(
+                draft_record_ids, draft_blockers = self._write_upload_draft(
                     document_id=document_id,
                     pages=parse.pages or (text,),
                     actor_id=actor_id,
                 )
+                if draft_blockers:
+                    warnings.append(
+                        "bản nháp chưa neo vào Điều hoặc mã ngành ("
+                        + ", ".join(draft_blockers)
+                        + "); cần gán toạ độ trước khi gửi duyệt"
+                    )
             elif parse.error is None and all_pages_scan:
                 warnings.append(
                     "all pages are scans (image only); no draft created"
@@ -745,7 +751,7 @@ class SourceDocumentService:
         document_id: str,
         pages: Sequence[str],
         actor_id: str,
-    ) -> tuple[str, ...]:
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
         """The drafts an upload creates: the decomposer's records (plan §PL-6.6).
 
         Coordinate keys are stable, so a retry after an interrupted first attempt
@@ -753,6 +759,10 @@ class SourceDocumentService:
         and a second write of the same version is a hard
         :class:`RecordVersionConflictError`. A coordinate held by a different
         document gets the next version.
+
+        Returns the record ids and the decomposer's blockers. A blocked draft
+        keeps its blockers in ``structured_payload["blockers"]`` so the exceptions
+        list and the submit gate can see them.
         """
         from src.services.record_decomposer import decompose_with_blockers
 
@@ -765,6 +775,10 @@ class SourceDocumentService:
         )
         written: list[str] = []
         for record in decomposition.records:
+            if decomposition.blockers:
+                record = record.model_copy(
+                    update={"structured_payload": {"blockers": list(decomposition.blockers)}}
+                )
             existing = self._store.versions(record.record_id)
             if existing:
                 owners = {
@@ -777,7 +791,7 @@ class SourceDocumentService:
                 record = record.model_copy(update={"version": len(existing) + 1})
             self._store.write_record(record)
             written.append(record.record_id)
-        return tuple(written)
+        return tuple(written), decomposition.blockers
 
     def _write_xlsx_drafts(
         self,

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -27,7 +27,7 @@ class ParseResult:
     page_texts: list = field(default_factory=list)
 
 
-PARSER_VERSION = "m2-v1"
+PARSER_VERSION = "m2-v2"
 
 
 def _cache_key(path: Path) -> str:
@@ -94,12 +94,12 @@ def _all_pages(path: Path) -> list[int]:
     return list(range(1, len(PdfReader(str(path)).pages) + 1))
 
 
-def _tier1_docling(path: Path, ocr: bool) -> ParseResult:
-    return docling_pages(path, _all_pages(path), ocr=False)
+def _tier1_docling(path: Path, ocr: bool, pages: Sequence[int] | None = None) -> ParseResult:
+    return docling_pages(path, pages if pages is not None else _all_pages(path), ocr=False)
 
 
-def _tier2_docling(path: Path, ocr: bool) -> ParseResult:
-    return docling_pages(path, _all_pages(path), ocr=True)
+def _tier2_docling(path: Path, ocr: bool, pages: Sequence[int] | None = None) -> ParseResult:
+    return docling_pages(path, pages if pages is not None else _all_pages(path), ocr=True)
 
 
 def _needs_escalation(result: ParseResult) -> bool:
@@ -114,23 +114,27 @@ def parse_pdf(
     path: Path,
     cache_dir: Path,
     force: str | None = None,
-    page_range: tuple[int, int] | None = None,
+    page_range: Sequence[int] | None = None,
 ) -> ParseResult:
-    """Parse ``path``. ``page_range`` is 1-based inclusive ``(start, end)``.
+    """Parse ``path``. ``page_range`` lists the 1-based pages to read.
 
     When given, only those pages go to Docling and the pypdf/escalation tiers are
     skipped; ``page_texts`` holds the ``(page, text)`` pairs.
     """
     key = _cache_key(path)
     if page_range is not None:
-        start, end = page_range
-        if start < 1 or end < start:
+        pages = list(page_range)
+        if not pages or min(pages) < 1:
             raise ValueError(f"invalid page_range {page_range!r}")
-        key = f"{key}_pages{start}-{end}"
+        pages_digest = hashlib.sha256(",".join(map(str, pages)).encode("utf-8")).hexdigest()[:16]
+        key = f"{key}_pages{pages_digest}"
         cached = _cache_get(cache_dir, key)
         if cached is not None:
             return cached
-        result = docling_pages(path, range(start, end + 1), ocr=force == "docling-ocr")
+        if force == "docling-ocr":
+            result = _tier2_docling(path, ocr=True, pages=pages)
+        else:
+            result = _tier1_docling(path, ocr=False, pages=pages)
         _cache_put(cache_dir, key, result)
         return result
     if force is None:

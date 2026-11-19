@@ -98,7 +98,7 @@ _UPSERT_PARSE_JOB_SQL = text(
     """
 INSERT INTO ingestion_jobs (job_id, kind, payload, state, priority, attempt, max_attempts,
                             progress, idempotency_key, created_by)
-VALUES (CAST(:job_id AS uuid), 'parse', CAST(:payload AS jsonb), 'completed', 100, 1, 3,
+VALUES (CAST(:job_id AS uuid), 'parse', CAST(:payload AS jsonb), 'ready_for_review', 100, 1, 3,
         CAST(:progress AS jsonb), :idempotency_key, :actor_id)
 ON CONFLICT (job_id) DO UPDATE SET state = EXCLUDED.state, progress = EXCLUDED.progress,
                                    updated_at = now()
