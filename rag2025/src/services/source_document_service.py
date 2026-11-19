@@ -776,9 +776,9 @@ class SourceDocumentService:
         written: list[str] = []
         for record in decomposition.records:
             if decomposition.blockers:
-                record = record.model_copy(
-                    update={"structured_payload": {"blockers": list(decomposition.blockers)}}
-                )
+                merged_payload = dict(getattr(record, "structured_payload", None) or {})
+                merged_payload["blockers"] = list(decomposition.blockers)
+                record = record.model_copy(update={"structured_payload": merged_payload})
             existing = self._store.versions(record.record_id)
             if existing:
                 owners = {
