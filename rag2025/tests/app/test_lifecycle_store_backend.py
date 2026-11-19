@@ -28,7 +28,7 @@ from src.app.lifecycle import configure_canonical_record_store  # noqa: E402
 from src.domain.canonical import CanonicalRecord  # noqa: E402
 from src.infrastructure.audit_ledger import AuditLedger  # noqa: E402
 from src.infrastructure.canonical_record_store import CanonicalRecordStore  # noqa: E402
-from src.infrastructure.identity_store import IdentityStore  # noqa: E402
+from src.infrastructure.sql_identity_repo import SqlIdentityRepository  # noqa: E402
 from src.infrastructure.sql_audit_ledger import SqlAuditLedger  # noqa: E402
 from src.infrastructure.sql_record_store import SqlRecordStore  # noqa: E402
 from tests.pg_fixtures import fresh_db  # noqa: F401  (fixture)
@@ -167,13 +167,11 @@ def test_postgres_backend_builds_sql_audit_ledger_without_connecting(tmp_path, m
         _stop_runner(app)
 
 
-def test_postgres_backend_attaches_file_identity_store_under_the_root(tmp_path, monkeypatch):
+def test_postgres_backend_attaches_sql_identity_repository(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", SECRET_URL)
     app = _configure(tmp_path, "postgres")
     try:
-        identity = app.state.identity_store
-        assert isinstance(identity, IdentityStore)
-        assert identity.path.is_relative_to(tmp_path / "canonical_store")
+        assert isinstance(app.state.identity_store, SqlIdentityRepository)
     finally:
         _stop_runner(app)
 

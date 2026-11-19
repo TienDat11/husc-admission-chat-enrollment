@@ -60,6 +60,12 @@ from src.infrastructure.identity_store import (
     IdentityStore,
     IdentityStoreError,
 )
+from src.infrastructure.sql_identity_repo import (
+    AccountDisabledError,
+    AccountLockedError,
+    SessionExpiredError,
+    SqlIdentityRepository,
+)
 
 __all__ = [
     "AdminAction",
@@ -93,7 +99,7 @@ def identity_store_for(request: Request) -> IdentityStore | None:
     request.app.state.identity_store = store
     return store
 
-def seed_from_env_if_empty(store: IdentityStore) -> bool:
+def seed_from_env_if_empty(store: IdentityStore | SqlIdentityRepository) -> bool:
     """Copy the env registry into ``store`` the first time it is used.
 
     Returns whether seeding happened. The "only when empty" guard is the whole
@@ -120,6 +126,45 @@ def seed_from_env_if_empty(store: IdentityStore) -> bool:
         return False
     store.seed(humans)
     return True
+
+
+def _account_disabled() -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={"code": "ACCOUNT_DISABLED", "message": "admin identity is disabled"},
+    )
+
+
+def _account_locked(retry_after: int) -> HTTPException:
+    return HTTPException(
+        status_code=423,
+        detail={
+            "code": "ACCOUNT_LOCKED",
+            "message": f"account is locked; try again in {retry_after}s",
+        },
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+def _identity_from_session(store: SqlIdentityRepository, token: str) -> Identity:
+    try:
+        entry = store.resolve_session(token)
+    except SessionExpiredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "SESSION_EXPIRED", "message": "invalid or expired session"},
+        ) from exc
+    except AccountDisabledError as exc:
+        raise _account_disabled() from exc
+    except AccountLockedError as exc:
+        raise _account_locked(exc.retry_after) from exc
+    except IdentityStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"admin identity registry is unusable: {exc}",
+        ) from exc
+    return Identity(actor_id=entry.actor_id, role=entry.role)
+
 
 def current_identity(
     request: Request,
@@ -150,6 +195,10 @@ def current_identity(
             try:
                 seed_from_env_if_empty(store)
                 entry = store.find(credential)
+            except AccountDisabledError as exc:
+                raise _account_disabled() from exc
+            except AccountLockedError as exc:
+                raise _account_locked(exc.retry_after) from exc
             except (IdentityStoreError, AdminIdentityConfigError) as exc:
                 raise HTTPException(
                     status_code=503,
@@ -184,6 +233,10 @@ def current_identity(
             status_code=422,
             detail="no credential: X-Admin-Token header or session cookie required",
         )
+
+    store = identity_store_for(request)
+    if isinstance(store, SqlIdentityRepository):
+        return _identity_from_session(store, token)
 
     sessions = getattr(request.app.state, "session_registry", None)
     if sessions is None:

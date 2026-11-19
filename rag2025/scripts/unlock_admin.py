@@ -32,6 +32,22 @@ try:
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from src.domain.audit import AuditAction, AuditEvent, TargetKind
+from src.infrastructure.identity_store import IdentityStoreError
+from src.infrastructure.sql_identity_repo import SqlIdentityRepository
+
+
+def _unlock_in_postgres(database_url: str, actor_id: str, event: AuditEvent) -> int:
+    """Clear the lockout in PostgreSQL and record the decision in the same transaction."""
+    try:
+        found = SqlIdentityRepository(database_url).unlock(actor_id, audit=event)
+    except IdentityStoreError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if not found:
+        print(f"error: no identity with actor_id {actor_id!r}", file=sys.stderr)
+        return 1
+    print("lockout cleared in PostgreSQL; the audit event is recorded in audit_events")
+    return 0
 
 
 def main() -> int:
@@ -51,13 +67,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    data_root = Path(
-        args.data_root or os.environ.get("CANONICAL_STORE_ROOT", "")
-    )
-    if not data_root or not data_root.exists():
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    data_root = Path(args.data_root or os.environ.get("CANONICAL_STORE_ROOT", ""))
+    if not database_url and (not data_root or not data_root.exists()):
         print(
-            "error: --data-root not given and CANONICAL_STORE_ROOT is unset "
-            "or the path does not exist.",
+            "error: DATABASE_URL, --data-root or CANONICAL_STORE_ROOT must name a store.",
             file=sys.stderr,
         )
         return 1
@@ -72,6 +86,9 @@ def main() -> int:
         timestamp=datetime.now(timezone.utc),
         reason=f"lockout_reset: {args.reason}",
     )
+
+    if database_url:
+        return _unlock_in_postgres(database_url, args.actor_id, event)
 
     # Append to the ledger in the same format the API writes.
     audit_file = data_root / "audit" / "ledger.jsonl"

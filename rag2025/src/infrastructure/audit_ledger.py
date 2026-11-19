@@ -236,6 +236,36 @@ class ChainVerification:
     last_hash: str | None = None
 
 
+def permission_change_event(
+    *,
+    actor_id: str,
+    actor_role: str | None,
+    subject_id: str,
+    before_role: str | None,
+    after_role: str | None,
+    reason: str,
+    source_ip: str | None = None,
+    four_eyes: bool | None = None,
+) -> AuditEvent:
+    """The ``permission_change`` event for one subject's role move (``subject_id@role`` states).
+
+    Shared by the file ledger and the PostgreSQL identity store so both write the same event.
+    """
+    return AuditEvent(
+        action=AuditAction.PERMISSION_CHANGE,
+        actor_id=actor_id,
+        role=actor_role,
+        target=subject_id,
+        target_kind=TargetKind.SUBJECT,
+        timestamp=datetime.now(timezone.utc),
+        before_version=f"{subject_id}@{before_role or 'none'}",
+        after_version=f"{subject_id}@{after_role or 'disabled'}",
+        reason=reason,
+        source_ip=source_ip,
+        review_id=None if four_eyes is None else f"four_eyes={'on' if four_eyes else 'off'}",
+    )
+
+
 class AuditLedger:
     """Append-only hash-chained ledger over one file.
 
@@ -318,18 +348,15 @@ class AuditLedger:
         ``event_id`` it recorded.
         """
         return self.append(
-            AuditEvent(
-                action=AuditAction.PERMISSION_CHANGE,
+            permission_change_event(
                 actor_id=actor_id,
-                role=actor_role,
-                target=subject_id,
-                target_kind=TargetKind.SUBJECT,
-                timestamp=datetime.now(timezone.utc),
-                before_version=f"{subject_id}@{before_role or 'none'}",
-                after_version=f"{subject_id}@{after_role or 'disabled'}",
+                actor_role=actor_role,
+                subject_id=subject_id,
+                before_role=before_role,
+                after_role=after_role,
                 reason=reason,
                 source_ip=source_ip,
-                review_id=None if four_eyes is None else f"four_eyes={'on' if four_eyes else 'off'}",
+                four_eyes=four_eyes,
             )
         )
 

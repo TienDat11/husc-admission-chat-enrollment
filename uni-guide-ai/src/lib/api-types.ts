@@ -1375,7 +1375,7 @@ export type components = {
          * @description What happened. An action outside this enum is not recordable.
          * @enum {string}
          */
-        AuditAction: "publish" | "rollback" | "permission_change" | "source_document_change" | "conflict_override" | "create" | "edit" | "submit" | "approve" | "reject" | "supersede" | "withdraw" | "revoke_supersession" | "claim";
+        AuditAction: "publish" | "rollback" | "permission_change" | "source_document_change" | "conflict_override" | "create" | "edit" | "submit" | "approve" | "reject" | "supersede" | "withdraw" | "revoke_supersession" | "claim" | "job_retry" | "job_cancel" | "account_locked";
         /**
          * AuditEventList
          * @description Newest-first page of the ledger.
@@ -1589,10 +1589,22 @@ export type components = {
             checked: number;
             /** Last Hash */
             last_hash?: string | null;
+            /**
+             * Legacy Checked
+             * @default 0
+             */
+            legacy_checked: number;
+            /** Legacy Last Hash */
+            legacy_last_hash?: string | null;
             /** Ok */
             ok: boolean;
             /** Reason */
             reason?: string | null;
+            /**
+             * Skipped Legacy Rows
+             * @default 0
+             */
+            skipped_legacy_rows: number;
         };
         /**
          * ChunkPreview
@@ -2173,15 +2185,20 @@ export type components = {
          * IdentityCreateRequest
          * @description Body for ``POST /admin/identities``.
          *
-         *     The credential is supplied by the caller rather than generated here: this
-         *     surface hands an existing secret to a named person, and inventing one in a
-         *     response body would put a live credential in a place logs read.
+         *     File store: the caller supplies the credential, as before, so an existing
+         *     secret can be handed to a named person. PostgreSQL store: the server issues
+         *     the header token (``issue_header_token``) and returns it exactly once.
          */
         IdentityCreateRequest: {
             /** Actor Id */
             actor_id: string;
             /** Credential */
-            credential: string;
+            credential?: string | null;
+            /**
+             * Issue Header Token
+             * @default false
+             */
+            issue_header_token: boolean;
             /** Password */
             password?: string | null;
             /** Reason */
@@ -2218,9 +2235,13 @@ export type components = {
             /** Actor Id */
             actor_id: string;
             /** Credential */
-            credential: string;
+            credential?: string | null;
             /** Disabled */
             disabled: boolean;
+            /** Header Token */
+            header_token?: string | null;
+            /** Last Login At */
+            last_login_at?: string | null;
             role: components["schemas"]["Role"];
             /** Subject Id */
             subject_id: string;

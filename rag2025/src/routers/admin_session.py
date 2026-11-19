@@ -35,7 +35,8 @@ from src.infrastructure.identity_store import (
     IdentityStoreError,
     verify_password,
 )
-from src.routers.admin_auth import identity_store_for
+from src.infrastructure.sql_identity_repo import SqlIdentityRepository
+from src.routers.admin_auth import _account_disabled, _account_locked, identity_store_for
 
 __all__ = [
     "LoginRequest",
@@ -217,8 +218,64 @@ def _registry_for(request: Request) -> tuple[SessionRegistry, LockoutRegistry]:
     return sessions, lockouts
 
 
+def _login_sql(
+    request: Request,
+    store: SqlIdentityRepository,
+    lockouts: LockoutRegistry,
+    payload: LoginRequest,
+    response: Response,
+) -> LoginResponse:
+    """Password login against the PostgreSQL identity table (U10).
+
+    A known actor's failures and lock live in its row, so a restart does not
+    reset them. An unknown actor id has no row, so its failures are counted in
+    memory only; the response is the same as a wrong password, so it is not an
+    enumeration oracle.
+    """
+    try:
+        result = store.login(
+            payload.actor_id,
+            payload.password,
+            user_agent=request.headers.get("user-agent"),
+        )
+    except IdentityStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"identity registry is unusable: {exc}",
+        ) from exc
+
+    if result.status == "unknown":
+        actor_lock = lockouts.get_or_create(payload.actor_id)
+        if actor_lock.is_locked():
+            raise _account_locked(actor_lock.seconds_remaining())
+        actor_lock.record_failure()
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    if result.status == "disabled":
+        raise _account_disabled()
+    if result.status == "locked":
+        raise _account_locked(int(result.retry_after or _LOGIN_LOCK_SECONDS))
+    if result.status == "bad_password":
+        raise HTTPException(status_code=401, detail="invalid credentials")
+
+    entry = result.entry
+    response.set_cookie(
+        key=_SESSION_COOKIE,
+        value=result.session_token,
+        httponly=True,
+        samesite="strict",
+        secure=True,
+        max_age=_SESSION_TTL_SECONDS,
+        path="/",
+    )
+    return LoginResponse(
+        actor_id=entry.actor_id,
+        role=entry.role.value,
+        session_seconds=_SESSION_TTL_SECONDS,
+    )
+
+
 @router.post("/login", response_model=LoginResponse)
-async def login(
+def login(
     request: Request,
     payload: LoginRequest,
     response: Response,
@@ -229,6 +286,9 @@ async def login(
     when the actor is in a lockout window.
     """
     sessions, lockouts = _registry_for(request)
+    store = identity_store_for(request)
+    if isinstance(store, SqlIdentityRepository):
+        return _login_sql(request, store, lockouts, payload, response)
 
     actor_lock = lockouts.get_or_create(payload.actor_id)
     if actor_lock.is_locked():
@@ -238,7 +298,6 @@ async def login(
             detail=f"account is locked; try again in {remaining}s",
         )
 
-    store = identity_store_for(request)
     if store is None:
         raise HTTPException(
             status_code=503,
@@ -289,11 +348,21 @@ async def login(
 
 
 @router.post("/logout")
-async def logout(request: Request, response: Response) -> dict[str, str]:
+def logout(request: Request, response: Response) -> dict[str, str]:
     """Clear the session cookie. Idempotent — a request with no cookie is a no-op."""
     sessions, _ = _registry_for(request)
     token = request.cookies.get(_SESSION_COOKIE, "")
     if token:
-        sessions.revoke(token)
+        store = identity_store_for(request)
+        if isinstance(store, SqlIdentityRepository):
+            try:
+                store.revoke_session(token)
+            except IdentityStoreError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"identity registry is unusable: {exc}",
+                ) from exc
+        else:
+            sessions.revoke(token)
     response.delete_cookie(_SESSION_COOKIE, path="/")
     return {"status": "logged out"}
