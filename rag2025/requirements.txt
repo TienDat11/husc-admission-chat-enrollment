@@ -35,8 +35,8 @@ loguru==0.7.2
 black==23.11.0
 
 # Optional dependencies for testing and scripts
-httpx==0.25.2
-requests==2.31.0
+httpx>=0.28.1,<1
+requests>=2.32.2,<3
 # HTML parsing for the crawlers (scripts/crawl_*.py, vision_crawl_husc.py) and the
 # tests that exercise them (tests/scripts, tests/prod_readiness). Imported at module
 # level, so its absence fails pytest COLLECTION, not just the crawl tests.
