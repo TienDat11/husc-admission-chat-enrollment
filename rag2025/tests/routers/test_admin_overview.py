@@ -253,3 +253,87 @@ def test_postgres_branch_counts_match_file_definitions(fresh_db, monkeypatch) ->
         "unanswered_overdue_count": 1,
         "active_release_id": "rel-pg",
     }
+
+
+class _Row:
+    _mapping = {
+        "review_count": 3,
+        "open_blocker_count": 1,
+        "unanswered_open_count": 2,
+        "unanswered_overdue_count": 0,
+        "active_release_id": None,
+    }
+
+
+class _Result:
+    def one(self):
+        return _Row()
+
+
+class _Conn:
+    def __init__(self, engine):
+        self._engine = engine
+
+    async def __aenter__(self):
+        self._engine.attempts += 1
+        if self._engine.attempts <= self._engine.failures:
+            raise ConnectionResetError("connection reset by peer")
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def execute(self, _statement):
+        return _Result()
+
+
+class _FlakyEngine:
+    """Fails the first ``failures`` connection attempts with a reset, then answers."""
+
+    def __init__(self, failures: int) -> None:
+        self.failures = failures
+        self.attempts = 0
+
+    def connect(self):
+        return _Conn(self)
+
+
+def test_overview_retries_a_reset_connection_once(app: FastAPI, client: TestClient) -> None:
+    engine = _FlakyEngine(failures=1)
+    app.state.db_engine = engine
+    response = client.get("/admin/overview", headers=_headers("viewer"))
+    assert response.status_code == 200, response.text
+    assert engine.attempts == 2
+    assert response.json()["review_count"] == 3
+
+
+def test_overview_db_outage_is_a_503_not_a_500(app: FastAPI, client: TestClient) -> None:
+    engine = _FlakyEngine(failures=10)
+    app.state.db_engine = engine
+    response = client.get("/admin/overview", headers=_headers("viewer"))
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"]["code"] == "DB_UNAVAILABLE"
+    assert engine.attempts == 2
+
+
+def test_unhandled_error_keeps_cors_headers_and_answers_json_500() -> None:
+    from fastapi.middleware.cors import CORSMiddleware
+
+    from api.errors import install_error_handling
+
+    origin = "http://localhost:5173"
+    application = FastAPI()
+    install_error_handling(application)
+    application.add_middleware(
+        CORSMiddleware, allow_origins=[origin], allow_methods=["*"], allow_headers=["*"]
+    )
+
+    @application.get("/boom")
+    def boom() -> None:
+        raise RuntimeError("driver exploded")
+
+    with TestClient(application, raise_server_exceptions=False) as test_client:
+        response = test_client.get("/boom", headers={"Origin": origin})
+    assert response.status_code == 500
+    assert response.json()["code"] == "INTERNAL_ERROR"
+    assert response.headers["access-control-allow-origin"] == origin

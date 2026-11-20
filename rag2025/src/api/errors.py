@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from infrastructure.db import WRITE_FREEZE
@@ -143,7 +144,16 @@ async def request_context_middleware(request: Request, call_next):
             headers={"Retry-After": "60"},
         )
     else:
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            # An unhandled error reaches ServerErrorMiddleware, which sits outside CORS
+            # and would send the 500 without CORS headers. Answer here, inside CORS.
+            logger.exception("unhandled error on {} {}", request.method, request.url.path)
+            response = JSONResponse(
+                status_code=500,
+                content=error_envelope("INTERNAL_ERROR", "Lỗi máy chủ", request_id),
+            )
     response.headers[REQUEST_ID_HEADER] = request_id
     return response
 

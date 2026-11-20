@@ -23,7 +23,9 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+import psycopg
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from src.domain.admin_identity import AdminAction
 from src.domain.canonical.record import RecordStatus
@@ -70,9 +72,27 @@ class OverviewResponse(BaseModel):
     active_release_id: str | None
 
 
-async def _postgres_overview(engine) -> OverviewResponse:
+# Connection-level failures of the overview read. A reset pooled connection is the
+# usual transient case, so the read is retried once before answering 503.
+_DB_CONNECTION_ERRORS = (OSError, OperationalError, psycopg.OperationalError)
+
+
+async def _overview_row(engine):
     async with engine.connect() as conn:
-        row = (await conn.execute(_OVERVIEW_SQL)).one()
+        return (await conn.execute(_OVERVIEW_SQL)).one()
+
+
+async def _postgres_overview(engine) -> OverviewResponse:
+    try:
+        row = await _overview_row(engine)
+    except _DB_CONNECTION_ERRORS:
+        try:
+            row = await _overview_row(engine)
+        except _DB_CONNECTION_ERRORS as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "DB_UNAVAILABLE", "message": "overview database is unavailable"},
+            ) from exc
     return OverviewResponse(**dict(row._mapping))
 
 
