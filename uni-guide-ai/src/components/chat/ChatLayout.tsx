@@ -71,6 +71,7 @@ export function ChatLayout() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const readiness = useBackendReadiness({ pollMs: 2000 });
   const { send, isTyping, error } = useChatStream({ messages, onMessagesChange: setMessages });
@@ -116,14 +117,48 @@ export function ChatLayout() {
     setIsSidebarOpen(false);
   }, []);
 
+  // Keep the newest exchange in view inside the message list (never the document):
+  // a bot answer is aligned to the top of the list so its text and source chips
+  // both fit; a user message scrolls to the bottom. Reduced motion skips smoothing.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const reduceMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const behavior: ScrollBehavior = reduceMotion ? 'auto' : 'smooth';
+    const last = messages[messages.length - 1];
+    const anchor =
+      last?.role === 'assistant'
+        ? list.querySelector<HTMLElement>(`[data-message-id="${last.id}"]`)
+        : null;
+    if (anchor) {
+      const offset =
+        anchor.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+      list.scrollTo?.({ top: offset - 16, behavior });
+    } else {
+      list.scrollTo?.({ top: list.scrollHeight, behavior });
+    }
+  }, [messages, isTyping]);
+
   return (
-    <div className="flex h-screen w-full bg-[#F3F5F9]">
+    <div className="flex h-dvh w-full overflow-hidden bg-[#F3F5F9]">
       {/* Rail trái 320 — ẩn trên mobile, cột chat lấp đầy khung nhìn */}
       <div className="hidden lg:flex w-[320px] shrink-0 border-r border-[#E3E8F0] bg-white">
         <ChatRail onTopicSelect={handleTopicSelect} />
       </div>
+        {/* Lịch sử phiên — phục hồi hành vi từ HEAD (test ids luôn có mặt trong DOM). */}
+        <ChatSidebar
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          onNewChat={handleNewChat}
+          history={history}
+          activeMessageId={activeMessageId}
+          onSelectEntry={handleSelectEntry}
+          onDeleteEntry={handleDeleteEntry}
+        />
 
-      <div className="flex-1 flex flex-col min-w-0 bg-white">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white">
         <ChatTopBar />
 
         {/* Readiness banner: shown above the transcript while the BE is warming/failed.
@@ -141,24 +176,15 @@ export function ChatLayout() {
         )}
 
         {/* Hồ sơ thí sinh ẩn danh + lộ trình (khung Frame 12). */}
-        <div className="mx-4 mt-3 space-y-3">
+        <div className="mx-4 mt-3 space-y-3 shrink-0 max-h-[35dvh] overflow-y-auto">
           <StudentProfileForm />
           <RoadmapPanel />
         </div>
 
-        {/* Lịch sử phiên — phục hồi hành vi từ HEAD (test ids luôn có mặt trong DOM). */}
-        <ChatSidebar
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-          onNewChat={handleNewChat}
-          history={history}
-          activeMessageId={activeMessageId}
-          onSelectEntry={handleSelectEntry}
-          onDeleteEntry={handleDeleteEntry}
-        />
 
         <div
-          className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-4"
+          ref={listRef}
+          className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-4 space-y-4"
           role="log"
           aria-live="polite"
           aria-label="Dòng hội thoại"
