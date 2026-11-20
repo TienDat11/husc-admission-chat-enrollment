@@ -13,6 +13,12 @@ function failureOf(error: unknown): ApiFailure | null {
   return error instanceof AdminApiError ? error.failure : null;
 }
 
+/** Release ids start with the publish timestamp (yyyymmdd…); show the day, not the id. */
+function releaseDay(releaseId: string | null): string | null {
+  const match = releaseId ? /^(\d{4})(\d{2})(\d{2})/.exec(releaseId) : null;
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : null;
+}
+
 const Overview = () => {
   const { can } = useAdminSession();
   const overview = useQuery({
@@ -31,12 +37,45 @@ const Overview = () => {
   const releaseFailure = failureOf(release.error);
   const counts = overview.data;
   const noActiveRelease = releaseFailure?.kind === "unavailable" && releaseFailure.code === "NO_ACTIVE_RELEASE";
+  const liveDay = release.data && !noActiveRelease ? releaseDay(release.data.active_release_id) : null;
+
+  const actions = counts
+    ? [
+        counts.unanswered_overdue_count > 0
+          ? {
+              key: "overdue",
+              text: `${counts.unanswered_overdue_count} câu hỏi đã quá hạn, cần trả lời`,
+              to: "/quan-ly/cau-hoi",
+              cta: "Trả lời câu hỏi",
+            }
+          : null,
+        counts.open_blocker_count > 0
+          ? {
+              key: "blocker",
+              text: `${counts.open_blocker_count} mâu thuẫn cần phân xử`,
+              to: "/quan-ly/cho-duyet",
+              cta: "Phân xử mâu thuẫn",
+            }
+          : null,
+        counts.review_count > 0
+          ? {
+              key: "review",
+              text: `${counts.review_count} mục đang chờ duyệt`,
+              to: "/quan-ly/cho-duyet",
+              cta: "Mở hàng chờ duyệt",
+            }
+          : null,
+      ].filter((action) => action !== null)
+    : [];
 
   return (
     <section data-workarea="" aria-labelledby="overview-title" className="space-y-6">
-      <h1 id="overview-title" className="text-2xl font-bold text-[#143980]">
-        Tổng quan
-      </h1>
+      <div className="space-y-1">
+        <h1 id="overview-title" className="text-3xl font-bold text-[#143980]">
+          Tổng quan
+        </h1>
+        {liveDay ? <p className="text-base text-[#4a5568]">Bot đang phục vụ dữ liệu cập nhật ngày {liveDay}.</p> : null}
+      </div>
 
       {noActiveRelease ? (
         <ExceptionBar
@@ -51,26 +90,26 @@ const Overview = () => {
       {overview.isPending ? <p className="text-base">Đang tải...</p> : null}
 
       {counts ? (
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <li className="space-y-2 rounded-md border border-zinc-400 p-4">
-            <h2 className="text-lg font-semibold">Chờ duyệt</h2>
+        <ul className="m-0 grid list-none gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
+          <li className="space-y-2 rounded-xl border border-[#c9d8ee] bg-[#eef3fb] p-5">
+            <h2 className="text-lg font-semibold text-[#143980]">Chờ duyệt</h2>
             <p className="text-3xl font-bold">{counts.review_count}</p>
             <Link className="text-base font-medium text-[#143980] underline" to="/quan-ly/cho-duyet">
               Mở hàng chờ duyệt
             </Link>
           </li>
-          <li className="space-y-2 rounded-md border border-zinc-400 p-4">
-            <h2 className="text-lg font-semibold">Câu hỏi bot chưa trả lời</h2>
+          <li className="space-y-2 rounded-xl border border-[#f0d9a6] bg-[#fff7e6] p-5">
+            <h2 className="text-lg font-semibold text-[#8a5a00]">Câu hỏi bot chưa trả lời</h2>
             <p className="text-3xl font-bold">{counts.unanswered_open_count}</p>
             {counts.unanswered_overdue_count > 0 ? (
               <StatusPill tone="overdue" label={`${OVERDUE_LABEL}: ${counts.unanswered_overdue_count}`} />
             ) : null}
-            <Link className="text-base font-medium text-[#143980] underline" to="/quan-ly/cau-hoi">
+            <Link className="block text-base font-medium text-[#143980] underline" to="/quan-ly/cau-hoi">
               Xem câu hỏi
             </Link>
           </li>
-          <li className="space-y-2 rounded-md border border-zinc-400 p-4">
-            <h2 className="text-lg font-semibold">Mâu thuẫn chưa phân xử</h2>
+          <li className="space-y-2 rounded-xl border border-[#f0d9a6] bg-[#fff7e6] p-5">
+            <h2 className="text-lg font-semibold text-[#8a5a00]">Mâu thuẫn chưa phân xử</h2>
             <p className="text-3xl font-bold">{counts.open_blocker_count}</p>
             <Link className="text-base font-medium text-[#143980] underline" to="/quan-ly/cho-duyet">
               Xem mâu thuẫn
@@ -79,10 +118,32 @@ const Overview = () => {
         </ul>
       ) : null}
 
-      {release.data && !noActiveRelease ? (
-        <p className="text-base">
-          Bản đang phục vụ: <span className="font-semibold">{release.data.active_release_id ?? "chưa có"}</span>
-        </p>
+      {counts ? (
+        <section aria-labelledby="overview-actions" className="space-y-3 rounded-xl border border-[#d6deea] bg-white p-6">
+          <h2 id="overview-actions" className="text-xl font-semibold text-[#0f1b2d]">
+            Cần bạn xử lý ngay
+          </h2>
+          {actions.length === 0 ? (
+            <p className="text-base text-[#4a5568]">Hiện không có mục nào cần xử lý.</p>
+          ) : (
+            <ul className="m-0 list-none space-y-2 p-0">
+              {actions.map((action) => (
+                <li
+                  key={action.key}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#f7f9fc] p-4"
+                >
+                  <p className="text-base font-medium">{action.text}</p>
+                  <Link
+                    to={action.to}
+                    className="inline-flex min-h-11 items-center rounded-lg border border-[#d6deea] bg-white px-4 text-base font-semibold text-[#143980] hover:bg-[#eef3fb]"
+                  >
+                    {action.cta}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       ) : null}
     </section>
   );
