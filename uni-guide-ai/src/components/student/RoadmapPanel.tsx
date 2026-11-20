@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { Check, AlertTriangle, Clock } from 'lucide-react';
 import { useStudentProfile } from '@/hooks/useStudentProfile';
+import { getApiBaseUrl } from '@/lib/api';
 
 interface RoadmapStep {
   n: number;
@@ -43,7 +44,7 @@ export function RoadmapPanel() {
     if (!sessionId) return;
     let cancelled = false;
     setLoading(true);
-    fetch('/v2/admission-roadmap', {
+    fetch(`${getApiBaseUrl()}/v2/admission-roadmap`, {
       headers: { 'X-Student-Session': sessionId },
     })
       .then(async (res) => {
