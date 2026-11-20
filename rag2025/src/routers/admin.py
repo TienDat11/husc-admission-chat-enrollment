@@ -1163,6 +1163,10 @@ def _latest_versions(store: CanonicalRecordStore) -> list[CanonicalRecord]:
     browse surface, and one half-written record must not take the whole list
     down.
     """
+    history = getattr(store, "stored_history", None)
+    if callable(history):
+        # One bulk read: the per-record loop below opens a connection per record on SQL.
+        return [by_version[max(by_version)] for by_version in history().values() if by_version]
     latest: list[CanonicalRecord] = []
     for record_id in store.record_ids():
         versions = store.versions(record_id)

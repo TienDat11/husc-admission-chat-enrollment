@@ -163,3 +163,25 @@ def test_bulk_and_per_record_paths_write_the_same_release(tmp_path, monkeypatch)
     assert bulk.records_path.read_bytes() == per_record.records_path.read_bytes()
     assert bulk.manifest == per_record.manifest
     assert [r.record_id for r in bulk.excluded] == [r.record_id for r in per_record.excluded]
+
+
+# -- admin list: _latest_versions reads a SQL store in one connection ---------
+
+
+def test_latest_versions_opens_at_most_two_connections(tmp_path, monkeypatch):
+    from src.routers.admin import _latest_versions
+
+    store, opened = _sql_store(_records(200), monkeypatch)
+    expected = len(store.record_ids())
+    opened.clear()
+    assert len(_latest_versions(store)) == expected
+    assert len(opened) <= 2
+
+
+def test_latest_versions_bulk_and_per_record_paths_agree(tmp_path, monkeypatch):
+    from src.routers.admin import _latest_versions
+
+    store, _ = _sql_store(_records(12), monkeypatch)
+    bulk = _latest_versions(store)
+    per_record = _latest_versions(_PerRecordOnly(store))
+    assert bulk == per_record
