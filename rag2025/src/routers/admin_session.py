@@ -29,6 +29,8 @@ from threading import Lock
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from config.settings import settings
+
 from src.infrastructure.identity_store import (
     IdentityEntry,
     IdentityStore,
@@ -262,7 +264,7 @@ def _login_sql(
         key=_SESSION_COOKIE,
         value=result.session_token,
         httponly=True,
-        samesite="strict",
+        samesite=settings.ADMIN_COOKIE_SAMESITE,
         secure=True,
         max_age=_SESSION_TTL_SECONDS,
         path="/",
@@ -335,7 +337,7 @@ def login(
         key=_SESSION_COOKIE,
         value=token,
         httponly=True,
-        samesite="strict",
+        samesite=settings.ADMIN_COOKIE_SAMESITE,
         secure=True,
         max_age=_SESSION_TTL_SECONDS,
         path="/",
@@ -364,5 +366,11 @@ def logout(request: Request, response: Response) -> dict[str, str]:
                 ) from exc
         else:
             sessions.revoke(token)
-    response.delete_cookie(_SESSION_COOKIE, path="/")
+    response.delete_cookie(
+        _SESSION_COOKIE,
+        path="/",
+        httponly=True,
+        samesite=settings.ADMIN_COOKIE_SAMESITE,
+        secure=True,
+    )
     return {"status": "logged out"}

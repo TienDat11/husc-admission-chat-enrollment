@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config.settings import RAGSettings  # noqa: E402
+from config.settings import RAGSettings, settings  # noqa: E402
 from rag2025.src.app.lifecycle import (  # noqa: E402
     configure_canonical_record_store,
 )
@@ -421,3 +421,36 @@ def test_unknown_actor_login_rejected(client: TestClient):
         json={"actor_id": "nobody.here", "password": "anything"},
     )
     assert resp.status_code == 401
+
+
+def test_admin_cookie_samesite_defaults_to_strict(monkeypatch):
+    monkeypatch.delenv("ADMIN_COOKIE_SAMESITE", raising=False)
+    assert RAGSettings(_env_file=None).ADMIN_COOKIE_SAMESITE == "strict"
+
+
+def test_admin_cookie_samesite_reads_env(monkeypatch):
+    monkeypatch.setenv("ADMIN_COOKIE_SAMESITE", "none")
+    assert RAGSettings(_env_file=None).ADMIN_COOKIE_SAMESITE == "none"
+
+
+@pytest.mark.parametrize("mode", ["strict", "none"])
+def test_session_cookie_set_and_clear_use_the_configured_samesite(
+    client: TestClient, monkeypatch, mode
+):
+    monkeypatch.setattr(settings, "ADMIN_COOKIE_SAMESITE", mode)
+    _seed_passwords(client)
+    login = client.post("/admin/login", json={"actor_id": ACTOR_A, "password": PASSWORD_A})
+    assert login.status_code == 200, login.text
+    set_cookie = login.headers["set-cookie"].lower()
+    assert f"samesite={mode}" in set_cookie
+    assert "secure" in set_cookie
+
+    logout = client.post(
+        "/admin/logout", cookies={"admin_session": login.cookies["admin_session"]}
+    )
+    assert logout.status_code == 200, logout.text
+    cleared = logout.headers["set-cookie"].lower()
+    assert "max-age=0" in cleared
+    assert f"samesite={mode}" in cleared
+    assert "secure" in cleared
+    assert "httponly" in cleared

@@ -59,6 +59,13 @@ class RAGSettings(BaseSettings):
         default=True,
         description="Four-eyes: an approver must differ from the version's author (U8 §PL-7.1)"
     )
+    ADMIN_COOKIE_SAMESITE: Literal["strict", "lax", "none"] = Field(
+        default="strict",
+        description=(
+            "SameSite attribute of the admin session cookie. 'none' is for an admin UI "
+            "served from a different site than the API; the cookie stays Secure"
+        ),
+    )
     HEALTH_RELEASE_LOOKUP_TIMEOUT_S: float = Field(
         default=5.0,
         gt=0,
