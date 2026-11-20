@@ -28,7 +28,7 @@ export function ChatRail({
   profile,
 }: ChatRailProps) {
   return (
-    <aside className="flex flex-col h-full w-[320px] border-r border-[#E3E8F0] bg-white shrink-0">
+    <aside className="flex flex-col h-full w-[320px] overflow-y-auto border-r border-[#E3E8F0] bg-white shrink-0">
       {/* Khối thương hiệu */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-[#E3E8F0]">
         <Shield className="w-6 h-[28px] text-[#143980]" aria-hidden="true" />
@@ -48,7 +48,7 @@ export function ChatRail({
       </div>
 
       {/* Hôm nay: câu hỏi của phiên hiện tại */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
+      <div className="shrink-0 px-4 py-4">
         <p className="text-[13px] font-semibold leading-[18px] text-[#6B7686] mb-3">Hôm nay</p>
         {history.length === 0 ? (
           <p className="text-[13px] leading-[18px] text-[#6B7686]">
