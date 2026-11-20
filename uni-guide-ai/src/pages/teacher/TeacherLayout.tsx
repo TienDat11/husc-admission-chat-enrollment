@@ -102,7 +102,8 @@ const TeacherLayout = () => {
                         <span aria-hidden="true" className="ico">
                           <item.Icon />
                         </span>
-                        {count > 0 ? <SidebarBadge label={item.label} count={count} /> : item.label}
+                        <span className="min-w-0">{item.label}</span>
+                        {count > 0 ? <SidebarBadge count={count} /> : null}
                       </NavLink>
                     </li>
                   );

@@ -118,7 +118,7 @@ describe("work-area invariant: one primary action", () => {
   it("exception bar and badges add no primary action", () => {
     const html = workarea(
       createElement(ExceptionBar, { title: "Không kết nối được", action: { label: "Thử lại", onClick: () => {} } }),
-      createElement(SidebarBadge, { label: "Chờ duyệt", count: 2 }),
+      createElement(SidebarBadge, { count: 2 }),
       createElement(StatusPill, { tone: "overdue", label: "Quá hạn" }),
     );
     expect(primaryCount(html)).toBe(0);
