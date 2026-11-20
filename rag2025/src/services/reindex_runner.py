@@ -30,8 +30,10 @@ and what the operator CLI (``scripts/run_reindex.py``) relies on.
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import time
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -69,6 +71,10 @@ RETRY_SECONDS_ENV = "REINDEX_RETRY_SECONDS"
 
 DEFAULT_TICK_SECONDS = 300.0
 DEFAULT_RETRY_SECONDS = 5.0
+
+#: A tick still running after this many seconds is reported as stalled, with the
+#: worker thread's current frames, by ``ReindexRunner.blocked_reason``.
+STALL_SECONDS = 60.0
 _TRUTHY = {"1", "true", "yes", "on"}
 _FALSY = {"0", "false", "no", "off"}
 
@@ -224,6 +230,10 @@ class ReindexRunner:
         self._lock = threading.Lock()
         self.started = False
         self.disabled_reason: str | None = None
+        self._tick_started: float | None = None
+        self._tick_thread_id: int | None = None
+        self._stall_logged = False
+        self._last_logged: tuple[str, str] | None = None
 
     # ── resolution ─────────────────────────────────────────────────────────
 
@@ -302,20 +312,38 @@ class ReindexRunner:
     # ── one tick ───────────────────────────────────────────────────────────
 
     def run_once(self) -> RunnerOutcome:
-        """Run one tick and record its outcome for ``blocked_reason``.
+        """Run one tick, record its outcome, and log it when it changes.
 
         A raised tick is recorded too, then re-raised: a CLI operator still sees
         the error, and the index-jobs status reports it from the runner's state.
         """
+        self._tick_started = time.monotonic()
+        self._tick_thread_id = threading.get_ident()
         try:
             outcome = self._tick()
         except Exception as exc:
             self._last_error = f"{type(exc).__name__}: {exc}"
             self._last_outcome = None
             raise
+        finally:
+            self._tick_started = None
+            self._stall_logged = False
         self._last_error = None
         self._last_outcome = outcome
+        self._log_outcome(outcome)
         return outcome
+
+    def _log_outcome(self, outcome: RunnerOutcome) -> None:
+        """One line per change of outcome, so a steady state costs no log volume."""
+        key = (outcome.action, outcome.reason)
+        if key == self._last_logged:
+            return
+        self._last_logged = key
+        message = f"reindex tick: {outcome.action} ({outcome.reason})"
+        if outcome.action in ("skipped", "failed"):
+            logger.warning(message)
+        else:
+            logger.info(message)
 
     def _tick(self) -> RunnerOutcome:
         """Evaluate the plan and, if due, run one ``ReindexJob`` to completion.
@@ -446,13 +474,20 @@ class ReindexRunner:
                 # Both "noop" and "skipped" retry on the short interval: at
                 # startup the embedder is not assigned yet, and the worker must
                 # pick it up on the retry interval, not after a 300 s sleep.
-                if outcome.action == "skipped":
-                    logger.warning(f"reindex worker: {outcome.reason}")
                 self._stop_event.wait(self._retry_seconds)
 
     @property
     def blocked_reason(self) -> str | None:
         """Why the last tick ran no job, or None when it ran or found nothing due."""
+        started = self._tick_started
+        if started is not None:
+            elapsed = time.monotonic() - started
+            if elapsed >= STALL_SECONDS:
+                location = self._worker_location()
+                if not self._stall_logged:
+                    self._stall_logged = True
+                    logger.warning(f"reindex tick stalled for {elapsed:.0f}s at {location}")
+                return f"tick stalled for {elapsed:.0f}s at {location}"
         if self._last_error is not None:
             return f"tick raised {self._last_error}"
         outcome = self._last_outcome
@@ -463,6 +498,16 @@ class ReindexRunner:
         if outcome.action == "failed":
             return f"job failed: {outcome.error}"
         return None
+
+    def _worker_location(self) -> str:
+        """The innermost frames of the worker thread's current tick, for a stall report."""
+        frame = sys._current_frames().get(self._tick_thread_id)
+        if frame is None:
+            return "unknown frame"
+        frames = traceback.extract_stack(frame)[-3:]
+        return " <- ".join(
+            f"{Path(item.filename).name}:{item.lineno} {item.name}" for item in reversed(frames)
+        )
 
     def _backoff(self, consecutive_errors: int) -> float:
         return min(

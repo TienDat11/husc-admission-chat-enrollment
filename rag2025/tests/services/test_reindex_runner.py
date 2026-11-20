@@ -334,3 +334,37 @@ def test_a_tick_that_publishes_nothing_says_what_it_found(wired):
     assert runner.blocked_reason == outcome.reason
     status = IndexJobsService(corpus_dir=corpus_dir, outbox=outbox, runner=runner).status()
     assert any("stored=1" in problem for problem in status.problems)
+
+
+def test_a_tick_that_hangs_is_reported_as_stalled_with_where_it_waits(wired, monkeypatch):
+    """A tick that never returns must not look like an idle worker: the status
+    names the stall and the frame it is waiting in, and clears once the tick ends."""
+    from src.services import reindex_runner as reindex_runner_module
+
+    monkeypatch.setattr(reindex_runner_module, "STALL_SECONDS", 0.05)
+    runner = _runner(wired)
+    original_tick = runner._tick
+    entered = threading.Event()
+    release = threading.Event()
+
+    def hung():
+        entered.set()
+        release.wait(10)
+        return original_tick()
+
+    runner._tick = hung
+    worker = threading.Thread(target=runner.run_once)
+    worker.start()
+    try:
+        assert entered.wait(10), "the tick never started"
+        _wait_until(
+            lambda: "stalled" in (runner.blocked_reason or ""),
+            message="a tick held past STALL_SECONDS was not reported as stalled",
+        )
+        reason = runner.blocked_reason
+        assert "tick stalled for" in reason
+        assert "hung" in reason, reason
+    finally:
+        release.set()
+        worker.join(10)
+    assert "stalled" not in (runner.blocked_reason or "")
