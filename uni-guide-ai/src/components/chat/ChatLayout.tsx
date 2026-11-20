@@ -67,12 +67,31 @@ function WarmingBanner({ stage }: { stage: ReadinessStage }) {
   );
 }
 
+// Breakpoint lg (1024px): hồ sơ nằm ở rail trên desktop và trong khối thu gọn phía trên
+// khung chat trên màn hình nhỏ. Không có matchMedia (jsdom) thì coi như không phải desktop.
+function useIsDesktop(): boolean {
+  const query = '(min-width: 1024px)';
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window.matchMedia === 'function' && window.matchMedia(query).matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(query);
+    const update = () => setIsDesktop(media.matches);
+    update();
+    media.addEventListener?.('change', update);
+    return () => media.removeEventListener?.('change', update);
+  }, []);
+  return isDesktop;
+}
+
 export function ChatLayout() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const isDesktop = useIsDesktop();
 
   const readiness = useBackendReadiness({ pollMs: 2000 });
   const { send, isTyping, error } = useChatStream({ messages, onMessagesChange: setMessages });
@@ -144,9 +163,16 @@ export function ChatLayout() {
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-[#F3F5F9]">
-      {/* Rail trái 320 — ẩn trên mobile, cột chat lấp đầy khung nhìn */}
-      <div className="hidden lg:flex w-[320px] shrink-0 border-r border-[#E3E8F0] bg-white">
-        <ChatRail onTopicSelect={handleTopicSelect} />
+      {/* Rail trái 320 (lg trở lên): câu hỏi mới, lịch sử phiên, chủ đề và hồ sơ. */}
+      <div className="hidden lg:flex w-[320px] shrink-0">
+        <ChatRail
+          onTopicSelect={handleTopicSelect}
+          onNewChat={handleNewChat}
+          history={history}
+          activeMessageId={activeMessageId}
+          onSelectEntry={handleSelectEntry}
+          profile={isDesktop ? <StudentProfileForm /> : null}
+        />
       </div>
         {/* Lịch sử phiên — phục hồi hành vi từ HEAD (test ids luôn có mặt trong DOM). */}
         <ChatSidebar
@@ -176,26 +202,28 @@ export function ChatLayout() {
           </div>
         )}
 
-        {/* Hồ sơ thí sinh ẩn danh + lộ trình (khung Frame 12). */}
-        <div className="mx-4 mt-3 shrink-0">
-          <button
-            type="button"
-            aria-expanded={profileOpen}
-            aria-controls="chat-profile-panel"
-            onClick={() => setProfileOpen((open) => !open)}
-            className="flex w-full items-center justify-between rounded-md border border-[#E3E8F0] bg-white px-3 py-3 text-left text-sm font-semibold text-[#143980] lg:hidden"
-          >
-            <span>Hồ sơ thí sinh và lộ trình</span>
-            <span aria-hidden="true">{profileOpen ? '▲' : '▼'}</span>
-          </button>
-          <div
-            id="chat-profile-panel"
-            className={`${profileOpen ? 'block' : 'hidden'} mt-3 lg:mt-0 lg:block max-h-[35dvh] space-y-3 overflow-y-auto`}
-          >
-            <StudentProfileForm />
-            <RoadmapPanel />
+        {/* Hồ sơ và lộ trình trên màn hình nhỏ: thu gọn. Trên lg hồ sơ ở rail, lộ trình trong luồng chat. */}
+        {!isDesktop && (
+          <div className="mx-4 mt-3 shrink-0">
+            <button
+              type="button"
+              aria-expanded={profileOpen}
+              aria-controls="chat-profile-panel"
+              onClick={() => setProfileOpen((open) => !open)}
+              className="flex w-full items-center justify-between rounded-8 border border-[#D6DEEA] bg-white px-3 py-3 text-left text-sm font-semibold text-[#143980]"
+            >
+              <span>Hồ sơ thí sinh và lộ trình</span>
+              <span aria-hidden="true">{profileOpen ? '▲' : '▼'}</span>
+            </button>
+            <div
+              id="chat-profile-panel"
+              className={`${profileOpen ? 'block' : 'hidden'} mt-3 max-h-[35dvh] space-y-3 overflow-y-auto`}
+            >
+              <StudentProfileForm />
+              <RoadmapPanel />
+            </div>
           </div>
-        </div>
+        )}
 
 
         <div
@@ -228,6 +256,11 @@ export function ChatLayout() {
               )}
             </div>
           ))}
+          {isDesktop && (
+            <div className="max-w-[640px]">
+              <RoadmapPanel />
+            </div>
+          )}
 
           {followUps.length > 0 && !isTyping && (
             <SuggestedQuestions questions={followUps} onSelect={handleTopicSelect} />

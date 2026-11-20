@@ -16,7 +16,7 @@ import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
 import { SecondaryButton } from "@/components/ui-kit/SecondaryButton";
 import { StatusPill, type PillTone } from "@/components/ui-kit/StatusPill";
 
-const STEPS = ["1 Chọn tệp", "2 Kiểm tra", "3 Hỏi thử", "4 Gửi duyệt"];
+const STEPS = ["01 · Chọn tài liệu", "02 · Kiểm tra & gửi duyệt"];
 const STORAGE_KEY = "admin.addinfo.upload";
 const TERMINAL_STATES: Record<string, true> = { completed: true, ready_for_review: true, failed_terminal: true, cancelled: true };
 const POLL_MS = 2000;
@@ -139,6 +139,11 @@ function DraftReview({ ids }: { ids: string[] }) {
   );
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+}
+
 const AddInfo = () => {
   const { can } = useAdminSession();
   const canUpload = can("records.create");
@@ -192,7 +197,14 @@ const AddInfo = () => {
       <ol aria-label="Các bước" className="flex flex-wrap gap-2">
         {STEPS.map((label, index) => (
           <li key={label}>
-            <StatusPill tone={index === 0 ? "pending" : "muted"} label={label} />
+            <span
+              aria-current={index === 0 ? "step" : undefined}
+              className={`inline-flex h-9 items-center rounded-8 px-4 text-sm font-semibold ${
+                index === 0 ? "bg-[#143980] text-white" : "bg-[#E9EEF6] text-[#4A5568]"
+              }`}
+            >
+              {label}
+            </span>
           </li>
         ))}
       </ol>
@@ -207,15 +219,25 @@ const AddInfo = () => {
             <label htmlFor="upload-file" className="block text-base font-semibold">
               Chọn tệp PDF, DOCX hoặc XLSX (tối đa 20 MB)
             </label>
+            {chosen ? (
+              <div className="flex items-center justify-between gap-4 rounded-12 border border-[#143980] bg-white p-4">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-[#143980]">{chosen.name}</p>
+                  <p className="text-sm text-[#6B7686]">{formatFileSize(chosen.size)} · Sẵn sàng tải lên</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-[#E6ECF7] px-3 py-1 text-sm font-semibold text-[#143980]">
+                  Đã chọn
+                </span>
+              </div>
+            ) : null}
             <input
               id="upload-file"
               type="file"
               accept=".pdf,.docx,.xlsx"
               disabled={upload.isPending}
               onChange={(event) => setChosen(event.target.files?.[0] ?? null)}
-              className="block min-h-11 w-full rounded-md border border-zinc-500 px-2 py-2 text-base text-zinc-900 file:mr-3 file:min-h-11 file:rounded-md file:border file:border-zinc-500 file:bg-white file:px-3 file:font-semibold file:text-zinc-900"
+              className="block min-h-11 w-full rounded-8 border border-[#D6DEEA] bg-white px-2 py-2 text-base text-[#0F1B2D] file:mr-3 file:min-h-11 file:rounded-8 file:border file:border-[#D6DEEA] file:bg-white file:px-3 file:font-semibold file:text-[#143980]"
             />
-            {chosen ? <p className="text-base">Đã chọn: {chosen.name}</p> : null}
           </div>
 
           {failure !== null && failure.kind !== "duplicate-document" ? (
@@ -242,7 +264,8 @@ const AddInfo = () => {
             </ExceptionBar>
           ) : null}
 
-          <div className="sticky bottom-0 bg-white py-3 md:static md:p-0">
+          <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-[#E3E8F0] bg-white py-3">
+            <p className="text-sm text-[#6B7686]">Bước 1 / 2 · Chưa hiển thị cho thí sinh</p>
             <PrimaryButton type="submit" disabled={chosen === null || upload.isPending} className="w-full md:w-auto">
               {upload.isPending ? "Đang tải lên..." : "Tải lên"}
             </PrimaryButton>
@@ -304,18 +327,6 @@ const AddInfo = () => {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        {STEPS.slice(1).map((label) => (
-          <button
-            key={label}
-            type="button"
-            disabled
-            className="min-h-11 rounded-md border border-zinc-400 px-4 text-base text-zinc-600 disabled:cursor-not-allowed"
-          >
-            {label}
-          </button>
-        ))}
-      </div>
     </section>
   );
 };

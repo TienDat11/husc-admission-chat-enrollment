@@ -1,7 +1,7 @@
 // @spec(PL-7.2 Frame 12 XaDgH — ô nhập dính đáy: khối cao 56 bo 12 viền 1px #D6DEEA lề trong 14, placeholder, nút gửi tròn 36 nền #143980 mũi tên trắng (primary duy nhất), đáy 12 #6B7686
 // ChatComposer — ô nhập tin nhắn dính đáy (dumb/presentational). Giữ logic gửi (Enter, auto-resize, disable khi stream).
 import { useCallback, useEffect, useRef, useState, KeyboardEvent } from 'react';
-import { Loader2, Send } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface ChatComposerProps {
   onSend: (message: string) => void;
@@ -65,23 +65,16 @@ export function ChatComposer({
           type="button"
           onClick={handleSend}
           disabled={sendDisabled}
-          className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+          className={`h-9 shrink-0 rounded-full px-4 text-[14px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#143980] focus-visible:ring-offset-2 ${
             sendDisabled
-              ? 'bg-[#F7F9FC] text-[#6B7686] border-transparent'
-              : 'bg-[#143980] text-white border-transparent'
+              ? 'bg-[#F7F9FC] text-[#6B7686] border border-[#D6DEEA]'
+              : 'bg-[#143980] text-white border border-transparent'
           }`}
           aria-label="Gửi tin nhắn"
         >
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 text-[#143980]" aria-label="Đang gửi" />
-          ) : (
-            <Send className="w-4 h-4" aria-hidden="true" />
-          )}
+          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" aria-label="Đang gửi" /> : 'Gửi →'}
         </button>
       </div>
-      <p className="text-[12px] leading-[16px] text-[#6B7686]">
-        Bạn không cần tạo tài khoản. Hồ sơ chỉ lưu trên trình duyệt này.
-      </p>
     </div>
   );
 }

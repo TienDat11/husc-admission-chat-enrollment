@@ -142,7 +142,7 @@ describe('SuggestedQuestions — derived from the last answer', () => {
       '2026',
     );
 
-    const strip = screen.getByText('✨ Câu hỏi tiếp theo').parentElement!;
+    const strip = screen.getByText('Câu hỏi tiếp theo').parentElement!;
     const labels = Array.from(strip.querySelectorAll('button')).map((b) => b.textContent ?? '');
 
     expect(labels.length).toBeGreaterThan(0);
@@ -160,7 +160,7 @@ describe('SuggestedQuestions — derived from the last answer', () => {
     renderChatLayout();
     await ask('Điểm chuẩn ngành Luật năm 2026?', 'Điểm chuẩn ngành Luật là 20 điểm.', '2026');
 
-    const strip = screen.getByText('✨ Câu hỏi tiếp theo').parentElement!;
+    const strip = screen.getByText('Câu hỏi tiếp theo').parentElement!;
     const labels = Array.from(strip.querySelectorAll('button')).map((b) => b.textContent ?? '');
     expect(labels.some((l) => l.toLowerCase().includes('luật'))).toBe(true);
     // The old static list's first entry can never appear, because it is

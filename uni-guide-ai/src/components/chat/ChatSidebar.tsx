@@ -49,8 +49,8 @@ export function ChatSidebar({
 
       {/* Sidebar - Desktop: always visible, Mobile: animated */}
       <aside
-        className={`fixed lg:relative top-0 left-0 z-50 lg:z-0 h-full w-[300px] bg-sidebar-background border-r-4 border-border flex flex-col transition-transform duration-300 ease-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        className={`fixed top-0 left-0 z-50 h-full w-[300px] bg-sidebar-background border-r-4 border-border flex flex-col transition-transform duration-300 ease-out lg:hidden ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Header */}
