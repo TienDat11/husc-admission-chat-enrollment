@@ -669,46 +669,6 @@ class SourceDocumentService:
                 parse.page_count > 0
                 and len(parse.scan_pages) == parse.page_count
             )
-            if kind == XLSX_KIND:
-                # Ticket T17: one draft record per spreadsheet data row, each
-                # carrying its ``{header: value}`` dict as the structured
-                # payload. Drafts are written **before** the registry commit,
-                # and on a retry that races an interrupted first attempt the
-                # writers reuse any matching v1 record rather than appending
-                # a second v1, so the upload is resumable.
-                draft_record_ids, fell_back = self._write_xlsx_drafts(
-                    document_id=document_id,
-                    excel_rows=parse.excel_rows,
-                    actor_id=actor_id,
-                )
-                if fell_back:
-                    warnings.append(
-                        "header không nêu rõ loại (điểm chuẩn / chỉ tiêu); "
-                        "nháp dùng THONG_BAO"
-                    )
-            elif parse.blockers:
-                warnings.append(
-                    "cổng nguyên tử chặn bản nháp ("
-                    + ", ".join(parse.blockers)
-                    + "); không tạo bản nháp"
-                )
-            elif text and not all_pages_scan and not parse.error:
-                draft_record_ids, draft_blockers = self._write_upload_draft(
-                    document_id=document_id,
-                    pages=parse.pages or (text,),
-                    actor_id=actor_id,
-                )
-                if draft_blockers:
-                    warnings.append(
-                        "bản nháp chưa neo vào Điều hoặc mã ngành ("
-                        + ", ".join(draft_blockers)
-                        + "); cần gán toạ độ trước khi gửi duyệt"
-                    )
-            elif parse.error is None and all_pages_scan:
-                warnings.append(
-                    "all pages are scans (image only); no draft created"
-                )
-
             target_path = probe_dir / f"{digest}.{extension}"
             target_path.write_bytes(file_bytes)
 
@@ -721,6 +681,55 @@ class SourceDocumentService:
                 notes=notes,
                 now=now,
             )
+            # The record store refuses a draft whose source document is not
+            # registered yet (SourceDocumentNotRegisteredError), so the registry
+            # commit comes first. If a draft write then fails, the entry is
+            # retired rather than deleted: the id is no longer vouched for, and
+            # the registry's revision timeline keeps its history.
+            try:
+                if kind == XLSX_KIND:
+                    # Ticket T17: one draft record per spreadsheet data row, each
+                    # carrying its ``{header: value}`` dict as the structured
+                    # payload. On a retry that races an interrupted first attempt
+                    # the writers reuse any matching v1 record rather than
+                    # appending a second v1, so the upload is resumable.
+                    draft_record_ids, fell_back = self._write_xlsx_drafts(
+                        document_id=document_id,
+                        excel_rows=parse.excel_rows,
+                        actor_id=actor_id,
+                    )
+                    if fell_back:
+                        warnings.append(
+                            "header không nêu rõ loại (điểm chuẩn / chỉ tiêu); "
+                            "nháp dùng THONG_BAO"
+                        )
+                elif parse.blockers:
+                    warnings.append(
+                        "cổng nguyên tử chặn bản nháp ("
+                        + ", ".join(parse.blockers)
+                        + "); không tạo bản nháp"
+                    )
+                elif text and not all_pages_scan and not parse.error:
+                    draft_record_ids, draft_blockers = self._write_upload_draft(
+                        document_id=document_id,
+                        pages=parse.pages or (text,),
+                        actor_id=actor_id,
+                    )
+                    if draft_blockers:
+                        warnings.append(
+                            "bản nháp chưa neo vào Điều hoặc mã ngành ("
+                            + ", ".join(draft_blockers)
+                            + "); cần gán toạ độ trước khi gửi duyệt"
+                        )
+                elif parse.error is None and all_pages_scan:
+                    warnings.append(
+                        "all pages are scans (image only); no draft created"
+                    )
+            except BaseException:
+                self._registry.retire(
+                    document_id, actor_id=actor_id, now=self._clock()
+                )
+                raise
         event = self._emit(
             entry=entry,
             actor_id=actor_id,

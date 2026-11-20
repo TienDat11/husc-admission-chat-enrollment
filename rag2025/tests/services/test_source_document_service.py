@@ -953,9 +953,8 @@ def test_failure_after_draft_write_retries_successfully(
                      notes=None, now=None):
         call_count[0] += 1
         if call_count[0] == 1:
-            # Simulate a crash after the draft was written but before the
-            # registry entry landed: the draft record already exists in the
-            # store, the registry entry does not.
+            # Simulate a crash in the registry commit: nothing is registered,
+            # and no draft has been written yet either.
             raise OSError("simulated crash after draft write")
         return original_create(
             document_id,
@@ -970,18 +969,18 @@ def test_failure_after_draft_write_retries_successfully(
     service._registry.create = monkeypatch_create  # type: ignore[method-assign]
 
     try:
-        # First attempt: draft is written, then create raises.
+        # First attempt: the registry create raises before any draft exists.
         with pytest.raises(OSError, match="simulated crash"):
             service.upload_document(docx_bytes, "de-an.docx", actor_id="cb.quan-tri")
 
-        # Verify the draft survived but the registry entry was not created.
+        # Verify the registry entry was not created.
         import hashlib
         digest = hashlib.sha256(docx_bytes).hexdigest()
         document_id = f"uploads/{digest}.docx"
         assert service._registry.get(document_id) is None
 
-        # Retry: the draft writer reuses the existing v1, the registry entry
-        # is created, and no version conflict is raised.
+        # Retry: the registry entry is created, the draft is written once, and
+        # no version conflict is raised.
         result = service.upload_document(
             docx_bytes, "de-an.docx", actor_id="cb.quan-tri"
         )
@@ -991,3 +990,80 @@ def test_failure_after_draft_write_retries_successfully(
         assert store.versions(result.draft_record_id) == (1,)
     finally:
         service._registry.create = original_create  # type: ignore[method-assign]
+
+
+# -- the record store refuses a draft whose source document is unregistered ----
+
+
+def _enforce_source_registration(
+    service: SourceDocumentService,
+    store: CanonicalRecordStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Make the file store refuse what the SQL store refuses: a record citing
+    a source document that is not registered (sql_record_store.py)."""
+    from src.infrastructure.sql_record_store import SourceDocumentNotRegisteredError
+
+    original_write = store.write_record
+
+    def strict_write(record):
+        if record.source_document_id is not None and not service.is_registered(
+            record.source_document_id
+        ):
+            raise SourceDocumentNotRegisteredError(
+                f"cannot write {record.record_id}@{record.version}: "
+                "source_document_id is not registered in source_documents"
+            )
+        return original_write(record)
+
+    monkeypatch.setattr(store, "write_record", strict_write)
+
+
+def test_upload_drafts_only_after_source_document_is_registered(
+    service: SourceDocumentService,
+    store: CanonicalRecordStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: an upload must register its document before writing drafts
+    that cite it, or the SQL record store refuses the draft and the upload 500s."""
+    _enforce_source_registration(service, store, monkeypatch)
+    docx_bytes = _docx_bytes_with_heading()
+
+    result = service.upload_document(docx_bytes, "de-an.docx", actor_id="cb.quan-tri")
+
+    assert result.draft_record_ids
+    assert service.is_registered(result.document_id)
+    for record_id in result.draft_record_ids:
+        assert store.get_version(record_id, 1).source_document_id == result.document_id
+
+
+def test_failed_draft_write_retires_the_registration_and_retry_succeeds(
+    service: SourceDocumentService,
+    store: CanonicalRecordStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A draft write that fails after the registry commit retires the entry:
+    the id is not vouched for, and a retry registers and drafts normally."""
+    import hashlib
+
+    _enforce_source_registration(service, store, monkeypatch)
+    docx_bytes = _docx_bytes_with_heading()
+    document_id = f"uploads/{hashlib.sha256(docx_bytes).hexdigest()}.docx"
+    strict_write = store.write_record
+    calls = [0]
+
+    def fail_first_draft(record):
+        calls[0] += 1
+        if calls[0] == 1:
+            raise OSError("simulated draft write failure")
+        return strict_write(record)
+
+    monkeypatch.setattr(store, "write_record", fail_first_draft)
+
+    with pytest.raises(OSError, match="simulated draft write failure"):
+        service.upload_document(docx_bytes, "de-an.docx", actor_id="cb.quan-tri")
+    assert not service.is_registered(document_id)
+
+    result = service.upload_document(docx_bytes, "de-an.docx", actor_id="cb.quan-tri")
+    assert service.is_registered(document_id)
+    assert result.draft_record_ids
