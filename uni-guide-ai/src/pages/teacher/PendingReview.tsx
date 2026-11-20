@@ -149,7 +149,7 @@ const PendingReview = () => {
   if (list.isPending) {
     return (
       <p role="status" aria-live="polite" className="text-zinc-600">
-        <span aria-hidden="true">⏳</span> Đang lấy danh sách chờ duyệt…
+        Đang lấy danh sách chờ duyệt…
       </p>
     );
   }
@@ -192,7 +192,7 @@ const PendingReview = () => {
             </p>
             {record.authored_by === identity?.actor_id ? (
               <p>
-                <span className="status s-muted">👤 Cần một người khác duyệt</span>
+                <span className="status s-muted">Cần một người khác duyệt</span>
               </p>
             ) : (
               <div className="flex items-center gap-3">
