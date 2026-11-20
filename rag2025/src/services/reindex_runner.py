@@ -203,6 +203,8 @@ class ReindexRunner:
         )
         self._work_dir = Path(work_dir) if work_dir is not None else None
         self._job_sink = job_sink
+        self._last_error: str | None = None
+        self._last_outcome: RunnerOutcome | None = None
         self._release_id_provider = release_id_provider
         self._materializer_factory = materializer_factory
         self._records = Path(records) if records is not None else None
@@ -300,6 +302,22 @@ class ReindexRunner:
     # ── one tick ───────────────────────────────────────────────────────────
 
     def run_once(self) -> RunnerOutcome:
+        """Run one tick and record its outcome for ``blocked_reason``.
+
+        A raised tick is recorded too, then re-raised: a CLI operator still sees
+        the error, and the index-jobs status reports it from the runner's state.
+        """
+        try:
+            outcome = self._tick()
+        except Exception as exc:
+            self._last_error = f"{type(exc).__name__}: {exc}"
+            self._last_outcome = None
+            raise
+        self._last_error = None
+        self._last_outcome = outcome
+        return outcome
+
+    def _tick(self) -> RunnerOutcome:
         """Evaluate the plan and, if due, run one ``ReindexJob`` to completion.
 
         Never raises for ordinary failures: a job that went ``FAILED`` is
@@ -338,11 +356,13 @@ class ReindexRunner:
             if not result.is_materialized:
                 # An empty release is not a reason to publish an empty corpus
                 # over the serving one.
+                stored = result.manifest.get("stored_record_count", 0)
+                excluded = result.manifest.get("excluded_counts", {})
                 return RunnerOutcome(
                     due=True,
                     action="skipped",
                     reason=f"release {release_id} has no published records "
-                    f"({result.state.value})",
+                    f"({result.state.value}; stored={stored}, excluded={excluded})",
                     retry_soon=True,
                 )
             records = result.records_path
@@ -429,6 +449,20 @@ class ReindexRunner:
                 if outcome.action == "skipped":
                     logger.warning(f"reindex worker: {outcome.reason}")
                 self._stop_event.wait(self._retry_seconds)
+
+    @property
+    def blocked_reason(self) -> str | None:
+        """Why the last tick ran no job, or None when it ran or found nothing due."""
+        if self._last_error is not None:
+            return f"tick raised {self._last_error}"
+        outcome = self._last_outcome
+        if outcome is None:
+            return None
+        if outcome.action == "skipped":
+            return outcome.reason
+        if outcome.action == "failed":
+            return f"job failed: {outcome.error}"
+        return None
 
     def _backoff(self, consecutive_errors: int) -> float:
         return min(

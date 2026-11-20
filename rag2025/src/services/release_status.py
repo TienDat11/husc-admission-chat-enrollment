@@ -466,6 +466,11 @@ class IndexJobsService:
         problems: list[str] = []
         jobs: list[IndexJobView] = []
 
+        if self._runner is not None:
+            blocked = getattr(self._runner, "blocked_reason", None)
+            if isinstance(blocked, str) and blocked:
+                problems.append(f"reindex worker: {blocked}")
+
         live = self._live_job(problems)
         if live is not None:
             jobs.append(live)

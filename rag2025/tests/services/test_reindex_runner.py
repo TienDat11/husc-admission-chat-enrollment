@@ -315,3 +315,22 @@ def test_a_corrupt_outbox_survives_in_the_worker_but_reaches_the_operator(
         ), "the daemon must survive a poison tick"
     finally:
         runner.stop(timeout=5.0)
+
+
+def test_a_tick_that_publishes_nothing_says_what_it_found(wired):
+    """A release with no live published record must name its counts, and the
+    index-jobs status must carry that reason, not an empty ``jobs`` list alone."""
+    from src.services.release_status import IndexJobsService
+
+    _root, _store, outbox, service, corpus_dir = wired
+    service.create(_record(), actor_id="cb.bien-tap", role="editor")
+    runner = _runner(wired)
+
+    outcome = runner.run_once()
+
+    assert outcome.action == "skipped"
+    assert "stored=1" in outcome.reason
+    assert "'draft': 1" in outcome.reason
+    assert runner.blocked_reason == outcome.reason
+    status = IndexJobsService(corpus_dir=corpus_dir, outbox=outbox, runner=runner).status()
+    assert any("stored=1" in problem for problem in status.problems)
