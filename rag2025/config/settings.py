@@ -38,6 +38,21 @@ class RAGSettings(BaseSettings):
     WRITE_FREEZE: bool = Field(
         default=False, description="Operator write freeze: admin writes answer 503 WRITES_FROZEN at startup"
     )
+    PARSE_DOCLING_ENABLED: bool = Field(
+        default=True,
+        description=(
+            "PDF parse: Docling for table pages. false keeps the pypdf text of those "
+            "pages and warns TABLE_TIER_DISABLED (for hosts that cannot fit Docling)"
+        ),
+    )
+    PARSE_RAM_LIMIT_MB: int = Field(
+        default=1024,
+        gt=0,
+        description=(
+            "Parse subprocess RSS cap in MB. Over it the parse is refused with "
+            "error code PARSE_MEMORY_LIMIT instead of the container being killed"
+        ),
+    )
     ADMIN_REQUIRE_FOUR_EYES: bool = Field(
         default=True,
         description="Four-eyes: an approver must differ from the version's author (U8 §PL-7.1)"

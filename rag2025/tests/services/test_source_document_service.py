@@ -1241,3 +1241,148 @@ def test_registry_connect_errors_never_carry_the_dsn(tmp_path: Path) -> None:
     assert "TOPSECRET" not in message
     assert excinfo.value.__cause__ is None
     assert excinfo.value.__suppress_context__
+
+
+# -- PDF memory bound: switches, degraded table tier, memory-limit mapping ---
+
+
+def test_parse_switches_are_read_from_settings(monkeypatch) -> None:
+    from src.services.document_parser import _settings_limits, _worker_env
+
+    monkeypatch.setenv("PARSE_DOCLING_ENABLED", "false")
+    monkeypatch.setenv("PARSE_RAM_LIMIT_MB", "300")
+
+    assert _settings_limits() == (300, False)
+    env = _worker_env(docling_enabled=False, ram_limit_mb=300)
+    assert env["PARSE_DOCLING_ENABLED"] == "0"
+    assert env["PARSE_RAM_LIMIT_MB"] == "300"
+
+
+def test_docling_disabled_keeps_table_page_text_and_warns(tmp_path: Path, monkeypatch) -> None:
+    """With Docling off, a table page is read by pypdf, the gate does not block it,
+    Docling is never imported, and the warning code reaches the reviewer."""
+    from types import SimpleNamespace
+
+    from pypdf import PdfWriter
+
+    from src.services import document_parser_worker, page_router, pdf_pipeline
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    pdf_path = tmp_path / "table.pdf"
+    with pdf_path.open("wb") as handle:
+        writer.write(handle)
+
+    monkeypatch.setattr(
+        page_router, "route_pages", lambda pages, ops: SimpleNamespace(table_pages=(1,))
+    )
+
+    def _docling_must_not_run(*args, **kwargs):
+        raise AssertionError("Docling must not run when PARSE_DOCLING_ENABLED=false")
+
+    monkeypatch.setattr(pdf_pipeline, "docling_pages", _docling_must_not_run)
+    monkeypatch.setenv("PARSE_DOCLING_ENABLED", "0")
+
+    result = document_parser_worker._parse_pdf(pdf_path, 512)
+
+    assert result["parser"] == "pypdf"
+    assert result["blockers"] == []
+    assert any(w.startswith("TABLE_TIER_DISABLED") for w in result["warnings"])
+
+
+class _FakeProcess:
+    """Stands in for the worker Popen: finished, with the given stdout and exit code."""
+
+    def __init__(self, stdout: bytes, returncode: int, pid: int = 4242) -> None:
+        self._stdout = stdout
+        self.returncode = returncode
+        self.pid = pid
+
+    def communicate(self, timeout=None):
+        return self._stdout, b""
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+
+def test_oom_killed_worker_maps_to_parse_memory_limit(tmp_path: Path, monkeypatch) -> None:
+    """The kernel OOM-kills the worker (SIGKILL, no payload): a coded refusal, not a crash."""
+    from src.services import document_parser
+    from src.services.magic_bytes import PDF_KIND
+
+    document = tmp_path / "big.pdf"
+    document.write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(document_parser, "_spawn", lambda command, env: _FakeProcess(b"", -9))
+
+    result = document_parser.parse_document(
+        document, PDF_KIND, ram_limit_mb=300, docling_enabled=False
+    )
+
+    assert result.refused is True
+    assert result.error_code == "PARSE_MEMORY_LIMIT"
+    assert result.text == ""
+
+
+def test_worker_memory_error_payload_maps_to_parse_memory_limit(tmp_path: Path, monkeypatch) -> None:
+    from src.services import document_parser
+    from src.services.magic_bytes import PDF_KIND
+
+    document = tmp_path / "big.pdf"
+    document.write_bytes(b"%PDF-1.4")
+    payload = b'{"error": "parser ran out of memory", "refused": true, "error_code": "PARSE_MEMORY_LIMIT"}\n'
+    monkeypatch.setattr(
+        document_parser, "_spawn", lambda command, env: _FakeProcess(payload, 1)
+    )
+
+    result = document_parser.parse_document(
+        document, PDF_KIND, ram_limit_mb=300, docling_enabled=False
+    )
+
+    assert result.refused is True
+    assert result.error_code == "PARSE_MEMORY_LIMIT"
+
+
+def test_ordinary_child_failure_carries_no_memory_code(tmp_path: Path, monkeypatch) -> None:
+    from src.services import document_parser
+    from src.services.magic_bytes import PDF_KIND
+
+    document = tmp_path / "broken.pdf"
+    document.write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(document_parser, "_spawn", lambda command, env: _FakeProcess(b"", 1))
+
+    result = document_parser.parse_document(
+        document, PDF_KIND, ram_limit_mb=300, docling_enabled=False
+    )
+
+    assert result.refused is False
+    assert result.error_code is None
+
+
+def test_memory_refusal_reaches_the_service_as_a_coded_parse_failure(
+    service: SourceDocumentService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from src.services import document_parser
+    from src.services.document_parser import DocumentParseResult
+    from src.services.source_document_service import UploadParseFailed
+
+    refusal = DocumentParseResult(
+        text="",
+        page_count=0,
+        chars_per_page=0.0,
+        parser="none",
+        scan_pages=(),
+        pii_detected=False,
+        table_count=0,
+        refused=True,
+        error="parser subprocess was killed (SIGKILL, likely out of memory)",
+        error_code="PARSE_MEMORY_LIMIT",
+    )
+    monkeypatch.setattr(document_parser, "parse_document", lambda *a, **k: refusal)
+
+    with pytest.raises(UploadParseFailed) as excinfo:
+        service.upload_document(_docx_bytes_with_heading(), "de-an.docx", actor_id="cb.quan-tri")
+
+    assert excinfo.value.code == "PARSE_MEMORY_LIMIT"

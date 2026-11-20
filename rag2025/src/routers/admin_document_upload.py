@@ -186,6 +186,12 @@ async def upload_source_document(
         )
     except SourceDocumentError as exc:
         status = _UPLOAD_ERRORS.get(type(exc), 400)
+        if isinstance(exc, UploadParseFailed) and exc.code == "PARSE_MEMORY_LIMIT":
+            # The only coded refusal: a server resource limit (503), not a bad file.
+            raise HTTPException(
+                status_code=503,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
         raise HTTPException(status_code=status, detail=str(exc)) from exc
     engine = getattr(request.app.state, "db_engine", None)
     if engine is not None:

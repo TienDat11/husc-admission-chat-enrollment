@@ -15,6 +15,7 @@ from __future__ import annotations
 import struct
 import zlib
 import io
+import os
 import json
 import sys
 import unicodedata
@@ -26,6 +27,25 @@ from src.services.document_parser import (
 )
 from src.services.magic_bytes import DOCX_KIND, PDF_KIND, XLSX_KIND
 from src.services.pii_flags import pii_detected
+
+
+def _apply_memory_limit() -> None:
+    """Hard ceiling for this worker on Linux (Railway); the parent's RSS poll stays the soft cap.
+
+    RLIMIT_AS counts virtual address space, which runs well above RSS for Python
+    plus native libraries, so the ceiling is 4x the RSS budget: it stops runaway
+    allocation, it does not replace the parent's check. No-op off Linux.
+    """
+    if not sys.platform.startswith("linux"):
+        return
+    limit_mb = os.environ.get("PARSE_RAM_LIMIT_MB", "")
+    if not limit_mb.isdigit():
+        return
+    import resource
+
+    ceiling = int(limit_mb) * 4 * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (ceiling, ceiling))
+
 
 
 def main(argv: list[str]) -> int:
@@ -43,6 +63,7 @@ def main(argv: list[str]) -> int:
     except ValueError:
         _emit(error=f"max_decompressed_mb is not an integer: {cap_argument!r}")
         return 2
+    _apply_memory_limit()
     document = Path(path)
     try:
         if kind == PDF_KIND:
@@ -55,6 +76,12 @@ def main(argv: list[str]) -> int:
             result = {"error": f"unknown kind: {kind!r}"}
     except _Refusal as exc:
         result = {"error": str(exc), "refused": True}
+    except MemoryError:
+        result = {
+            "error": "parser ran out of memory",
+            "refused": True,
+            "error_code": "PARSE_MEMORY_LIMIT",
+        }
     except Exception as exc:  # hostile file: report, never crash silently
         result = {"error": f"{type(exc).__name__}: {exc}"}
     _emit(**result)
@@ -93,13 +120,16 @@ def _parse_pdf(document: Path, cap_mb: int) -> dict:
     table_pages = list(routing.table_pages)
     docling_text: dict[int, str] = {}
     docling_error: str | None = None
-    if table_pages:
+    docling_enabled = os.environ.get("PARSE_DOCLING_ENABLED", "1") != "0"
+    if table_pages and docling_enabled:
         try:
             result = docling_pages(document, table_pages, ocr=False)
             docling_text = {int(page): text for page, text in result.page_texts}
         except RuntimeError as exc:
             docling_error = str(exc)
-    blockers = atomic_gate(pages_text, table_pages, docling_text)
+    # With Docling off the table pages keep pypdf text; the gate has nothing to compare them with.
+    gated_tables = table_pages if docling_enabled else []
+    blockers = atomic_gate(pages_text, gated_tables, docling_text)
 
     # Docling replaces pypdf only on table pages, and only when the gate passes.
     use_docling = not blockers and bool(docling_text)
@@ -120,6 +150,12 @@ def _parse_pdf(document: Path, cap_mb: int) -> dict:
         )
     if docling_error is not None:
         warnings.append(f"bảng chưa đọc được bằng Docling: {docling_error}")
+    if table_pages and not docling_enabled:
+        warnings.append(
+            "TABLE_TIER_DISABLED: Docling đang tắt (PARSE_DOCLING_ENABLED=false); "
+            f"trang bảng {', '.join(str(p) for p in table_pages)} dùng văn bản pypdf, "
+            "cần kiểm tra bảng thủ công"
+        )
     if blockers:
         codes = ", ".join(sorted({b.code for b in blockers}))
         warnings.append(f"cổng nguyên tử chặn bản nháp: {codes}")

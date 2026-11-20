@@ -142,8 +142,13 @@ class UploadParseFailed(SourceDocumentError):
 
     A decompression-bomb refusal, a parse timeout, the memory cap, or an
     unreadable file lands here. 400 — the file itself is the problem, and
-    retrying the same bytes fails the same way.
+    retrying the same bytes fails the same way. ``code`` is the stable machine
+    code (PARSE_MEMORY_LIMIT is the memory cap; the route answers it 503).
     """
+
+    def __init__(self, message: str, *, code: str = "PARSE_FAILED") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class UploadPageLimit(SourceDocumentError):
@@ -532,7 +537,7 @@ class SourceDocumentService:
         role: str | None = None,
         notes: str | None = None,
         max_pages: int = 300,
-        ram_limit_mb: int = 1024,
+        ram_limit_mb: int | None = None,
         timeout_s: float = 60.0,
         max_decompressed_mb: int = 512,
     ) -> UploadResult:
@@ -591,7 +596,7 @@ class SourceDocumentService:
         role: str | None,
         notes: str | None,
         max_pages: int,
-        ram_limit_mb: int,
+        ram_limit_mb: int | None,
         timeout_s: float,
         max_decompressed_mb: int,
     ) -> UploadResult:
@@ -650,7 +655,7 @@ class SourceDocumentService:
 
             if parse.error:
                 if parse.refused:
-                    raise UploadParseFailed(parse.error)
+                    raise UploadParseFailed(parse.error, code=parse.error_code or "PARSE_FAILED")
                 # Extraction failed but the file is structurally fine: report
                 # it, still register the document, draft nothing (no empty
                 # drafts).

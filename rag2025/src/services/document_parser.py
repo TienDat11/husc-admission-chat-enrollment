@@ -74,6 +74,8 @@ class DocumentParseResult:
     excel_rows: tuple[dict, ...] = ()
     refused: bool = False
     error: str | None = None
+    #: Stable machine code for a refusal (PARSE_TIMEOUT, PARSE_MEMORY_LIMIT, ...).
+    error_code: str | None = None
     warnings: tuple[str, ...] = ()
     #: Per-page text in page order: the decomposer's input for PDFs.
     pages: tuple[str, ...] = ()
@@ -85,9 +87,10 @@ def parse_document(
     path: str | Path,
     kind: WorkerKind,
     *,
-    ram_limit_mb: int = 1024,
+    ram_limit_mb: int | None = None,
     timeout_s: float = 60.0,
     max_decompressed_mb: int = 512,
+    docling_enabled: bool | None = None,
 ) -> DocumentParseResult:
     """Parse ``path`` in a subprocess and report back.
 
@@ -100,6 +103,10 @@ def parse_document(
     if not document.is_file():
         return _error_result(f"file not found: {document}")
 
+    if ram_limit_mb is None or docling_enabled is None:
+        settings_ram, settings_docling = _settings_limits()
+        ram_limit_mb = settings_ram if ram_limit_mb is None else ram_limit_mb
+        docling_enabled = settings_docling if docling_enabled is None else docling_enabled
     command = [
         sys.executable,
         "-m",
@@ -108,7 +115,7 @@ def parse_document(
         kind,
         str(max_decompressed_mb),
     ]
-    env = _worker_env()
+    env = _worker_env(docling_enabled=docling_enabled, ram_limit_mb=ram_limit_mb)
     try:
         process = _spawn(command, env)
     except OSError as exc:
@@ -131,6 +138,7 @@ def parse_document(
                         f"parse timed out after {timeout_s:.0f}s "
                         "(the process tree was killed)",
                         refused=True,
+                        error_code="PARSE_TIMEOUT",
                     )
                 if not _rss_within(process.pid, ram_limit_mb):
                     _kill_process_tree(process.pid)
@@ -140,6 +148,7 @@ def parse_document(
                         "cap (killed); retry with a smaller document or "
                         "run inside the Docker hard-limit (ticket T13)",
                         refused=True,
+                        error_code="PARSE_MEMORY_LIMIT",
                     )
         return _read_worker_result(process, stdout, stderr)
     finally:
@@ -191,6 +200,7 @@ def _read_worker_result(
             ),
             refused=bool(payload.get("refused", False)),
             error=payload.get("error"),
+            error_code=payload.get("error_code"),
             warnings=tuple(str(w) for w in payload.get("warnings", ())),
             pages=tuple(str(p.get("text", "")) for p in payload.get("pages", ())),
             blockers=tuple(str(b.get("code", "")) for b in payload.get("blockers", ())),
@@ -201,10 +211,22 @@ def _read_worker_result(
         )
     detail = stderr.decode("utf-8", "replace").strip().splitlines()
     tail = detail[-1] if detail else "no stderr output"
+    if process.returncode is not None and process.returncode < 0:
+        # Killed by a signal with no payload. On Linux SIGKILL is the kernel's
+        # OOM killer; on Windows the RSS poll above is the only memory guard.
+        if -process.returncode == getattr(signal, "SIGKILL", 9):
+            return _error_result(
+                "parser subprocess was killed (SIGKILL, likely out of memory); "
+                "the document needs more memory than PARSE_RAM_LIMIT_MB allows",
+                refused=True,
+                error_code="PARSE_MEMORY_LIMIT",
+            )
     return _error_result(f"parser subprocess failed (exit {process.returncode}): {tail}")
 
 
-def _error_result(message: str, *, refused: bool = False) -> DocumentParseResult:
+def _error_result(
+    message: str, *, refused: bool = False, error_code: str | None = None
+) -> DocumentParseResult:
     return DocumentParseResult(
         text="",
         page_count=0,
@@ -216,10 +238,21 @@ def _error_result(message: str, *, refused: bool = False) -> DocumentParseResult
         headings=(),
         refused=refused,
         error=message,
+        error_code=error_code,
     )
 
 
-def _worker_env() -> dict[str, str]:
+def _settings_limits() -> tuple[int, bool]:
+    """(PARSE_RAM_LIMIT_MB, PARSE_DOCLING_ENABLED) from RAGSettings, env and .env alike."""
+    try:
+        from config.settings import RAGSettings
+    except ModuleNotFoundError:
+        from rag2025.config.settings import RAGSettings  # type: ignore
+    settings = RAGSettings()
+    return settings.PARSE_RAM_LIMIT_MB, settings.PARSE_DOCLING_ENABLED
+
+
+def _worker_env(*, docling_enabled: bool = True, ram_limit_mb: int = 1024) -> dict[str, str]:
     """An environment in which ``python -m src.services...`` resolves.
 
     The worker imports both ``src.*`` and the bare ``services.*`` /
@@ -243,6 +276,10 @@ def _worker_env() -> dict[str, str]:
         if root not in parts:
             parts.insert(0, root)
     env["PYTHONPATH"] = os.pathsep.join(parts)
+    # The child reads these from its environment. Passing the parent's resolved
+    # values explicitly keeps .env-file settings (which the child never reads) in force.
+    env["PARSE_DOCLING_ENABLED"] = "1" if docling_enabled else "0"
+    env["PARSE_RAM_LIMIT_MB"] = str(ram_limit_mb)
     return env
 
 
