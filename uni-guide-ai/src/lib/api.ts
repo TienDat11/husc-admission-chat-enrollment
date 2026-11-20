@@ -225,6 +225,10 @@ async function queryStreamOnce(
     tagged.headers = response.headers;
     throw tagged;
   }
+  const contentType = response.headers.get('Content-Type') ?? '';
+  if (!contentType.includes('text/event-stream')) {
+    throw new Error(`Stream unavailable: expected text/event-stream, got ${contentType || 'no content-type'}`);
+  }
   const reader = response.body.getReader();
   let fullAnswer = '';
   for await (const frame of parseSseStream(reader)) {
@@ -397,6 +401,9 @@ async function sendChatMessageOnce(
   return (await response.json()) as QueryResponse;
 }
 
+/** Public API used by production builds when VITE_API_BASE_URL is unset. */
+const PROD_API_BASE_URL = 'https://rag2025-production.up.railway.app';
+
 /**
  * Base URL for the RAG backend API.
  *
@@ -405,15 +412,15 @@ async function sendChatMessageOnce(
  *     FastAPI server on `http://localhost:8000` so `npm run dev` works out
  *     of the box.
  *   - In production builds (`import.meta.env.PROD`) a missing value falls back
- *     to a same-origin relative base (`""`). This lets a reverse proxy route
- *     requests from the same origin to `/api/*` without baking a hard URL into
- *     the static bundle, and avoids silently shipping localhost.
+ *     to the public rag2025 API. A same-origin base would send `/v2/*` and
+ *     `/api/*` to the static host, which answers 200 `text/html` for every path
+ *     (SPA fallback): the stream then yields no frames and `/api/meta` fails to parse.
  */
 export function getApiBaseUrl(): string {
   const configured = import.meta.env.VITE_API_BASE_URL as string | undefined;
   if (configured) return configured;
   if (import.meta.env.PROD) {
-    return '';
+    return PROD_API_BASE_URL;
   }
   return 'http://localhost:8000';
 }

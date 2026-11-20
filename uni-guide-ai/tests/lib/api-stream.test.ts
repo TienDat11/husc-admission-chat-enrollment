@@ -143,7 +143,7 @@ describe('api.queryStream', () => {
       sseFrame('done', { answer: post_guard }),
     ]);
     globalThis.fetch = vi.fn().mockResolvedValue(
-      fakeResponse({ stream, status: 200 }),
+      fakeResponse({ stream, status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
     ) as unknown as typeof fetch;
 
     const onDelta = vi.fn();
@@ -169,7 +169,7 @@ describe('api.queryStream', () => {
       },
     });
     globalThis.fetch = vi.fn().mockResolvedValue(
-      fakeResponse({ stream: crlfStream, status: 200 }),
+      fakeResponse({ stream: crlfStream, status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
     ) as unknown as typeof fetch;
 
     const onDelta = vi.fn();
