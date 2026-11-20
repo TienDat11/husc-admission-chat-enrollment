@@ -38,6 +38,7 @@ from src.infrastructure.canonical_record_store import (
 )
 from src.infrastructure.source_document_registry import SOURCE_DOCUMENTS_DIRNAME, UPLOAD_ID_PREFIX
 from src.infrastructure.sql_audit_ledger import LEGACY_REQUEST_ID
+from src.infrastructure.sql_record_store import _conninfo
 
 UNANCHORED_PREFIX = "unanchored:"
 UNANCHORED_BLOCKER = "UNANCHORED_DRAFT"
@@ -1032,11 +1033,6 @@ _TARGET_TABLES = {
 def sync_database_url(url: str) -> str:
     """DATABASE_URL (asyncpg form) -> the psycopg form used by the real run."""
     return url.strip().replace("+asyncpg", "+psycopg", 1)
-
-
-def _conninfo(url: str) -> str:
-    # libpq takes postgresql://, not the SQLAlchemy dialect form.
-    return url.replace("+psycopg", "", 1)
 
 
 class _Tally:

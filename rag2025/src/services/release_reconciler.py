@@ -88,7 +88,7 @@ class ReleaseReconciler:
         row = None
         with engine.connect() as conn:
             result = conn.execute(
-                "SELECT release_id, corpus_stamp, recommender_snapshot FROM releases "
+                "SELECT release_id, corpus_stamp FROM releases "
                 "WHERE status = 'active' LIMIT 1"
             )
             row = result.mappings().first()

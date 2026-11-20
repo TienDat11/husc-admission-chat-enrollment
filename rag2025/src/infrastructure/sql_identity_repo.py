@@ -23,7 +23,6 @@ from __future__ import annotations
 import hashlib
 import math
 import os
-import re
 import secrets
 import uuid
 from collections.abc import Iterable, Iterator
@@ -47,6 +46,7 @@ from src.infrastructure.identity_store import (
 from src.domain.audit import AuditAction, AuditEvent, TargetKind
 from src.infrastructure.audit_ledger import permission_change_event
 from src.infrastructure.sql_audit_ledger import append_on
+from src.infrastructure.sql_record_store import _conninfo
 
 __all__ = [
     "AccountDisabledError",
@@ -121,11 +121,6 @@ def session_id_for(token: str) -> uuid.UUID:
 
 
 _CONN_ERROR = "identity database unavailable"
-
-
-def _conninfo(url: str) -> str:
-    """SQLAlchemy-style URL (``postgresql+asyncpg://``) -> libpq conninfo."""
-    return re.sub(r"^(postgresql)\+\w+://", lambda m: m.group(1) + "://", url)
 
 
 def _uuid_or_none(value: str) -> uuid.UUID | None:

@@ -394,10 +394,12 @@ def persist_to_pg(
     """
     import psycopg
 
+    from src.infrastructure.sql_record_store import _conninfo
+
     database_url = database_url or _pg_url()
     status = "ready" if report.verdict == "pass" else "gate_failed"
     payload = json.dumps(report.to_dict(), ensure_ascii=False)
-    with psycopg.connect(database_url, autocommit=True) as conn:
+    with psycopg.connect(_conninfo(database_url), autocommit=True) as conn:
         with conn.cursor() as cur:
             # Only a release still being gated is written; the CASE moves it to ready/gate_failed.
             cur.execute(
@@ -415,7 +417,9 @@ def release_exists(release_id: str, database_url: str) -> bool:
     """True when a ``releases`` row for ``release_id`` exists (any status)."""
     import psycopg
 
-    with psycopg.connect(database_url, autocommit=True) as conn:
+    from src.infrastructure.sql_record_store import _conninfo
+
+    with psycopg.connect(_conninfo(database_url), autocommit=True) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM releases WHERE release_id = %s LIMIT 1", (release_id,))
             return cur.fetchone() is not None

@@ -129,8 +129,12 @@ INSERT INTO supersession_retractions (
 
 
 def _conninfo(url: str) -> str:
-    """SQLAlchemy-style URL (``postgresql+asyncpg://`` / ``+psycopg``) -> libpq conninfo."""
-    return re.sub(r"^(postgresql)\+\w+://", lambda m: m.group(1) + "://", url)
+    """SQLAlchemy-style URL (``postgresql+asyncpg://`` / ``+psycopg``) -> libpq conninfo.
+
+    asyncpg's ``ssl=`` query parameter is libpq's ``sslmode=``; psycopg rejects ``ssl``.
+    """
+    url = re.sub(r"^(postgresql)\+\w+://", lambda m: m.group(1) + "://", url)
+    return re.sub(r"([?&])ssl=", r"\1sslmode=", url)
 
 
 def _version_numbers(conn, record_id: str) -> tuple[int, ...]:
