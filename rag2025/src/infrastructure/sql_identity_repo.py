@@ -46,7 +46,11 @@ from src.infrastructure.identity_store import (
 from src.domain.audit import AuditAction, AuditEvent, TargetKind
 from src.infrastructure.audit_ledger import permission_change_event
 from src.infrastructure.sql_audit_ledger import append_on
-from src.infrastructure.sql_record_store import _conninfo
+from src.infrastructure.sql_record_store import (
+    CONNECT_KWARGS,
+    _conninfo,
+    apply_statement_timeout,
+)
 
 __all__ = [
     "AccountDisabledError",
@@ -172,11 +176,12 @@ class SqlIdentityRepository:
     def _txn(self) -> Iterator[psycopg.Connection]:
         # Errors carry no host, user, password or SQL text: the caller never sees the URL.
         try:
-            conn = psycopg.connect(self._conninfo, row_factory=dict_row, connect_timeout=10)
+            conn = psycopg.connect(self._conninfo, row_factory=dict_row, **CONNECT_KWARGS)
         except psycopg.OperationalError:
             raise IdentityStoreError(_CONN_ERROR) from None
         try:
             with conn:
+                apply_statement_timeout(conn)
                 yield conn
         except psycopg.OperationalError:
             raise IdentityStoreError(_CONN_ERROR) from None

@@ -136,6 +136,28 @@ def _conninfo(url: str) -> str:
     url = re.sub(r"^(postgresql)\+\w+://", lambda m: m.group(1) + "://", url)
     return re.sub(r"([?&])ssl=", r"\1sslmode=", url)
 
+#: Client-side bounds on every connection the SQL stores open. These are libpq
+#: options kept out of the startup packet, so a transaction-mode pooler (PgBouncer)
+#: accepts them. TCP keepalive makes a silently dead socket fail instead of hanging
+#: the thread in a read.
+CONNECT_KWARGS: dict[str, int] = {
+    "connect_timeout": 10,
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 3,
+}
+
+#: Server-side bound on each statement, lock waits included. It is applied with
+#: SET LOCAL inside the caller's transaction, never as a startup ``options``
+#: parameter, which a transaction-mode pooler may refuse.
+STATEMENT_TIMEOUT_MS = 30_000
+
+
+def apply_statement_timeout(conn: psycopg.Connection) -> None:
+    """Bound the statements of the transaction ``conn`` is about to run."""
+    conn.execute(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT_MS}ms'")
+
 
 def _version_numbers(conn, record_id: str) -> tuple[int, ...]:
     rows = conn.execute(
@@ -271,10 +293,11 @@ class SqlRecordStore:
     def _connect(self):
         # Errors carry no host, user, password or SQL text: the caller never sees the URL.
         try:
-            conn = psycopg.connect(self._conninfo, row_factory=dict_row, connect_timeout=10)
+            conn = psycopg.connect(self._conninfo, row_factory=dict_row, **CONNECT_KWARGS)
         except psycopg.OperationalError:
             raise RecordStoreUnavailableError("record store database unavailable") from None
         with conn:
+            apply_statement_timeout(conn)
             yield conn
 
     def write_record(self, record: CanonicalRecord) -> CanonicalRecord:

@@ -504,7 +504,7 @@ class ReindexRunner:
         frame = sys._current_frames().get(self._tick_thread_id)
         if frame is None:
             return "unknown frame"
-        frames = traceback.extract_stack(frame)[-3:]
+        frames = traceback.extract_stack(frame)[-6:]
         return " <- ".join(
             f"{Path(item.filename).name}:{item.lineno} {item.name}" for item in reversed(frames)
         )

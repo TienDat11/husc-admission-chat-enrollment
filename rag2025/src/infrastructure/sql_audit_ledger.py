@@ -49,7 +49,11 @@ from src.infrastructure.audit_ledger import (
     ChainVerification,
 )
 from src.infrastructure.sql_audit_log import canonical_payload, compute_entry_hash
-from src.infrastructure.sql_record_store import _conninfo
+from src.infrastructure.sql_record_store import (
+    CONNECT_KWARGS,
+    _conninfo,
+    apply_statement_timeout,
+)
 
 # Marker the migrator writes on every row it loads from the file ledger.
 LEGACY_REQUEST_ID = "legacy:file-ledger"
@@ -260,11 +264,12 @@ class SqlAuditLedger:
     def _connect(self):
         # Errors carry no host, user, password or SQL text: the caller never sees the URL.
         try:
-            conn = psycopg.connect(self._conninfo, row_factory=dict_row, connect_timeout=10)
+            conn = psycopg.connect(self._conninfo, row_factory=dict_row, **CONNECT_KWARGS)
         except psycopg.Error:
             raise AuditLedgerError("audit ledger database unavailable") from None
         try:
             with conn:
+                apply_statement_timeout(conn)
                 yield conn
         except psycopg.Error as exc:
             raise _driver_error(exc) from None
