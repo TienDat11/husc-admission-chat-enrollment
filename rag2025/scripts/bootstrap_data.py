@@ -1,10 +1,14 @@
-"""Populate DATA_DIR from a data bundle stored in Cloudflare R2 (idempotent).
+"""Populate DATA_DIR from a data bundle (idempotent).
 
-Skips when DATA_DIR/lancedb already exists (volume persists across deploys).
-Else installs DATA_BUNDLE_LOCAL when that file exists, otherwise downloads
-DATA_BUNDLE_KEY from R2_BUCKET. Either way it verifies DATA_BUNDLE_SHA256 when set,
-validates every tar member and installs the bundle into DATA_DIR.
-Stdlib only: the R2 GET is signed with SigV4 by hand.
+Install is complete only when DATA_DIR/.bootstrap-complete exists, written as the
+LAST step of a successful install and holding the bundle sha256. A pre-existing
+lancedb/ directory alone does not count as installed (it may be empty or partial).
+
+Skip when the marker exists and (DATA_BUNDLE_SHA256 unset or equal to the marker).
+Otherwise install DATA_BUNDLE_LOCAL when that file exists, else download
+DATA_BUNDLE_KEY from R2_BUCKET. Either way verify DATA_BUNDLE_SHA256 when set,
+validate every tar member, then install into DATA_DIR. Stdlib only: the R2 GET is
+signed with SigV4 by hand.
 
 Exit codes: 0 = populated or already present, 1 = failure (message on stderr).
 """
@@ -27,6 +31,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
 
 SENTINEL = "lancedb"
+MARKER = ".bootstrap-complete"
 REQUIRED_ENV = ("R2_ENDPOINT", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
 DEFAULT_BUNDLE_KEY = "data-bundle.tar.gz"
 REGION = "auto"
@@ -120,6 +125,19 @@ def _download_r2(cfg: Mapping[str, str], dest: Path) -> str:
     return digest.hexdigest()
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        while chunk := fh.read(CHUNK_SIZE):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _check_sha(actual: str, expected: str, name: str) -> None:
+    if expected and actual != expected:
+        raise BootstrapError(f"sha256 mismatch for {name!r}: expected {expected}, got {actual}")
+
+
 def _validated_members(tar: tarfile.TarFile) -> list[tarfile.TarInfo]:
     members = tar.getmembers()
     for member in members:
@@ -138,10 +156,27 @@ def _validated_members(tar: tarfile.TarFile) -> list[tarfile.TarInfo]:
     return members
 
 
-def _install(bundle: Path, data_dir: Path) -> None:
-    """Extract into a staging dir, then move top-level entries into place.
+def _discard(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
 
-    SENTINEL is moved last so an interrupted install is retried on next start.
+
+def _swap_in(source: Path, target: Path, data_dir: Path) -> None:
+    """Replace target with source: rename the old target aside, move source in, delete old."""
+    retired = data_dir / f".retired-{target.name}"
+    _discard(retired)
+    if target.exists() or target.is_symlink():
+        os.replace(target, retired)
+    os.replace(source, target)
+    _discard(retired)
+
+
+def _install(bundle: Path, data_dir: Path) -> None:
+    """Extract into a staging dir, then swap top-level entries into place.
+
+    SENTINEL is swapped last so an interrupted install never looks complete.
     """
     staging = Path(tempfile.mkdtemp(dir=data_dir, prefix=".bootstrap-"))
     try:
@@ -152,22 +187,20 @@ def _install(bundle: Path, data_dir: Path) -> None:
             raise BootstrapError(f"bundle has no top-level {SENTINEL}/ directory")
         entries = sorted(staging.iterdir(), key=lambda p: p.name == SENTINEL)
         for entry in entries:
-            target = data_dir / entry.name
-            if target.is_dir() and not target.is_symlink():
-                shutil.rmtree(target)
-            elif target.exists() or target.is_symlink():
-                target.unlink()
-            os.replace(entry, target)
+            _swap_in(entry, data_dir / entry.name, data_dir)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as fh:
-        while chunk := fh.read(CHUNK_SIZE):
-            digest.update(chunk)
-    return digest.hexdigest()
+def _is_installed(data_dir: Path, expected: str) -> bool:
+    marker = data_dir / MARKER
+    if not marker.is_file():
+        return False
+    return not expected or marker.read_text().strip().lower() == expected
+
+
+def _write_marker(data_dir: Path, sha: str) -> None:
+    (data_dir / MARKER).write_text(sha + "\n")
 
 
 def bootstrap(
@@ -177,29 +210,29 @@ def bootstrap(
 ) -> str:
     """Return "skipped", "installed-local" or "installed" (R2)."""
     data_dir.mkdir(parents=True, exist_ok=True)
-    if (data_dir / SENTINEL).is_dir():
-        return "skipped"
     expected = (env.get("DATA_BUNDLE_SHA256") or "").strip().lower()
+    if _is_installed(data_dir, expected):
+        return "skipped"
+    (data_dir / MARKER).unlink(missing_ok=True)
+
     local_raw = (env.get("DATA_BUNDLE_LOCAL") or "").strip()
     if local_raw and Path(local_raw).is_file():
         local = Path(local_raw)
-        if expected and (actual := _sha256_file(local)) != expected:
-            raise BootstrapError(
-                f"sha256 mismatch for {local}: expected {expected}, got {actual}"
-            )
+        actual = _sha256_file(local)
+        _check_sha(actual, expected, str(local))
         _install(local, data_dir)
+        _write_marker(data_dir, actual)
         return "installed-local"
+
     cfg = _r2_config(env)
     partial = data_dir / ".data-bundle.partial"
     try:
         actual = download(cfg, partial)
-        if expected and actual != expected:
-            raise BootstrapError(
-                f"sha256 mismatch for {cfg['key']!r}: expected {expected}, got {actual}"
-            )
+        _check_sha(actual, expected, cfg["key"])
         _install(partial, data_dir)
     finally:
         partial.unlink(missing_ok=True)
+    _write_marker(data_dir, actual)
     return "installed"
 
 

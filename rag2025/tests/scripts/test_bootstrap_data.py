@@ -1,4 +1,4 @@
-"""Tests for scripts/bootstrap_data.py: idempotent skip, safe extract, sha check."""
+"""Tests for scripts/bootstrap_data.py: completion marker, safe extract, sha check."""
 
 from __future__ import annotations
 
@@ -26,12 +26,13 @@ ENV = {
 }
 
 
-def _make_bundle(path: Path, members: dict[str, bytes]) -> None:
+def _make_bundle(path: Path, members: dict[str, bytes]) -> str:
     with tarfile.open(path, "w:gz") as tar:
         for name, payload in members.items():
             info = tarfile.TarInfo(name)
             info.size = len(payload)
             tar.addfile(info, io.BytesIO(payload))
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _local_download(bundle: Path):
@@ -42,25 +43,54 @@ def _local_download(bundle: Path):
     return download
 
 
-def test_skips_when_lancedb_already_present(tmp_path: Path) -> None:
-    (tmp_path / "lancedb").mkdir()
+def test_empty_preexisting_lancedb_still_installs(tmp_path: Path) -> None:
+    bundle = tmp_path / "src.tar.gz"
+    digest = _make_bundle(bundle, {"lancedb/husc_chunks.lance/data": b"abc"})
+    data_dir = tmp_path / "data"
+    (data_dir / "lancedb").mkdir(parents=True)
+    (data_dir / "lancedb" / "stale.txt").write_text("old")
+
+    env = {**ENV, "DATA_BUNDLE_SHA256": digest}
+    assert bd.bootstrap(env, data_dir, download=_local_download(bundle)) == "installed"
+    assert (data_dir / "lancedb" / "husc_chunks.lance" / "data").read_bytes() == b"abc"
+    assert not (data_dir / "lancedb" / "stale.txt").exists()
+    assert not any(p.name.startswith(".retired-") for p in data_dir.iterdir())
+
+
+def test_marker_present_skips_without_download(tmp_path: Path) -> None:
+    (tmp_path / bd.MARKER).write_text("a" * 64 + "\n")
 
     def must_not_download(_cfg, _dest):
-        raise AssertionError("download must not run when data already exists")
+        raise AssertionError("download must not run when install is marked complete")
 
     assert bd.bootstrap(ENV, tmp_path, download=must_not_download) == "skipped"
+    env = {**ENV, "DATA_BUNDLE_SHA256": "a" * 64}
+    assert bd.bootstrap(env, tmp_path, download=must_not_download) == "skipped"
+
+
+def test_marker_with_different_sha_reinstalls(tmp_path: Path) -> None:
+    bundle = tmp_path / "src.tar.gz"
+    digest = _make_bundle(bundle, {"lancedb/data.lance": b"new"})
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / bd.MARKER).write_text("0" * 64 + "\n")
+
+    env = {**ENV, "DATA_BUNDLE_SHA256": digest}
+    assert bd.bootstrap(env, data_dir, download=_local_download(bundle)) == "installed"
+    assert (data_dir / "lancedb" / "data.lance").read_bytes() == b"new"
+    assert (data_dir / bd.MARKER).read_text().strip() == digest
 
 
 def test_installs_bundle_and_verifies_sha(tmp_path: Path) -> None:
     bundle = tmp_path / "src.tar.gz"
-    _make_bundle(bundle, {"lancedb/data.lance": b"abc", "graph/g.json": b"{}"})
-    digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+    digest = _make_bundle(bundle, {"lancedb/data.lance": b"abc", "graph/g.json": b"{}"})
     data_dir = tmp_path / "data"
 
     env = {**ENV, "DATA_BUNDLE_SHA256": digest}
     assert bd.bootstrap(env, data_dir, download=_local_download(bundle)) == "installed"
     assert (data_dir / "lancedb" / "data.lance").read_bytes() == b"abc"
     assert (data_dir / "graph" / "g.json").read_bytes() == b"{}"
+    assert (data_dir / bd.MARKER).read_text().strip() == digest
     assert not (data_dir / ".data-bundle.partial").exists()
 
 
@@ -73,6 +103,7 @@ def test_sha_mismatch_fails_and_installs_nothing(tmp_path: Path) -> None:
     with pytest.raises(bd.BootstrapError, match="sha256 mismatch"):
         bd.bootstrap(env, data_dir, download=_local_download(bundle))
     assert not (data_dir / "lancedb").exists()
+    assert not (data_dir / bd.MARKER).exists()
 
 
 @pytest.mark.parametrize("evil", ["../escape.txt", "/abs/escape.txt", "lancedb/../../escape.txt"])
@@ -94,8 +125,7 @@ def test_missing_env_fails_fast(tmp_path: Path) -> None:
 
 def test_installs_local_bundle_without_r2(tmp_path: Path) -> None:
     bundle = tmp_path / "data-bundle.tar.gz"
-    _make_bundle(bundle, {"lancedb/data.lance": b"abc"})
-    digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+    digest = _make_bundle(bundle, {"lancedb/data.lance": b"abc"})
     data_dir = tmp_path / "data"
 
     def must_not_download(_cfg, _dest):
@@ -104,6 +134,7 @@ def test_installs_local_bundle_without_r2(tmp_path: Path) -> None:
     env = {"DATA_BUNDLE_LOCAL": str(bundle), "DATA_BUNDLE_SHA256": digest}
     assert bd.bootstrap(env, data_dir, download=must_not_download) == "installed-local"
     assert (data_dir / "lancedb" / "data.lance").read_bytes() == b"abc"
+    assert (data_dir / bd.MARKER).read_text().strip() == digest
     assert bundle.exists()
 
 
