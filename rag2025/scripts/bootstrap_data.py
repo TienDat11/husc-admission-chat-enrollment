@@ -1,8 +1,9 @@
 """Populate DATA_DIR from a data bundle stored in Cloudflare R2 (idempotent).
 
 Skips when DATA_DIR/lancedb already exists (volume persists across deploys).
-Otherwise downloads DATA_BUNDLE_KEY from R2_BUCKET, verifies DATA_BUNDLE_SHA256
-when set, validates every tar member and installs the bundle into DATA_DIR.
+Else installs DATA_BUNDLE_LOCAL when that file exists, otherwise downloads
+DATA_BUNDLE_KEY from R2_BUCKET. Either way it verifies DATA_BUNDLE_SHA256 when set,
+validates every tar member and installs the bundle into DATA_DIR.
 Stdlib only: the R2 GET is signed with SigV4 by hand.
 
 Exit codes: 0 = populated or already present, 1 = failure (message on stderr).
@@ -161,17 +162,34 @@ def _install(bundle: Path, data_dir: Path) -> None:
         shutil.rmtree(staging, ignore_errors=True)
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        while chunk := fh.read(CHUNK_SIZE):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def bootstrap(
     env: Mapping[str, str],
     data_dir: Path,
     download: Download = _download_r2,
 ) -> str:
-    """Return "skipped" when data is already present, else "installed"."""
+    """Return "skipped", "installed-local" or "installed" (R2)."""
     data_dir.mkdir(parents=True, exist_ok=True)
     if (data_dir / SENTINEL).is_dir():
         return "skipped"
-    cfg = _r2_config(env)
     expected = (env.get("DATA_BUNDLE_SHA256") or "").strip().lower()
+    local_raw = (env.get("DATA_BUNDLE_LOCAL") or "").strip()
+    if local_raw and Path(local_raw).is_file():
+        local = Path(local_raw)
+        if expected and (actual := _sha256_file(local)) != expected:
+            raise BootstrapError(
+                f"sha256 mismatch for {local}: expected {expected}, got {actual}"
+            )
+        _install(local, data_dir)
+        return "installed-local"
+    cfg = _r2_config(env)
     partial = data_dir / ".data-bundle.partial"
     try:
         actual = download(cfg, partial)

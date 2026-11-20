@@ -90,3 +90,24 @@ def test_rejects_path_traversal(tmp_path: Path, evil: str) -> None:
 def test_missing_env_fails_fast(tmp_path: Path) -> None:
     with pytest.raises(bd.BootstrapError, match="R2_BUCKET"):
         bd.bootstrap({"R2_ENDPOINT": "x"}, tmp_path, download=lambda c, d: "")
+
+
+def test_installs_local_bundle_without_r2(tmp_path: Path) -> None:
+    bundle = tmp_path / "data-bundle.tar.gz"
+    _make_bundle(bundle, {"lancedb/data.lance": b"abc"})
+    digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+    data_dir = tmp_path / "data"
+
+    def must_not_download(_cfg, _dest):
+        raise AssertionError("R2 must not be used when DATA_BUNDLE_LOCAL exists")
+
+    env = {"DATA_BUNDLE_LOCAL": str(bundle), "DATA_BUNDLE_SHA256": digest}
+    assert bd.bootstrap(env, data_dir, download=must_not_download) == "installed-local"
+    assert (data_dir / "lancedb" / "data.lance").read_bytes() == b"abc"
+    assert bundle.exists()
+
+
+def test_local_path_missing_falls_through_to_r2_env_error(tmp_path: Path) -> None:
+    env = {"DATA_BUNDLE_LOCAL": str(tmp_path / "absent.tar.gz")}
+    with pytest.raises(bd.BootstrapError, match="missing required env"):
+        bd.bootstrap(env, tmp_path / "data", download=lambda c, d: "")
