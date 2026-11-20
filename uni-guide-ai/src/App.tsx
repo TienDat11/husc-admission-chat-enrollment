@@ -66,6 +66,7 @@ const App = () => (
               <Route path="them" element={<RecordsGate />}>
                 <Route index element={<AddInfo />} />
                 <Route path="ngoai-le" element={<TableFix />} />
+                <Route path="ngoai-le/:documentId" element={<TableFix />} />
                 <Route path="qa" element={<QAForm />} />
               </Route>
               <Route path="cho-duyet" element={<RecordsGate />}>

@@ -10,6 +10,7 @@ import { useAdminSession } from "@/hooks/useAdminSession";
 import { AdminApiError } from "@/lib/adminApi";
 import type { ApiFailure } from "@/lib/apiError";
 import { fetchJob, uploadSourceDocument, type UploadReport } from "@/lib/adminOpsApi";
+import { sendDraftForReview } from "@/lib/draftSubmit";
 import { ExceptionBar } from "@/components/ui-kit/ExceptionBar";
 import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
 import { SecondaryButton } from "@/components/ui-kit/SecondaryButton";
@@ -25,7 +26,7 @@ const StoredUploadSchema = z.object({
   parseJobId: z.string(),
   fileName: z.string(),
   pageCount: z.number(),
-  draftRecordId: z.string().nullable(),
+  draftRecordIds: z.array(z.string()).default([]),
   warnings: z.array(z.string()),
 });
 type StoredUpload = z.infer<typeof StoredUploadSchema>;
@@ -42,7 +43,7 @@ function toStored(report: UploadReport, fileName: string): StoredUpload {
     parseJobId: report.parse_job_id,
     fileName,
     pageCount: report.report.page_count,
-    draftRecordId: report.draft_record_id,
+    draftRecordIds: report.draft_record_ids ?? [],
     warnings: report.warnings ?? [],
   };
 }
@@ -57,6 +58,78 @@ const JOB_LABEL: Record<string, { label: string; tone: PillTone }> = {
 function failureOf(error: unknown): ApiFailure {
   if (error instanceof AdminApiError) return error.failure;
   return { kind: "error", status: 0, code: null, message: NETWORK_MESSAGE };
+}
+
+type DraftSend = { status: "idle" } | { status: "sending" } | { status: "sent" } | { status: "error"; message: string };
+
+function DraftReview({ ids }: { ids: string[] }) {
+  const [sends, setSends] = useState<Record<string, DraftSend>>({});
+  const busy = Object.values(sends).some((send) => send.status === "sending");
+  const sentCount = ids.filter((id) => sends[id]?.status === "sent").length;
+  const pending = ids.filter((id) => sends[id]?.status !== "sent");
+
+  const sendOne = async (id: string) => {
+    setSends((prev) => ({ ...prev, [id]: { status: "sending" } }));
+    try {
+      await sendDraftForReview(id);
+      setSends((prev) => ({ ...prev, [id]: { status: "sent" } }));
+    } catch (error: unknown) {
+      setSends((prev) => ({ ...prev, [id]: { status: "error", message: failureOf(error).message } }));
+    }
+  };
+
+  const sendMany = async (targets: string[]) => {
+    for (const id of targets) await sendOne(id);
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="font-semibold">Bản nháp đã tạo: {ids.length}</p>
+      <div role="status" aria-live="polite" className="text-base">
+        {busy ? "Đang gửi duyệt…" : sentCount > 0 ? `Đã gửi duyệt ${sentCount}/${ids.length} bản nháp.` : null}
+      </div>
+      <ul className="space-y-3">
+        {ids.map((id) => {
+          const send: DraftSend = sends[id] ?? { status: "idle" };
+          return (
+            <li key={id} className="space-y-2 rounded-md border border-zinc-400 bg-white p-3">
+              <p className="break-all text-sm">{id}</p>
+              {send.status === "sent" ? (
+                <p className="font-semibold text-emerald-800">Đã gửi duyệt</p>
+              ) : (
+                <PrimaryButton
+                  onClick={() => void sendOne(id)}
+                  disabled={busy}
+                  aria-busy={send.status === "sending"}
+                  aria-label={`Gửi duyệt bản nháp ${id}`}
+                >
+                  {send.status === "sending" ? "Đang gửi…" : "Gửi duyệt"}
+                </PrimaryButton>
+              )}
+              {send.status === "error" ? (
+                <p role="alert" className="text-base text-red-800">
+                  {send.message}
+                </p>
+              ) : null}
+              <Link to={`/quan-ly/them/ngoai-le/${encodeURIComponent(id)}`} className="block underline">
+                Xử lý ngoại lệ bảng
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      {ids.length > 1 && pending.length > 0 ? (
+        <PrimaryButton onClick={() => void sendMany(pending)} disabled={busy}>
+          {busy ? "Đang gửi…" : `Gửi duyệt tất cả (${pending.length})`}
+        </PrimaryButton>
+      ) : null}
+      {sentCount > 0 ? (
+        <Link to="/quan-ly/cho-duyet" className="block underline">
+          Mở danh sách chờ duyệt
+        </Link>
+      ) : null}
+    </div>
+  );
 }
 
 const AddInfo = () => {
@@ -201,11 +274,13 @@ const AddInfo = () => {
           {terminal ? (
             <div className="space-y-2 text-base">
               <p>Số trang đã đọc: {stored.pageCount}</p>
-              {stored.draftRecordId !== null ? <p>Đã tạo bản nháp: {stored.draftRecordId}</p> : null}
+              {stored.draftRecordIds.length === 0 ? <p>Tệp này không tạo bản nháp nào.</p> : null}
               {stored.warnings.map((warning) => (
                 <p key={warning}>{warning}</p>
               ))}
-              <p><Link to="/quan-ly/them/ngoai-le" className="underline">Xử lý ngoại lệ bảng</Link></p>
+              {stored.draftRecordIds.length > 0 ? (
+                <DraftReview key={stored.parseJobId} ids={stored.draftRecordIds} />
+              ) : null}
             </div>
           ) : null}
 
