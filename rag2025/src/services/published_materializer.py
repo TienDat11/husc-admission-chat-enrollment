@@ -44,9 +44,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
+from functools import partial
 from pathlib import Path
 
 from src.domain.canonical import CanonicalRecord, RecordStatus, to_canonical_json
@@ -201,19 +203,17 @@ class PublishedMaterializer:
         # Per-record `is_superseded()` would rebuild this index for every record.
         supersession = self._store.supersession_index()
 
-        record_ids = self._store.record_ids()
         admitted: list[CanonicalRecord] = []
         excluded: list[ExcludedRecord] = []
         stored = 0
-        for record_id in record_ids:
-            versions = self._store.versions(record_id)
+        for record_id, versions, fetch in self._stored_versions():
             if not versions:
                 # A record directory can outlive a crash between its creation and
                 # the version write. It holds no fact, so it states nothing to
                 # materialize — and it must not abort the whole release.
                 continue
             stored += 1
-            record = self._live_version(record_id, versions)
+            record = self._live_version(versions, fetch)
             reason = self._exclusion_reason(record, supersession)
             if reason is None:
                 admitted.append(record)
@@ -263,8 +263,25 @@ class PublishedMaterializer:
 
     # -- the filter chain ----------------------------------------------------
 
+    def _stored_versions(
+        self,
+    ) -> Iterator[tuple[str, tuple[int, ...], Callable[[int], CanonicalRecord]]]:
+        """Each stored record id, its version numbers, and a reader for each version.
+
+        A store that returns its whole history in one read (``stored_history``) is read
+        once. Any other store is read per record, as before.
+        """
+        history = getattr(self._store, "stored_history", None)
+        if callable(history):
+            for record_id, by_version in history().items():
+                yield record_id, tuple(by_version), by_version.__getitem__
+            return
+        for record_id in self._store.record_ids():
+            versions = self._store.versions(record_id)
+            yield record_id, versions, partial(self._store.get_version, record_id)
+
     def _live_version(
-        self, record_id: str, versions: tuple[int, ...]
+        self, versions: tuple[int, ...], fetch: Callable[[int], CanonicalRecord]
     ) -> CanonicalRecord:
         """The stored version of ``record_id`` that is live.
 
@@ -275,10 +292,10 @@ class PublishedMaterializer:
         its newest version — it is a draft, and the status gate says so.
         """
         for version in reversed(versions):
-            record = self._store.get_version(record_id, version)
+            record = fetch(version)
             if record.status not in _IN_FLIGHT:
                 return record
-        return self._store.get_version(record_id, versions[-1])
+        return fetch(versions[-1])
 
     def _exclusion_reason(
         self, record: CanonicalRecord, supersession: dict[str, CanonicalRecord]

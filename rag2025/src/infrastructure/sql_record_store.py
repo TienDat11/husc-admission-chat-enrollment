@@ -93,6 +93,11 @@ _COLUMNS = (
     "supersedes, authored_by, published_at"
 )
 
+#: Every stored version, grouped by record_id in the same codepoint order as record_ids().
+_ALL_VERSIONS_SQL = (
+    "SELECT " + _COLUMNS + ' FROM canonical_records ORDER BY record_id COLLATE "C", version'
+)
+
 _INSERT = """
 INSERT INTO canonical_records (
     record_id, version, coordinate_key, record_type, scope, subject, admission_year,
@@ -375,6 +380,20 @@ class SqlRecordStore:
         if row is None:
             raise RecordNotFoundError(f"no such record version: {record_id}@{version}")
         return _from_row(row)
+
+    def stored_history(self) -> dict[str, dict[int, CanonicalRecord]]:
+        """Every stored version of every record, read in one query on one connection.
+
+        Keyed by ``record_id`` in :meth:`record_ids` order; each value maps version to
+        record in ascending version order. The materializer reads this once rather than
+        opening a connection per record.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(_ALL_VERSIONS_SQL).fetchall()
+        history: dict[str, dict[int, CanonicalRecord]] = {}
+        for row in rows:
+            history.setdefault(row["record_id"], {})[row["version"]] = _from_row(row)
+        return history
 
     def get_record(self, record_id: str) -> RecordVersionChain:
         """The latest version of ``record_id`` plus every version before it."""
