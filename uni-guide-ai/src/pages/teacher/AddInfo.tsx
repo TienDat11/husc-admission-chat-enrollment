@@ -3,14 +3,14 @@
 // parse job; GET /admin/jobs/{id} is polled until it is terminal. The job id is
 // kept in sessionStorage, so a reload keeps following the same job.
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { z } from "zod";
 import { useAdminSession } from "@/hooks/useAdminSession";
 import { AdminApiError } from "@/lib/adminApi";
 import type { ApiFailure } from "@/lib/apiError";
 import { fetchJob, uploadSourceDocument, type UploadReport } from "@/lib/adminOpsApi";
-import { sendDraftForReview } from "@/lib/draftSubmit";
+import { forEachLimited, sendDraftForReview } from "@/lib/draftSubmit";
 import { ExceptionBar } from "@/components/ui-kit/ExceptionBar";
 import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
 import { SecondaryButton } from "@/components/ui-kit/SecondaryButton";
@@ -62,9 +62,20 @@ function failureOf(error: unknown): ApiFailure {
 
 type DraftSend = { status: "idle" } | { status: "sending" } | { status: "sent" } | { status: "error"; message: string };
 
+const SEND_CONCURRENCY = 3;
+
 function DraftReview({ ids }: { ids: string[] }) {
   const [sends, setSends] = useState<Record<string, DraftSend>>({});
   const busy = Object.values(sends).some((send) => send.status === "sending");
+  useEffect(() => {
+    if (!busy) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [busy]);
   const sentCount = ids.filter((id) => sends[id]?.status === "sent").length;
   const pending = ids.filter((id) => sends[id]?.status !== "sent");
 
@@ -76,10 +87,6 @@ function DraftReview({ ids }: { ids: string[] }) {
     } catch (error: unknown) {
       setSends((prev) => ({ ...prev, [id]: { status: "error", message: failureOf(error).message } }));
     }
-  };
-
-  const sendMany = async (targets: string[]) => {
-    for (const id of targets) await sendOne(id);
   };
 
   return (
@@ -119,11 +126,11 @@ function DraftReview({ ids }: { ids: string[] }) {
         })}
       </ul>
       {ids.length > 1 && pending.length > 0 ? (
-        <PrimaryButton onClick={() => void sendMany(pending)} disabled={busy}>
+        <PrimaryButton onClick={() => void forEachLimited(pending, SEND_CONCURRENCY, sendOne)} disabled={busy}>
           {busy ? "Đang gửi…" : `Gửi duyệt tất cả (${pending.length})`}
         </PrimaryButton>
       ) : null}
-      {sentCount > 0 ? (
+      {!busy && sentCount > 0 ? (
         <Link to="/quan-ly/cho-duyet" className="block underline">
           Mở danh sách chờ duyệt
         </Link>

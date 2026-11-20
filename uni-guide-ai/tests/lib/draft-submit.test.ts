@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AdminApiError, IDEMPOTENCY_KEY_HEADER } from "@/lib/adminApi";
-import { sendDraftForReview } from "@/lib/draftSubmit";
+import { forEachLimited, sendDraftForReview } from "@/lib/draftSubmit";
 
 const RECORD_ID = "DIEU_KIEN:06/2026/TT-BGDĐT:dieu_1:2026:none:all";
 const ENCODED = encodeURIComponent(RECORD_ID);
@@ -49,5 +49,37 @@ describe("sendDraftForReview (upload-result submit flow)", () => {
     const error = await sendDraftForReview(RECORD_ID).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(AdminApiError);
     expect((error as AdminApiError).message).toContain("UNANCHORED_DRAFT");
+  });
+});
+
+describe("forEachLimited (batch send concurrency)", () => {
+  it("never has more than the limit in flight, and visits every id once", async () => {
+    const ids = ["a", "b", "c", "d", "e", "f", "g"];
+    const visited: string[] = [];
+    let inFlight = 0;
+    let peak = 0;
+    await forEachLimited(ids, 3, async (id) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await Promise.resolve();
+      visited.push(id);
+      inFlight -= 1;
+    });
+    expect(peak).toBe(3);
+    expect([...visited].sort()).toEqual(ids);
+  });
+
+  it("starts fewer lanes than the limit when there are fewer ids, and resolves on empty input", async () => {
+    let peak = 0;
+    let inFlight = 0;
+    const task = async () => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await Promise.resolve();
+      inFlight -= 1;
+    };
+    await forEachLimited(["x", "y"], 3, task);
+    expect(peak).toBe(2);
+    await expect(forEachLimited([], 3, task)).resolves.toBeUndefined();
   });
 });
