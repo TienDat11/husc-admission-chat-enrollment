@@ -51,14 +51,14 @@ const TO_HOP_OPTIONS = [
 ];
 
 const KV_OPTIONS = [
-  { value: '', label: 'Không (KV3)' },
+  { value: '__none__', label: 'Không (KV3)' },
   { value: 'KV1', label: 'KV1' },
   { value: 'KV2NT', label: 'KV2 NT' },
   { value: 'KV2', label: 'KV2' },
 ];
 
 const DT_OPTIONS = [
-  { value: '', label: 'Không' },
+  { value: '__none__', label: 'Không' },
   { value: 'UT1', label: 'UT1' },
   { value: 'UT2', label: 'UT2' },
 ];
@@ -102,8 +102,8 @@ export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
   // ── Recommend form state ───────────────────────────────────────────────
   const [score, setScore] = useState<string>(profile?.raw_score ? String(profile.raw_score) : '24');
   const [toHop, setToHop] = useState<string>(profile?.to_hop ?? '__none__');
-  const [kv, setKv] = useState<string>(profile?.uu_tien_kv ?? '');
-  const [dt, setDt] = useState<string>(profile?.uu_tien_dt ?? '');
+  const [kv, setKv] = useState<string>(profile?.uu_tien_kv || '__none__');
+  const [dt, setDt] = useState<string>(profile?.uu_tien_dt || '__none__');
 
   // ── Result state ───────────────────────────────────────────────────────
   const [loading, setLoading] = useState(false);
@@ -113,8 +113,8 @@ export function MajorRecommender({ showWhatIf = true }: MajorRecommenderProps) {
   const [disclaimer, setDisclaimer] = useState<string>('');
 
   const parsedScore = useMemo(() => Number.parseFloat(score), [score]);
-  const kvValue = useMemo(() => kv || null, [kv]);
-  const dtValue = useMemo(() => dt || null, [dt]);
+  const kvValue = useMemo(() => (kv && kv !== '__none__' ? kv : null), [kv]);
+  const dtValue = useMemo(() => (dt && dt !== '__none__' ? dt : null), [dt]);
 
   const scoreValid = useMemo(
     () => Number.isFinite(parsedScore) && parsedScore >= 0 && parsedScore <= 30,
