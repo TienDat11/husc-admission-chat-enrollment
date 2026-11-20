@@ -72,6 +72,9 @@ def test_lookup_exception_returns_503(monkeypatch) -> None:
 
 
 def test_lookup_timeout_returns_503_quickly(monkeypatch) -> None:
+    from config.settings import settings
+
+    monkeypatch.setattr(settings, "HEALTH_RELEASE_LOOKUP_TIMEOUT_S", 0.2)
     async def _slow(engine):
         await asyncio.sleep(5)
         return "rel-late"

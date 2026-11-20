@@ -42,6 +42,11 @@ class RAGSettings(BaseSettings):
         default=True,
         description="Four-eyes: an approver must differ from the version's author (U8 §PL-7.1)"
     )
+    HEALTH_RELEASE_LOOKUP_TIMEOUT_S: float = Field(
+        default=5.0,
+        gt=0,
+        description="/health/ready bound on the active-release lookup in seconds (WAN Neon pooler ~2.4s)",
+    )
     DIFF_SANDBOX_VECTOR_WEIGHT: float = Field(
         default=0.7,
         ge=0.0,

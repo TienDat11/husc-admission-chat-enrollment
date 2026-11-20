@@ -181,7 +181,7 @@ async def health_check(request: Request) -> HealthResponse:
 async def health_ready(request: Request):
     """Write-readiness for the load balancer. 503 while WRITE_FREEZE is engaged
     (e.g. schema_revision mismatch), when the shared DB engine is not wired, or
-    when the release lookup fails or exceeds 2s. Reports the served release id."""
+    when the release lookup fails or exceeds the configured timeout). Reports the served release id."""
     import asyncio
 
     from fastapi.responses import JSONResponse
@@ -195,7 +195,8 @@ async def health_ready(request: Request):
     if engine is not None:
         try:
             served_release_id = await asyncio.wait_for(
-                active_release_id(engine, strict=True), timeout=2.0
+                active_release_id(engine, strict=True),
+                timeout=settings.HEALTH_RELEASE_LOOKUP_TIMEOUT_S,
             )
             db_ok = True
         except Exception:
