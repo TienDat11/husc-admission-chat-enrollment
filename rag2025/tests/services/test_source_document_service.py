@@ -11,6 +11,7 @@ a separate test that skips when the gitignored data is absent.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import sys
 from datetime import date, datetime, timezone
@@ -1067,3 +1068,146 @@ def test_failed_draft_write_retires_the_registration_and_retry_succeeds(
     result = service.upload_document(docx_bytes, "de-an.docx", actor_id="cb.quan-tri")
     assert service.is_registered(document_id)
     assert result.draft_record_ids
+
+
+# -- postgres wiring: the registry is the SQL source_documents table -----------
+
+
+class _FakeSourceDocumentsTable:
+    """Stands in for the SQL ``source_documents`` table the record store's FK reads."""
+
+    def __init__(self) -> None:
+        self.rows: dict[str, dict] = {}
+
+    def __contains__(self, document_id: object) -> bool:
+        return document_id in self.rows
+
+
+class _FakeCursor:
+    def __init__(self, rows: list[dict]) -> None:
+        self._rows = rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return list(self._rows)
+
+
+class _FakeConnection:
+    """Answers the three statement shapes ``SqlSourceDocumentRegistry`` issues."""
+
+    def __init__(self, table: _FakeSourceDocumentsTable) -> None:
+        self._rows = table.rows
+
+    def execute(self, sql: str, params=None):
+        if sql.lstrip().startswith("INSERT INTO source_documents"):
+            self._upsert(params)
+            return _FakeCursor([])
+        rows = [dict(row) for row in self._rows.values()]
+        if "ORDER BY" in sql:
+            return _FakeCursor(sorted(rows, key=lambda row: row["document_id"]))
+        return _FakeCursor([row for row in rows if row["document_id"] == params[0]])
+
+    def _upsert(self, p: dict) -> None:
+        current = self._rows.get(p["document_id"])
+        if current is None:
+            self._rows[p["document_id"]] = {
+                "document_id": p["document_id"],
+                "sha256": p["sha256"],
+                "status": p["status"],
+                "uploaded_by": p["uploaded_by"],
+                "created_at": p["created_at"],
+                "updated_at": p["updated_at"],
+            }
+            return
+        current["sha256"] = p["sha256"]
+        if p["status"] == "archived":
+            current["status"] = "archived"
+        elif current["status"] == "archived":
+            current["status"] = "uploaded"
+        current["uploaded_by"] = p["uploaded_by"]
+        current["updated_at"] = p["updated_at"]
+
+
+@contextmanager
+def _fake_connect(table: _FakeSourceDocumentsTable):
+    yield _FakeConnection(table)
+
+
+def _enforce_sql_foreign_key(
+    store: CanonicalRecordStore,
+    table: _FakeSourceDocumentsTable,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Refuse a record whose source document has no row in the table, as the
+    ``canonical_records`` foreign key and ``SqlRecordStore`` do."""
+    from src.infrastructure.sql_record_store import SourceDocumentNotRegisteredError
+
+    original_write = store.write_record
+
+    def fk_write(record):
+        if record.source_document_id is not None and record.source_document_id not in table:
+            raise SourceDocumentNotRegisteredError(
+                f"cannot write {record.record_id}@{record.version}: "
+                "source_document_id is not registered in source_documents"
+            )
+        return original_write(record)
+
+    monkeypatch.setattr(store, "write_record", fk_write)
+
+
+def test_postgres_upload_registers_in_sql_table_before_drafting(
+    store: CanonicalRecordStore,
+    ledger: AuditLedger,
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Under postgres the registry rows live in ``source_documents``; an upload
+    must land its row there before the draft that cites it is written."""
+    import hashlib
+
+    from src.infrastructure.sql_source_document_registry import (
+        SqlSourceDocumentRegistry,
+    )
+
+    table = _FakeSourceDocumentsTable()
+    monkeypatch.setattr(
+        SqlSourceDocumentRegistry, "_connect", lambda self: _fake_connect(table)
+    )
+    _enforce_sql_foreign_key(store, table, monkeypatch)
+    service = SourceDocumentService(
+        SqlSourceDocumentRegistry(store.root, repo_root, "postgresql://fake"),
+        store,
+        ledger,
+    )
+    docx_bytes = _docx_bytes_with_heading()
+
+    result = service.upload_document(docx_bytes, "de-an.docx", actor_id="cb.quan-tri")
+
+    assert result.draft_record_ids
+    row = table.rows[result.document_id]
+    assert row["status"] == "uploaded"
+    assert bytes(row["sha256"]).hex() == hashlib.sha256(docx_bytes).hexdigest()
+    assert service.is_registered(result.document_id)
+
+
+def test_postgres_factory_builds_the_sql_registry(tmp_path: Path, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from src.app.lifecycle import _build_source_document_registry
+    from src.infrastructure.source_document_registry import SourceDocumentRegistry
+    from src.infrastructure.sql_source_document_registry import (
+        SqlSourceDocumentRegistry,
+    )
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:secret@localhost:1/none")
+    pg = _build_source_document_registry(
+        SimpleNamespace(STORE_BACKEND="postgres"), tmp_path, tmp_path
+    )
+    file = _build_source_document_registry(
+        SimpleNamespace(STORE_BACKEND="file"), tmp_path, tmp_path
+    )
+
+    assert isinstance(pg, SqlSourceDocumentRegistry)
+    assert type(file) is SourceDocumentRegistry

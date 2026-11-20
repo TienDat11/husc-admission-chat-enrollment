@@ -211,9 +211,17 @@ def _source_document_service(request: Request) -> SourceDocumentService:
         )
     ledger = getattr(request.app.state, "audit_ledger", None)
     repo_root = getattr(request.app.state, "source_document_repo_root", None)
-    registry = SourceDocumentRegistry(
-        root, Path(repo_root) if repo_root else REPO_ROOT
+    from src.infrastructure.sql_source_document_registry import (
+        SqlSourceDocumentRegistry,
     )
+
+    if isinstance(state_registry, SqlSourceDocumentRegistry):
+        # postgres: the lifecycle built the SQL registry; the table is the truth.
+        registry = state_registry
+    else:
+        registry = SourceDocumentRegistry(
+            root, Path(repo_root) if repo_root else REPO_ROOT
+        )
     return SourceDocumentService(registry, store, ledger)
 
 

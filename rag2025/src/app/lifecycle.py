@@ -134,6 +134,34 @@ def _build_audit_ledger(settings: RAGSettings, root: Path, file_ledger_cls):
     return file_ledger_cls(root / "audit" / "ledger.jsonl")
 
 
+def _build_source_document_registry(settings, root: Path, repo_root: Path):
+    """The source-document registry for ``settings.STORE_BACKEND``.
+
+    ``file`` is ``SourceDocumentRegistry(root, repo_root)``, unchanged.
+    ``postgres`` is ``SqlSourceDocumentRegistry`` over DATABASE_URL: the record
+    store's ``source_document_id`` check reads the SQL ``source_documents``
+    table, so the registry must write there, not to the file JSON.
+    """
+    if settings.STORE_BACKEND == "postgres":
+        try:
+            from src.infrastructure.sql_source_document_registry import (
+                SqlSourceDocumentRegistry,
+            )
+        except ModuleNotFoundError:
+            from rag2025.src.infrastructure.sql_source_document_registry import (  # type: ignore
+                SqlSourceDocumentRegistry,
+            )
+        return SqlSourceDocumentRegistry(root, repo_root, _postgres_database_url())
+    try:
+        from src.infrastructure.source_document_registry import SourceDocumentRegistry
+    except ModuleNotFoundError:
+        from rag2025.src.infrastructure.source_document_registry import (  # type: ignore
+            SourceDocumentRegistry,
+        )
+    return SourceDocumentRegistry(root, repo_root)
+
+
+
 def _attach_postgres_state(app, root: Path) -> None:
     """Under postgres: identities live in PostgreSQL; stale file stores are reported.
 
@@ -268,7 +296,7 @@ def configure_canonical_record_store(app, settings: Optional[RAGSettings] = None
     # service needs it to generate a real source document for HOI_DAP
     # creates; the source-documents router builds its own lazily, so
     # this one is handed to the lifecycle service only.
-    registry = SourceDocumentRegistry(root, REPO_ROOT)
+    registry = _build_source_document_registry(resolved, root, REPO_ROOT)
     app.state.source_document_registry = registry
 
     store = _build_record_store(resolved, root, CanonicalRecordStore)
