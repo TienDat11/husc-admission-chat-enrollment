@@ -50,7 +50,9 @@ class RAGSettings(BaseSettings):
         gt=0,
         description=(
             "Parse subprocess RSS cap in MB. Over it the parse is refused with "
-            "error code PARSE_MEMORY_LIMIT instead of the container being killed"
+            "error code PARSE_MEMORY_LIMIT instead of the container being killed. "
+            "Must be below the container's RAM limit, or the container is killed "
+            "before this cap applies"
         ),
     )
     ADMIN_REQUIRE_FOUR_EYES: bool = Field(
