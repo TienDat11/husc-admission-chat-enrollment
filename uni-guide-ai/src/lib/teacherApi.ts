@@ -123,10 +123,16 @@ export async function submitDraftForReview(
 
 /**
  * "Duyệt và xuất bản": approve then publish, the reviewer's pair of moves.
- * Both calls share the key, so a retry after a dropped response replays
- * instead of double-approving. The screen's confirmation box names this as
- * the one irreversible action.
+ * Each action gets its own derived key: the server refuses a key reused for a
+ * different request, so one key for both calls fails the publish. A retry with
+ * the same base key derives the same two keys and replays each step.
+ * A publish failure is reported as such, because the approve already took effect.
  */
+// Encoded: record ids contain non-Latin-1 characters (Đ), which are not valid header values.
+export function actionIdempotencyKey(baseKey: string, action: "approve" | "publish"): string {
+  return `${encodeURIComponent(baseKey)}:${action}`;
+}
+
 export async function approveAndPublish(
   token: string | null,
   recordId: string,
@@ -137,14 +143,19 @@ export async function approveAndPublish(
     token,
     recordId,
     { action: "approve", expected_version: version },
-    { idempotencyKey },
+    { idempotencyKey: actionIdempotencyKey(idempotencyKey, "approve") },
   );
-  await transitionRecord(
-    token,
-    recordId,
-    { action: "publish", expected_version: version + 1 },
-    { idempotencyKey },
-  );
+  try {
+    await transitionRecord(
+      token,
+      recordId,
+      { action: "publish", expected_version: version + 1 },
+      { idempotencyKey: actionIdempotencyKey(idempotencyKey, "publish") },
+    );
+  } catch (failure: unknown) {
+    const reason = failure instanceof Error ? failure.message : "Hành động thất bại.";
+    throw new Error(`Đã duyệt nhưng chưa xuất bản: ${reason}`);
+  }
 }
 /**
  * "Nhận nháp" (ticket T15): claim an unclaimed seed draft so the caller

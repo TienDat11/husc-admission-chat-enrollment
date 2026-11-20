@@ -120,7 +120,7 @@ const PendingReview = () => {
       rows
         .filter((r) => selectedIds.includes(r.record_id))
         .map((r) => ({ recordId: r.record_id, version: r.version })),
-      () => key,
+      (recordId) => `${key}:${recordId}`,
     );
     setBatchResult(result);
     setBatchKey(null);
