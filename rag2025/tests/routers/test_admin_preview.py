@@ -168,8 +168,8 @@ def test_both_preview_routes_are_registered():
         for route in _app().routes
         if hasattr(route, "methods")
     }
-    assert ("/admin/records/{record_id}/review-diff", ("GET",)) in routes
-    assert ("/admin/records/{record_id}/review-preview", ("POST",)) in routes
+    assert ("/admin/records/{record_id:path}/review-diff", ("GET",)) in routes
+    assert ("/admin/records/{record_id:path}/review-preview", ("POST",)) in routes
 
 
 def test_review_diff_is_get_only_and_preview_is_post_only(client: TestClient):

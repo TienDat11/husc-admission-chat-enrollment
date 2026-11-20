@@ -168,10 +168,10 @@ ADMIN_ROUTES = (
     ("POST", "/admin/warmup"),
     ("POST", "/admin/reload-table"),
     ("POST", "/admin/records"),
-    ("GET", "/admin/records/{record_id}"),
-    ("GET", "/admin/records/{record_id}/versions"),
-    ("POST", "/admin/records/{record_id}/edits"),
-    ("POST", "/admin/records/{record_id}/transitions"),
+    ("GET", "/admin/records/{record_id:path}"),
+    ("GET", "/admin/records/{record_id:path}/versions"),
+    ("POST", "/admin/records/{record_id:path}/edits"),
+    ("POST", "/admin/records/{record_id:path}/transitions"),
 )
 
 

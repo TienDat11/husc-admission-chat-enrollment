@@ -98,7 +98,7 @@ def _service(request: Request) -> ReviewPreviewService:
 
 
 @router.get(
-    "/records/{record_id}/review-diff",
+    "/records/{record_id:path}/review-diff",
     dependencies=[Depends(require_action(AdminAction.RECORDS_READ))],
 )
 async def review_diff(
@@ -124,7 +124,7 @@ async def review_diff(
 
 
 @router.post(
-    "/records/{record_id}/review-preview",
+    "/records/{record_id:path}/review-preview",
     dependencies=[Depends(require_action(AdminAction.RECORDS_READ))],
 )
 async def review_preview(

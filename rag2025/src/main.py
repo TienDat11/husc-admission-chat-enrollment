@@ -561,6 +561,19 @@ app.include_router(student_profile_router)
 from routers.health import router as health_router
 app.include_router(health_router)
 
+# Mounted before the admin router on purpose: its GET review-diff must win over
+# the admin bare GET /admin/records/{record_id:path} (see routers/admin.py).
+# Mount the review diff + preview router (ticket 25). It contributes only
+# GET /admin/records/{record_id}/review-diff and
+# POST /admin/records/{record_id}/review-preview — both read-only behind
+# require_action(RECORDS_READ), and neither mutates a record: submitting for
+# review from the preview screen goes through the existing lifecycle
+# transitions route (ticket 12), so there is no second submit endpoint to
+# drift from it. The preview itself builds a throwaway index and runs the
+# real answer path; it never writes the production table, graph, or cache.
+from routers.admin_preview import router as admin_preview_router
+app.include_router(admin_preview_router)
+
 # Mount the extracted /admin router. It contributes POST /admin/warmup,
 # POST /admin/reload-table (S13.4) and the ticket-12 canonical lifecycle
 # endpoints under /admin/records. Before this mount those endpoints existed but
@@ -596,16 +609,6 @@ app.include_router(admin_audit_router)
 from routers.comparison import router as comparison_router
 app.include_router(comparison_router)
 
-# Mount the review diff + preview router (ticket 25). It contributes only
-# GET /admin/records/{record_id}/review-diff and
-# POST /admin/records/{record_id}/review-preview — both read-only behind
-# require_action(RECORDS_READ), and neither mutates a record: submitting for
-# review from the preview screen goes through the existing lifecycle
-# transitions route (ticket 12), so there is no second submit endpoint to
-# drift from it. The preview itself builds a throwaway index and runs the
-# real answer path; it never writes the production table, graph, or cache.
-from routers.admin_preview import router as admin_preview_router
-app.include_router(admin_preview_router)
 from routers.admin_jobs import router as admin_jobs_router
 app.include_router(admin_jobs_router)
 

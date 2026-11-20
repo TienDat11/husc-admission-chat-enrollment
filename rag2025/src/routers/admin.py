@@ -846,19 +846,7 @@ async def create_record(
 
 
 @router.get(
-    "/records/{record_id}",
-    response_model=CanonicalRecord,
-    dependencies=[Depends(require_action(AdminAction.RECORDS_READ))],
-)
-async def get_record(record_id: str, request: Request) -> CanonicalRecord:
-    """Current version of one record."""
-    service = _lifecycle_service(request)
-    with _lifecycle_errors():
-        return service.get(record_id)
-
-
-@router.get(
-    "/records/{record_id}/versions",
+    "/records/{record_id:path}/versions",
     response_model=RecordHistoryResponse,
     dependencies=[Depends(require_action(AdminAction.RECORDS_READ))],
 )
@@ -870,8 +858,23 @@ async def get_record_versions(record_id: str, request: Request) -> RecordHistory
     return RecordHistoryResponse(record_id=record_id, versions=list(versions))
 
 
+# Registered after the suffixed GET routes: ``{record_id:path}`` matches any
+# suffix, so this bare route must not be tried first. The path converter lets
+# ids that contain "/" (the regulation-derived ids) resolve.
+@router.get(
+    "/records/{record_id:path}",
+    response_model=CanonicalRecord,
+    dependencies=[Depends(require_action(AdminAction.RECORDS_READ))],
+)
+async def get_record(record_id: str, request: Request) -> CanonicalRecord:
+    """Current version of one record."""
+    service = _lifecycle_service(request)
+    with _lifecycle_errors():
+        return service.get(record_id)
+
+
 @router.post(
-    "/records/{record_id}/edits",
+    "/records/{record_id:path}/edits",
     response_model=LifecycleRecordResponse,
     dependencies=[Depends(require_action(AdminAction.RECORDS_EDIT))],
 )
@@ -906,7 +909,7 @@ async def edit_record(
 
 
 @router.post(
-    "/records/{record_id}/claim",
+    "/records/{record_id:path}/claim",
     response_model=LifecycleRecordResponse,
     dependencies=[Depends(require_action(AdminAction.RECORDS_EDIT))],
 )
@@ -942,7 +945,7 @@ async def claim_record(
 
 
 @router.post(
-    "/records/{record_id}/transitions",
+    "/records/{record_id:path}/transitions",
     response_model=LifecycleRecordResponse,
 )
 async def transition_record(
