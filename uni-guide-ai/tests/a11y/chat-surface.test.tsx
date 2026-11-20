@@ -1,3 +1,4 @@
+import { STATUS_ANSWER_LABELS } from '@/lib/chat-helpers';
 /**
  * Ticket 23 — accessibility + responsive smoke tests for the ask/answer
  * surface (no axe dependency: these pin the REAL invariants directly).
@@ -202,7 +203,7 @@ describe('ticket 23 criterion 2 — screen-reader announcements', () => {
     );
 
     const alert = screen.getByRole('alert').textContent ?? '';
-    expect(alert).toContain('Không tạo được câu trả lời');
+    expect(alert).toContain(STATUS_ANSWER_LABELS.GENERATION_FAILED);
     expect(alert).toContain('bấm nút thử lại');
   });
 

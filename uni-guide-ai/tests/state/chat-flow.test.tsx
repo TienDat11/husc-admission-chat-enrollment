@@ -1,3 +1,4 @@
+import { STATUS_ANSWER_LABELS } from '@/lib/chat-helpers';
 /**
  * ChatLayout — full send-message flow with mocked @/lib/api
  *
@@ -181,7 +182,7 @@ describe('ChatLayout — full send-message flow', () => {
 
     // The status banner element appears with the status code
     await waitFor(() => {
-      expect(screen.getByText('INSUFFICIENT_DATA')).toBeInTheDocument();
+      expect(screen.getByText(STATUS_ANSWER_LABELS.INSUFFICIENT_DATA)).toBeInTheDocument();
     });
     // The decorated content (markdown) includes the gap hint bullets
     const listItems = document.querySelectorAll('li');
@@ -207,7 +208,7 @@ describe('ChatLayout — full send-message flow', () => {
     fireEvent.click(sendBtn!);
 
     await waitFor(() => {
-      expect(screen.getByText('HUSC_ENTITY_NOT_FOUND')).toBeInTheDocument();
+      expect(screen.getByText(STATUS_ANSWER_LABELS.HUSC_ENTITY_NOT_FOUND)).toBeInTheDocument();
     });
     expect(
       document.body.textContent

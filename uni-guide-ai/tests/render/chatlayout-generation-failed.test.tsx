@@ -52,10 +52,10 @@ vi.mock('@/hooks/useBackendReadiness', () => ({
 import { ChatLayout } from '@/components/chat/ChatLayout';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { StudentProfileProvider } from '@/hooks/useStudentProfile';
-import { GENERATION_FAILED_STATUS } from '@/lib/chat-helpers';
+import { GENERATION_FAILED_STATUS, STATUS_ANSWER_LABELS } from '@/lib/chat-helpers';
 
 const QUESTION = 'Điểm chuẩn CNTT 2024?';
-const FAILURE_LABEL = 'Máy chủ gặp sự cố khi tạo câu trả lời';
+const FAILURE_LABEL = STATUS_ANSWER_LABELS.GENERATION_FAILED;
 const RETRY_ARIA = 'Máy chủ gặp sự cố. Vui lòng thử lại sau ít phút.';
 const BE_FALLBACK_ANSWER =
   'Hệ thống đã tìm thấy tài liệu liên quan nhưng dịch vụ tạo câu trả lời ' +
@@ -113,7 +113,7 @@ describe('ChatLayout — GENERATION_FAILED renders a distinct failure block (non
     await typeAndSend(QUESTION);
 
     await waitFor(() => {
-      expect(screen.getByText(/Máy chủ gặp sự cố khi tạo câu trả lời/)).toBeInTheDocument();
+      expect(screen.getByText(FAILURE_LABEL)).toBeInTheDocument();
     });
     // Distinct from a normal answer AND from the missing-data fallback.
     expect(screen.queryByText(/Cần kiểm tra dữ liệu/)).not.toBeInTheDocument();
@@ -141,7 +141,7 @@ describe('ChatLayout — GENERATION_FAILED renders a distinct failure block (non
     await typeAndSend(QUESTION);
 
     await waitFor(() => {
-      expect(screen.getByText(/Máy chủ gặp sự cố khi tạo câu trả lời/)).toBeInTheDocument();
+      expect(screen.getByText(FAILURE_LABEL)).toBeInTheDocument();
     });
     // Mutation target: a `?? 0.5` default would make this query find a node.
     expect(screen.queryByTestId('answer-confidence')).not.toBeInTheDocument();
@@ -170,7 +170,7 @@ describe('ChatLayout — streamed failure renders the same screen (criterion 5)'
     await typeAndSend(QUESTION);
 
     await waitFor(() => {
-      expect(screen.getByText(/Máy chủ gặp sự cố khi tạo câu trả lời/)).toBeInTheDocument();
+      expect(screen.getByText(FAILURE_LABEL)).toBeInTheDocument();
     });
     expect(screen.getByText(BE_FALLBACK_ANSWER)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: RETRY_ARIA })).toBeInTheDocument();
@@ -194,7 +194,7 @@ describe('ChatLayout — retry affordance (criterion 4)', () => {
     await typeAndSend(QUESTION);
 
     await waitFor(() => {
-      expect(screen.getByText(/Máy chủ gặp sự cố khi tạo câu trả lời/)).toBeInTheDocument();
+      expect(screen.getByText(FAILURE_LABEL)).toBeInTheDocument();
     });
     expect(mockSendChatMessage).toHaveBeenCalledTimes(1);
     expect(mockSendChatMessage).toHaveBeenLastCalledWith(QUESTION, expect.anything());
@@ -229,7 +229,7 @@ describe('ChatLayout — retry affordance (criterion 4)', () => {
     });
     expect(screen.queryByRole('button', { name: RETRY_ARIA })).not.toBeInTheDocument();
     // No banner on a passthrough answer (criterion 8).
-    expect(screen.queryByText(/Máy chủ gặp sự cố khi tạo câu trả lời/)).not.toBeInTheDocument();
+    expect(screen.queryByText(FAILURE_LABEL)).not.toBeInTheDocument();
     // A real number DOES drive the readout — it is data, not a default.
     expect(screen.getByTestId('answer-confidence')).toHaveTextContent('90%');
   });
@@ -256,7 +256,7 @@ describe('ChatLayout — retry affordance (criterion 4)', () => {
       expect(screen.getByText('Điểm chuẩn CNTT 2024 là 22.5.')).toBeInTheDocument();
     });
     expect(screen.queryByRole('button', { name: RETRY_ARIA })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Máy chủ gặp sự cố khi tạo câu trả lời/)).not.toBeInTheDocument();
+    expect(screen.queryByText(FAILURE_LABEL)).not.toBeInTheDocument();
   });
 });
 
@@ -267,7 +267,7 @@ describe('ChatLayout — empty failed answer is still readable (criterion 6)', (
     await typeAndSend(QUESTION);
 
     await waitFor(() => {
-      expect(screen.getByText(/Máy chủ gặp sự cố khi tạo câu trả lời/)).toBeInTheDocument();
+      expect(screen.getByText(FAILURE_LABEL)).toBeInTheDocument();
     });
     expect(screen.getByRole('button', { name: RETRY_ARIA })).toBeInTheDocument();
   });

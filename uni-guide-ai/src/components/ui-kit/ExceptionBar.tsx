@@ -43,9 +43,9 @@ export const ExceptionBar = ({
   <div
     role={severity === "error" ? "alert" : "status"}
     data-severity={severity}
-    className={`flex flex-col gap-2 rounded-md border-l-4 p-3 text-base ${SURFACE[severity]}`}
+    className={`flex min-w-0 flex-col gap-2 rounded-md border-l-4 p-3 text-base break-words [overflow-wrap:anywhere] ${SURFACE[severity]}`}
   >
-    <p className="font-semibold">
+    <p className="font-semibold break-words [overflow-wrap:anywhere]">
       <span aria-hidden="true" className="mr-2 inline-block w-5 text-center font-bold">
         {GLYPH[severity]}
       </span>
@@ -53,7 +53,7 @@ export const ExceptionBar = ({
         {PREFIX[severity]}: {title}
       </span>
     </p>
-    {detail ? <p>{detail}</p> : null}
+    {detail ? <p className="break-words [overflow-wrap:anywhere]">{detail}</p> : null}
     {children}
     {action ? (
       <div>

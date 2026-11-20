@@ -76,7 +76,7 @@ export function decorateAnswer(
     INSUFFICIENT_DATA: 'Thiếu dữ liệu để trả lời chắc chắn',
     // Ticket 43: a transient infrastructure outage, NOT missing data — the
     // distinct label keeps it out of the 'Can kiem tra du lieu' fallback.
-    GENERATION_FAILED: 'Máy chủ gặp sự cố khi tạo câu trả lời. Vui lòng thử lại.',
+    GENERATION_FAILED: 'Hệ thống chưa tạo được câu trả lời, bạn thử lại sau nhé',
   };
   const displayCode = internalStatusCode || statusCode;
   const header =
@@ -90,7 +90,8 @@ export function decorateAnswer(
     !isGenFailure && dataGapHints.length > 0
       ? `\n\n**Gợi ý bổ sung dữ liệu**:\n${dataGapHints.map((h) => `- ${h}`).join('\n')}`
       : '';
-  const reasonLine = statusReason ? `\n\n*Lý do:* ${statusReason}` : '';
+  // Machine codes (e.g. "generation_failed") are never shown to students.
+  const reasonLine = statusReason && /\s/.test(statusReason) ? `\n\n*Lý do:* ${statusReason}` : '';
   return `⚠️ **${header}**\n\n${rawAnswer}${reasonLine}${hintLines}`;
 }
 
@@ -114,7 +115,7 @@ export const STATUS_ANSWER_LABELS: Record<string, string> = {
   NOT_IN_HUSC_SCOPE: 'Ngoài phạm vi tuyển sinh HUSC',
   HUSC_ENTITY_NOT_FOUND: 'Không thấy ngành/sự việc trong dữ liệu HUSC',
   INSUFFICIENT_DATA: 'Thiếu dữ liệu để trả lời chắc chắn',
-  GENERATION_FAILED: 'Máy chủ gặp sự cố khi tạo câu trả lời. Vui lòng thử lại.',
+  GENERATION_FAILED: 'Hệ thống chưa tạo được câu trả lời, bạn thử lại sau nhé',
 };
 
 export interface AnswerAnnouncement {
@@ -163,7 +164,7 @@ export function deriveAnswerAnnouncement(
     const retry = last.retryQuery ? ' Bạn có thể bấm nút thử lại.' : '';
     return {
       polite: null,
-      alert: `Không tạo được câu trả lời. ${STATUS_ANSWER_LABELS.GENERATION_FAILED}${retry}`,
+      alert: `${STATUS_ANSWER_LABELS.GENERATION_FAILED}${retry}`,
     };
   }
 

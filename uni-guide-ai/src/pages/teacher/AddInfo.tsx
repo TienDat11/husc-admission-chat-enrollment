@@ -3,7 +3,7 @@
 // parse job; GET /admin/jobs/{id} is polled until it is terminal. The job id is
 // kept in sessionStorage, so a reload keeps following the same job.
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { z } from "zod";
 import { useAdminSession } from "@/hooks/useAdminSession";
@@ -58,6 +58,16 @@ const JOB_LABEL: Record<string, { label: string; tone: PillTone }> = {
 function failureOf(error: unknown): ApiFailure {
   if (error instanceof AdminApiError) return error.failure;
   return { kind: "error", status: 0, code: null, message: NETWORK_MESSAGE };
+}
+
+// The backend answers a re-upload of an already-registered file with a raw
+// revision message; students get the plain Vietnamese reason instead.
+function uploadFailureOf(error: unknown): ApiFailure {
+  const failure = failureOf(error);
+  if (/already registered/i.test(failure.message)) {
+    return { kind: "duplicate-document", status: 409, sourceDocumentId: null, message: "Tệp này đã được tải lên trước đó." };
+  }
+  return failure;
 }
 
 type DraftSend = { status: "idle" } | { status: "sending" } | { status: "sent" } | { status: "error"; message: string };
@@ -149,6 +159,7 @@ const AddInfo = () => {
   const canUpload = can("records.create");
   const [stored, setStored] = useState<StoredUpload | null>(readStored);
   const [chosen, setChosen] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
   const [lastFile, setLastFile] = useState<File | null>(null);
 
@@ -164,7 +175,7 @@ const AddInfo = () => {
       setStored(next);
       setChosen(null);
     },
-    onError: (error) => setFailure(failureOf(error)),
+    onError: (error) => setFailure(uploadFailureOf(error)),
   });
 
   const job = useQuery({
@@ -232,12 +243,16 @@ const AddInfo = () => {
             ) : null}
             <input
               id="upload-file"
+              ref={fileInputRef}
               type="file"
               accept=".pdf,.docx,.xlsx"
               disabled={upload.isPending}
               onChange={(event) => setChosen(event.target.files?.[0] ?? null)}
-              className="block min-h-11 w-full rounded-8 border border-[#D6DEEA] bg-white px-2 py-2 text-base text-[#0F1B2D] file:mr-3 file:min-h-11 file:rounded-8 file:border file:border-[#D6DEEA] file:bg-white file:px-3 file:font-semibold file:text-[#143980]"
+              className="sr-only"
             />
+            <SecondaryButton onClick={() => fileInputRef.current?.click()} disabled={upload.isPending}>
+              {chosen ? "Đổi tệp khác" : "Chọn tệp"}
+            </SecondaryButton>
           </div>
 
           {failure !== null && failure.kind !== "duplicate-document" ? (
@@ -253,12 +268,14 @@ const AddInfo = () => {
           {duplicate !== null ? (
             <ExceptionBar title={duplicate.message} detail="Bạn có thể mở bản đã đăng ký hoặc chọn tệp khác.">
               <div className="flex flex-wrap gap-2">
-                <Link
-                  to={`/quan-ly/kho?source_document_id=${encodeURIComponent(duplicate.sourceDocumentId)}`}
-                  className="inline-flex min-h-11 items-center rounded-md border border-zinc-400 bg-white px-4 font-semibold text-zinc-900"
-                >
-                  Mở bản cũ
-                </Link>
+                {duplicate.sourceDocumentId !== null ? (
+                  <Link
+                    to={`/quan-ly/kho?source_document_id=${encodeURIComponent(duplicate.sourceDocumentId)}`}
+                    className="inline-flex min-h-11 items-center rounded-md border border-zinc-400 bg-white px-4 font-semibold text-zinc-900"
+                  >
+                    Mở bản cũ
+                  </Link>
+                ) : null}
                 <SecondaryButton onClick={() => setFailure(null)}>Chọn tệp khác</SecondaryButton>
               </div>
             </ExceptionBar>

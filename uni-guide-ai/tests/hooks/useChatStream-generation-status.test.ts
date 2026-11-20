@@ -31,7 +31,7 @@ vi.mock('@/lib/api', () => ({
 }));
 
 import { useChatStream } from '@/hooks/useChatStream';
-import { GENERATION_FAILED_STATUS } from '@/lib/chat-helpers';
+import { GENERATION_FAILED_STATUS, STATUS_ANSWER_LABELS } from '@/lib/chat-helpers';
 
 const QUESTION = 'Điểm chuẩn CNTT 2024?';
 
@@ -122,7 +122,7 @@ describe('useChatStream — GENERATION_FAILED reaches the UI (streamed)', () => 
     expect(answer.retryQuery).toBe(QUESTION);
     // Decorated, not raw: the warning header is what distinguishes the block.
     expect(answer.content).not.toBe(BE_FALLBACK_ANSWER);
-    expect(answer.content).toContain('Máy chủ gặp sự cố khi tạo câu trả lời');
+    expect(answer.content).toContain(STATUS_ANSWER_LABELS.GENERATION_FAILED);
     expect(answer.content).toContain(BE_FALLBACK_ANSWER);
   });
 });
@@ -144,7 +144,7 @@ describe('useChatStream — GENERATION_FAILED reaches the UI (non-streamed)', ()
     expect(answer.statusCode).toBe(GENERATION_FAILED_STATUS);
     expect(answer.internalStatusCode).toBe(GENERATION_FAILED_STATUS);
     expect(answer.retryQuery).toBe(QUESTION);
-    expect(answer.content).toContain('Máy chủ gặp sự cố khi tạo câu trả lời');
+    expect(answer.content).toContain(STATUS_ANSWER_LABELS.GENERATION_FAILED);
   });
 });
 
@@ -267,7 +267,7 @@ describe('useChatStream — empty failed answer stays readable (criterion 6)', (
     );
     const answer = assistantMessage(messages);
     expect(answer.content).not.toBe('');
-    expect(answer.content).toContain('Máy chủ gặp sự cố khi tạo câu trả lời');
+    expect(answer.content).toContain(STATUS_ANSWER_LABELS.GENERATION_FAILED);
   });
 });
 

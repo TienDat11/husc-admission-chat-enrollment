@@ -130,9 +130,8 @@ export function RoadmapPanel() {
               {step.source && (
                 <span
                   className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full border border-[#D6DEEA] text-[#4A5568]"
-                  title={`Nguồn: ${step.source.document_id}#page=${step.source.page}`}
                 >
-                  {step.source.document_id}#{step.source.page}
+                  {step.source.page ? `Dữ liệu tuyển sinh ${step.source.page}` : 'Dữ liệu tuyển sinh'}
                 </span>
               )}
             </div>

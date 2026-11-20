@@ -35,10 +35,10 @@ export function ChatBotBubble({ message, onRetry }: ChatBotBubbleProps) {
           <div className="mb-3 flex items-start gap-2 rounded-xl border-2 border-[#D97706] bg-[#FFFBEB] px-3 py-2 text-xs text-[#78350F]">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
             <div className="min-w-0">
-              <div className="font-bold uppercase tracking-wide text-[11px]">
-                {message.internalStatusCode || message.statusCode}
+              <div className="font-bold text-[12px]">
+                Lưu ý về câu trả lời
               </div>
-              {message.statusReason && (
+              {message.statusReason && /\s/.test(message.statusReason) && (
                 <div className="mt-1 opacity-90 text-[12px]">{message.statusReason}</div>
               )}
             </div>
