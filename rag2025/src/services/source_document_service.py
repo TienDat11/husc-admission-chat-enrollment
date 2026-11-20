@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import time
 import unicodedata
@@ -68,6 +69,8 @@ from src.infrastructure.source_document_registry import (
     SourceDocumentEntry,
     SourceDocumentRegistry,
 )
+
+logger = logging.getLogger(__name__)
 
 #: Read size for the content hash; the PDFs are ~1-3 MB, so this is about not
 #: holding a whole file in memory, not about throughput.
@@ -691,6 +694,7 @@ class SourceDocumentService:
             # commit comes first. If a draft write then fails, the entry is
             # retired rather than deleted: the id is no longer vouched for, and
             # the registry's revision timeline keeps its history.
+            drafts: list[str] = []
             try:
                 if kind == XLSX_KIND:
                     # Ticket T17: one draft record per spreadsheet data row, each
@@ -698,10 +702,11 @@ class SourceDocumentService:
                     # payload. On a retry that races an interrupted first attempt
                     # the writers reuse any matching v1 record rather than
                     # appending a second v1, so the upload is resumable.
-                    draft_record_ids, fell_back = self._write_xlsx_drafts(
+                    fell_back = self._write_xlsx_drafts(
                         document_id=document_id,
                         excel_rows=parse.excel_rows,
                         actor_id=actor_id,
+                        written=drafts,
                     )
                     if fell_back:
                         warnings.append(
@@ -715,10 +720,11 @@ class SourceDocumentService:
                         + "); không tạo bản nháp"
                     )
                 elif text and not all_pages_scan and not parse.error:
-                    draft_record_ids, draft_blockers = self._write_upload_draft(
+                    draft_blockers = self._write_upload_draft(
                         document_id=document_id,
                         pages=parse.pages or (text,),
                         actor_id=actor_id,
+                        written=drafts,
                     )
                     if draft_blockers:
                         warnings.append(
@@ -731,10 +737,22 @@ class SourceDocumentService:
                         "all pages are scans (image only); no draft created"
                     )
             except BaseException:
-                self._registry.retire(
-                    document_id, actor_id=actor_id, now=self._clock()
+                logger.warning(
+                    "upload of %s failed after writing draft records %s; they are left in place",
+                    document_id,
+                    drafts or "none",
                 )
+                try:
+                    self._registry.retire(
+                        document_id, actor_id=actor_id, now=self._clock()
+                    )
+                except Exception:
+                    logger.exception(
+                        "retiring %s after a failed upload also failed; re-raising the upload error",
+                        document_id,
+                    )
                 raise
+            draft_record_ids = tuple(drafts)
         event = self._emit(
             entry=entry,
             actor_id=actor_id,
@@ -765,7 +783,8 @@ class SourceDocumentService:
         document_id: str,
         pages: Sequence[str],
         actor_id: str,
-    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        written: list[str],
+    ) -> tuple[str, ...]:
         """The drafts an upload creates: the decomposer's records (plan §PL-6.6).
 
         Coordinate keys are stable, so a retry after an interrupted first attempt
@@ -774,7 +793,8 @@ class SourceDocumentService:
         :class:`RecordVersionConflictError`. A coordinate held by a different
         document gets the next version.
 
-        Returns the record ids and the decomposer's blockers. A blocked draft
+        Each record id is appended to ``written`` as it is written, so a caller can
+        report what landed before a failure. Returns the decomposer's blockers. A blocked draft
         keeps its blockers in ``structured_payload["blockers"]`` so the exceptions
         list and the submit gate can see them.
         """
@@ -787,7 +807,6 @@ class SourceDocumentService:
             authored_by=actor_id,
             admission_year=now.year,
         )
-        written: list[str] = []
         for record in decomposition.records:
             if decomposition.blockers:
                 merged_payload = dict(getattr(record, "structured_payload", None) or {})
@@ -805,7 +824,7 @@ class SourceDocumentService:
                 record = record.model_copy(update={"version": len(existing) + 1})
             self._store.write_record(record)
             written.append(record.record_id)
-        return tuple(written), decomposition.blockers
+        return decomposition.blockers
 
     def _write_xlsx_drafts(
         self,
@@ -813,7 +832,8 @@ class SourceDocumentService:
         document_id: str,
         excel_rows: Sequence[dict],
         actor_id: str,
-    ) -> tuple[tuple[str, ...], bool]:
+        written: list[str],
+    ) -> bool:
         """One draft record per spreadsheet data row (ticket T17).
 
         Each row's ``{header: value}`` dict becomes the record's structured
@@ -824,7 +844,8 @@ class SourceDocumentService:
         sheet that names neither stays ``THONG_BAO`` (the safe default the
         ticket prescribes when the kind is unclear).
 
-        Returns ``(record_ids, fell_back)``: ``fell_back`` is ``True`` when
+        Each record id is appended to ``written`` as it is written. Returns
+        ``fell_back``: ``True`` when
         no header named a kind, so the caller can note the ``THONG_BAO``
         fallback in the upload warnings. ``record_id`` is
         ``xlsx-<hash12>-row<n>`` where the hash is over the row's own content
@@ -834,7 +855,6 @@ class SourceDocumentService:
         mint a second record anyway.
         """
         now = self._clock()
-        record_ids: list[str] = []
         fell_back = False
         for index, row in enumerate(excel_rows, start=1):
             if not row:
@@ -848,7 +868,7 @@ class SourceDocumentService:
             if self._store.versions(record_id):
                 stored = self._store.get_version(record_id, 1)
                 if stored.source_document_id == document_id:
-                    record_ids.append(record_id)
+                    written.append(record_id)
                     continue
             text = "\n".join(
                 _xlsx_render(name, value) for name, value in row.items()
@@ -867,8 +887,8 @@ class SourceDocumentService:
                 values=row,
             )
             self._store.write_record(record)
-            record_ids.append(record.record_id)
-        return tuple(record_ids), fell_back
+            written.append(record.record_id)
+        return fell_back
 
     def update(
         self,

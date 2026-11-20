@@ -12,6 +12,7 @@ a separate test that skips when the gitignored data is absent.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import logging
 import json
 import sys
 from datetime import date, datetime, timezone
@@ -1386,3 +1387,29 @@ def test_memory_refusal_reaches_the_service_as_a_coded_parse_failure(
         service.upload_document(_docx_bytes_with_heading(), "de-an.docx", actor_id="cb.quan-tri")
 
     assert excinfo.value.code == "PARSE_MEMORY_LIMIT"
+
+
+def test_a_failed_upload_keeps_its_error_and_logs_the_drafts_it_wrote(
+    service: SourceDocumentService, monkeypatch, caplog
+) -> None:
+    """A draft write that fails after one record landed: the upload's own error
+    still reaches the caller even though retiring the registry entry also fails,
+    and the log names the record that was written and left in place."""
+
+    def partial_then_fail(*, document_id, pages, actor_id, written):
+        written.append("DIEM_CHUAN:partial:2026@1")
+        raise OSError("simulated second draft failure")
+
+    def retire_fails(*args, **kwargs):
+        raise RuntimeError("registry offline")
+
+    monkeypatch.setattr(service, "_write_upload_draft", partial_then_fail)
+    monkeypatch.setattr(service._registry, "retire", retire_fails)
+
+    with caplog.at_level(logging.WARNING, logger="src.services.source_document_service"):
+        with pytest.raises(OSError, match="simulated second draft failure"):
+            service.upload_document(
+                _docx_bytes_with_heading(), "de-an.docx", actor_id="cb.quan-tri"
+            )
+    assert "DIEM_CHUAN:partial:2026@1" in caplog.text
+    assert "retiring" in caplog.text
