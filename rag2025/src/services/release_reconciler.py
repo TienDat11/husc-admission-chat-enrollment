@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 
 from src.services.release_snapshot import ReleaseSnapshot, ReleaseSnapshotLoadError
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
+
+
+def _as_json(value: Any) -> Any:
+    """asyncpg may return jsonb as text; decode it either way."""
+    return json.loads(value) if isinstance(value, str) else value
 
 
 class ReleaseReconciler:
@@ -33,29 +40,53 @@ class ReleaseReconciler:
         self._stopped = False
 
     async def _default_load(self, release_id: str) -> ReleaseSnapshot:
-        """Default loader: build a snapshot from the active release row."""
+        """Build the snapshot for ``release_id`` from its ``recommender_snapshots`` row."""
         from services.major_code_validator import get_whitelist
-
-        # Prefer PG-backed values when the release row exposes them; fall back
-        # to the year's whitelist so no serving path reads data/major_codes/*.json.
-        major_codes = frozenset(get_whitelist())
         from src.services.major_code_validator import set_snapshot_whitelist
-        set_snapshot_whitelist(major_codes)
         from src.services.major_recommender import set_snapshot as _set_rec_snapshot
+        from src.services.guardrail import set_snapshot_allowed as _set_guardrail_allowed
+
+        engine = self._app.state.db_engine
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                text(
+                    "SELECT data_year, diem_chuan_history, majors, to_hop, chi_tieu, "
+                    "methods, tuition, priority_rules "
+                    "FROM recommender_snapshots WHERE release_id = :rid"
+                ),
+                {"rid": release_id},
+            )
+            row = result.mappings().first()
+        if row is None:
+            raise ReleaseSnapshotLoadError(release_id, "no recommender_snapshots row")
+
+        entries = _as_json(row["diem_chuan_history"])
+        if not isinstance(entries, list):
+            raise ReleaseSnapshotLoadError(release_id, "diem_chuan_history is not a list")
+        recommender = {
+            "data_year": row["data_year"],
+            "entries": entries,
+            "majors": _as_json(row["majors"]),
+            "to_hop": _as_json(row["to_hop"]),
+            "chi_tieu": _as_json(row["chi_tieu"]),
+            "methods": _as_json(row["methods"]),
+            "tuition": _as_json(row["tuition"]),
+        }
+        major_codes = frozenset(get_whitelist())
+        set_snapshot_whitelist(major_codes)
         snap = ReleaseSnapshot(
             release_id=release_id,
-            recommender_snapshot={},
+            recommender_snapshot=recommender,
             major_codes=major_codes,
             cutoff_scores={},
             quota={},
             tuition={},
-            priority_rules={},
+            priority_rules=_as_json(row["priority_rules"]),
             major_whitelist=major_codes,
             chunks_table="husc_chunks",
             corpus_stamp=[],
         )
         _set_rec_snapshot(snap)
-        from src.services.guardrail import set_snapshot_allowed as _set_guardrail_allowed
         _set_guardrail_allowed(major_codes)
         return snap
 
@@ -86,10 +117,12 @@ class ReleaseReconciler:
             return
         # Read the active release id.
         row = None
-        with engine.connect() as conn:
-            result = conn.execute(
-                "SELECT release_id, corpus_stamp FROM releases "
-                "WHERE status = 'active' LIMIT 1"
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                text(
+                    "SELECT release_id, corpus_stamp FROM releases "
+                    "WHERE status = 'active' LIMIT 1"
+                )
             )
             row = result.mappings().first()
         if row is None:
