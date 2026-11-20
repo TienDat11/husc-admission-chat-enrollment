@@ -5,9 +5,9 @@ LAST step of a successful install and holding the bundle sha256. A pre-existing
 lancedb/ directory alone does not count as installed (it may be empty or partial).
 
 Skip when the marker exists and (DATA_BUNDLE_SHA256 unset or equal to the marker).
-Otherwise install DATA_BUNDLE_LOCAL when that file exists, else download
-DATA_BUNDLE_KEY from R2_BUCKET. Either way verify DATA_BUNDLE_SHA256 when set,
-validate every tar member, then install into DATA_DIR. Stdlib only: the R2 GET is
+Otherwise install DATA_BUNDLE_LOCAL when that file exists (verifying DATA_BUNDLE_SHA256
+when set), else download DATA_BUNDLE_KEY from R2_BUCKET, which requires DATA_BUNDLE_SHA256.
+Then validate every tar member and install into DATA_DIR. Stdlib only: the R2 GET is
 signed with SigV4 by hand.
 
 Exit codes: 0 = populated or already present, 1 = failure (message on stderr).
@@ -101,6 +101,9 @@ def _r2_config(env: Mapping[str, str]) -> dict[str, str]:
     }
 
 
+R2_TIMEOUT_S = 60.0
+
+
 def _download_r2(cfg: Mapping[str, str], dest: Path) -> str:
     headers = _sigv4_headers(
         cfg["endpoint"],
@@ -113,7 +116,9 @@ def _download_r2(cfg: Mapping[str, str], dest: Path) -> str:
     url = f"{cfg['endpoint']}/{cfg['bucket']}/{urllib.parse.quote(cfg['key'], safe='/-_.~')}"
     digest = hashlib.sha256()
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers=headers)) as resp:
+        with urllib.request.urlopen(
+            urllib.request.Request(url, headers=headers), timeout=R2_TIMEOUT_S
+        ) as resp:
             with dest.open("wb") as out:
                 while chunk := resp.read(CHUNK_SIZE):
                     digest.update(chunk)
@@ -225,6 +230,11 @@ def bootstrap(
         return "installed-local"
 
     cfg = _r2_config(env)
+    if not expected:
+        raise BootstrapError(
+            "DATA_BUNDLE_SHA256 is required when installing from R2: set it to the "
+            "bundle's sha256 (the local DATA_BUNDLE_LOCAL path does not need it)"
+        )
     partial = data_dir / ".data-bundle.partial"
     try:
         actual = download(cfg, partial)

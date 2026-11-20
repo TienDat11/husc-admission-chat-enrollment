@@ -109,11 +109,12 @@ def test_sha_mismatch_fails_and_installs_nothing(tmp_path: Path) -> None:
 @pytest.mark.parametrize("evil", ["../escape.txt", "/abs/escape.txt", "lancedb/../../escape.txt"])
 def test_rejects_path_traversal(tmp_path: Path, evil: str) -> None:
     bundle = tmp_path / "src.tar.gz"
-    _make_bundle(bundle, {"lancedb/ok.lance": b"ok", evil: b"pwned"})
+    digest = _make_bundle(bundle, {"lancedb/ok.lance": b"ok", evil: b"pwned"})
     data_dir = tmp_path / "data"
 
     with pytest.raises(bd.BootstrapError, match="unsafe path"):
-        bd.bootstrap(ENV, data_dir, download=_local_download(bundle))
+        env = {**ENV, "DATA_BUNDLE_SHA256": digest}
+        bd.bootstrap(env, data_dir, download=_local_download(bundle))
     assert not (tmp_path / "escape.txt").exists()
     assert not (data_dir / "lancedb").exists()
 
@@ -142,3 +143,53 @@ def test_local_path_missing_falls_through_to_r2_env_error(tmp_path: Path) -> Non
     env = {"DATA_BUNDLE_LOCAL": str(tmp_path / "absent.tar.gz")}
     with pytest.raises(bd.BootstrapError, match="missing required env"):
         bd.bootstrap(env, tmp_path / "data", download=lambda c, d: "")
+
+
+R2_ENV = {
+    "R2_ENDPOINT": "https://r2.example.invalid",
+    "R2_BUCKET": "bucket",
+    "R2_ACCESS_KEY_ID": "key-id",
+    "R2_SECRET_ACCESS_KEY": "secret",
+}
+
+
+def test_r2_install_requires_the_bundle_sha256(tmp_path: Path) -> None:
+    def must_not_download(_cfg, _dest):
+        raise AssertionError("R2 must not be read without an expected sha256")
+
+    with pytest.raises(bd.BootstrapError, match="DATA_BUNDLE_SHA256 is required"):
+        bd.bootstrap(R2_ENV, tmp_path, download=must_not_download)
+    assert not (tmp_path / bd.MARKER).exists()
+
+
+def test_r2_download_is_bounded_by_a_socket_timeout(tmp_path: Path, monkeypatch) -> None:
+    seen: dict = {}
+
+    class _Response:
+        def __init__(self) -> None:
+            self._sent = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc) -> bool:
+            return False
+
+        def read(self, _size: int = -1) -> bytes:
+            if self._sent:
+                return b""
+            self._sent = True
+            return b"payload"
+
+    def fake_urlopen(request, timeout=None):
+        seen["timeout"] = timeout
+        return _Response()
+
+    monkeypatch.setattr(bd.urllib.request, "urlopen", fake_urlopen)
+    dest = tmp_path / "bundle.tar.gz"
+
+    digest = bd._download_r2(bd._r2_config(R2_ENV), dest)
+
+    assert seen["timeout"] == bd.R2_TIMEOUT_S
+    assert digest == hashlib.sha256(b"payload").hexdigest()
+    assert dest.read_bytes() == b"payload"
