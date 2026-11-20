@@ -71,6 +71,7 @@ export function ChatLayout() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
   const readiness = useBackendReadiness({ pollMs: 2000 });
@@ -176,9 +177,24 @@ export function ChatLayout() {
         )}
 
         {/* Hồ sơ thí sinh ẩn danh + lộ trình (khung Frame 12). */}
-        <div className="mx-4 mt-3 space-y-3 shrink-0 max-h-[35dvh] overflow-y-auto">
-          <StudentProfileForm />
-          <RoadmapPanel />
+        <div className="mx-4 mt-3 shrink-0">
+          <button
+            type="button"
+            aria-expanded={profileOpen}
+            aria-controls="chat-profile-panel"
+            onClick={() => setProfileOpen((open) => !open)}
+            className="flex w-full items-center justify-between rounded-md border border-[#E3E8F0] bg-white px-3 py-3 text-left text-sm font-semibold text-[#143980] lg:hidden"
+          >
+            <span>Hồ sơ thí sinh và lộ trình</span>
+            <span aria-hidden="true">{profileOpen ? '▲' : '▼'}</span>
+          </button>
+          <div
+            id="chat-profile-panel"
+            className={`${profileOpen ? 'block' : 'hidden'} mt-3 lg:mt-0 lg:block max-h-[35dvh] space-y-3 overflow-y-auto`}
+          >
+            <StudentProfileForm />
+            <RoadmapPanel />
+          </div>
         </div>
 
 
