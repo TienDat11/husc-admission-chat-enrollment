@@ -164,7 +164,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Montserrat', 'Inter', system-ui, sans-serif;
+    font-family: 'Be Vietnam Pro', 'Inter', system-ui, sans-serif;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -623,10 +623,10 @@
    Scoped to .husc-admin so the office surface never bleeds into the chat app.
    18 px body, #143980 accent, 44 px targets, no gradient. */
 .husc-admin {
-  font-family: "Montserrat", "Inter", system-ui, sans-serif;
+  font-family: "Be Vietnam Pro", "Inter", system-ui, sans-serif;
   font-size: 18px;
   line-height: 1.6;
-  color: #1a1a1a;
+  color: #0f1b2d;
   /* The office surface is light by contract: 05-ux-spec and the mockups ship
      exactly one token set (styles.css:2-18, no dark block). The theme root
      still puts `.dark` on <html> for a user whose OS prefers dark, which would
@@ -668,24 +668,46 @@
    beats both `.husc-admin a` and Tailwind's `text-white`, so the active item
    keeps its white label on the accent background instead of inheriting the
    accent colour on top of it. */
-.husc-admin .side { background: #f3f5f9; border-right: 1px solid rgba(95, 102, 112, 0.4); padding: 20px 12px; }
-.husc-admin .side ul { list-style: none; margin: 0; padding: 0; }
+.husc-admin .side {
+  background: #103157;
+  color: #ffffff;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.husc-admin .side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .husc-admin .side a {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-height: 44px;
   padding: 8px 12px;
   border-radius: 8px;
-  color: #1a1a1a;
+  color: rgba(255, 255, 255, 0.86);
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 500;
 }
-.husc-admin .side a:hover { background: #e6ecf7; }
-.husc-admin .side a[aria-current="page"] { background: #143980; color: #ffffff; }
-.husc-admin .side .ico { width: 1.4em; text-align: center; }
-.husc-admin .side hr { border: 0; border-top: 1px solid #c3c9d2; margin: 12px 4px; }
-.husc-admin .side .tech a { font-weight: 500; color: #474747; }
+.husc-admin .side a:hover { background: rgba(255, 255, 255, 0.08); color: #ffffff; }
+.husc-admin .side a[aria-current="page"] { background: #0b2a4a; color: #ffffff; font-weight: 600; }
+.husc-admin .side a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: #096eba;
+}
+.husc-admin .side .ico { display: inline-flex; flex: none; width: 20px; height: 20px; align-items: center; justify-content: center; }
+.husc-admin .side .ico svg { width: 20px; height: 20px; }
+.husc-admin .side hr { border: 0; border-top: 1px solid rgba(255, 255, 255, 0.15); margin: 12px 4px; }
+.husc-admin .side .tech a { font-weight: 500; color: rgba(255, 255, 255, 0.7); }
+.husc-admin .side .who { margin-top: auto; display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; background: rgba(255, 255, 255, 0.08); font-size: 14px; line-height: 1.4; }
+.husc-admin .side .who .avatar { display: inline-flex; width: 32px; height: 32px; flex: none; align-items: center; justify-content: center; border-radius: 999px; background: #ffffff; color: #103157; font-weight: 700; }
+.husc-admin .side .help { font-size: 13px; line-height: 1.5; color: rgba(255, 255, 255, 0.7); }
 
 /* Checkbox rows (mockup .check): a 44 px row wrapping a 24 px box, so the row
    clears U3 while the box itself stays visually small. */

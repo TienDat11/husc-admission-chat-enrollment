@@ -115,14 +115,7 @@ function RecordsSurface() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 space-y-1">
-          <h2 className={`text-sm font-medium ${heading}`}>Dữ liệu tuyển sinh</h2>
-          <p className={`text-xs ${muted}`}>
-            Đăng nhập với vai trò <span className="font-mono break-all">{identity.role}</span> (
-            {identity.actor_id}). Chỉ những hành động vai trò này được cấp mới hiển thị.
-          </p>
-        </div>
+      <div className="flex justify-end">
         <Button size="sm" variant="ghost" onClick={() => void signOut()}>
           Đăng xuất
         </Button>
