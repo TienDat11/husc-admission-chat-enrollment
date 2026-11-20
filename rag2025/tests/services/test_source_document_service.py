@@ -1211,3 +1211,33 @@ def test_postgres_factory_builds_the_sql_registry(tmp_path: Path, monkeypatch) -
 
     assert isinstance(pg, SqlSourceDocumentRegistry)
     assert type(file) is SourceDocumentRegistry
+
+
+def test_registry_normalizes_the_asyncpg_url_to_a_psycopg_conninfo(tmp_path: Path) -> None:
+    from psycopg.conninfo import conninfo_to_dict
+
+    from src.infrastructure.sql_source_document_registry import SqlSourceDocumentRegistry
+
+    registry = SqlSourceDocumentRegistry(
+        tmp_path, tmp_path, "postgresql+asyncpg://u:p@h/db?ssl=require"
+    )
+    parsed = conninfo_to_dict(registry._conninfo)
+    assert parsed["sslmode"] == "require"
+    assert "ssl" not in parsed
+    assert parsed["host"] == "h"
+
+
+def test_registry_connect_errors_never_carry_the_dsn(tmp_path: Path) -> None:
+    from src.infrastructure.sql_source_document_registry import SqlSourceDocumentRegistry
+
+    registry = SqlSourceDocumentRegistry(
+        tmp_path, tmp_path, "postgresql://u:TOPSECRET@h/db?no_such_option=1"
+    )
+    with pytest.raises(RuntimeError) as excinfo:
+        with registry._connect():
+            pass
+    message = str(excinfo.value)
+    assert message.startswith("source_documents registry connection failed: ")
+    assert "TOPSECRET" not in message
+    assert excinfo.value.__cause__ is None
+    assert excinfo.value.__suppress_context__

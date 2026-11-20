@@ -41,7 +41,7 @@ from src.infrastructure.source_document_registry import (
     SourceDocumentRegistry,
     _validate_document_id,
 )
-from src.infrastructure.sql_record_store import RecordStoreUnavailableError
+from src.infrastructure.sql_record_store import RecordStoreUnavailableError, _conninfo
 
 _KINDS = frozenset({"pdf", "docx", "xlsx"})
 
@@ -78,15 +78,19 @@ class SqlSourceDocumentRegistry(SourceDocumentRegistry):
 
     def __init__(self, root: str | Path, repo_root: str | Path, dsn: str) -> None:
         super().__init__(root, repo_root)
-        self._dsn = dsn
+        # The shared normalizer: SQLAlchemy-style URLs (+asyncpg, ssl=) -> libpq conninfo.
+        self._conninfo = _conninfo(dsn)
 
     @contextmanager
     def _connect(self) -> Iterator[psycopg.Connection]:
-        # Errors carry no host, user, password or SQL text.
+        # psycopg's own message can echo the conninfo, password included, so only
+        # the exception class name leaves this method.
         try:
-            conn = psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=10)
-        except psycopg.OperationalError:
-            raise RecordStoreUnavailableError("record store database unavailable") from None
+            conn = psycopg.connect(self._conninfo, row_factory=dict_row, connect_timeout=10)
+        except psycopg.Error as exc:
+            raise RuntimeError(
+                f"source_documents registry connection failed: {type(exc).__name__}"
+            ) from None
         with conn:
             yield conn
 
