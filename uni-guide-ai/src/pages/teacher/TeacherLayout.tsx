@@ -5,6 +5,7 @@
 // The shell is intentionally separate from AdminLayout: that one is the
 // dark zinc technical surface (Config/Release/Debt), this one is the
 // light office surface the UX spec writes for 50–65 year old staff.
+import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -57,6 +58,7 @@ const navItems: NavItem[] = [
 
 const TeacherLayout = () => {
   const { status, identity, can } = useAdminSession();
+  const [navOpen, setNavOpen] = useState(false);
   const overview = useQuery({
     queryKey: ["admin", "overview"],
     queryFn: () => fetchAdminOverview(null),
@@ -77,51 +79,64 @@ const TeacherLayout = () => {
       </a>
       <div className="flex flex-1 flex-col lg:flex-row">
         <aside className="side w-full shrink-0 lg:min-h-screen lg:w-[248px]">
-          <p className="brand px-2 pb-4 text-lg font-bold text-white">HUSC Tuyển sinh</p>
-          <nav aria-label="Điều hướng chính">
-            <ul className="m-0 list-none p-0">
-              {visibleItems.map((item) => {
-                const count = item.badge === "review" ? reviewCount : 0;
-                return (
-                  <li key={item.to}>
-                    <NavLink to={item.to} end={item.end}>
-                      <span aria-hidden="true" className="ico">
-                        <item.Icon />
-                      </span>
-                      {count > 0 ? <SidebarBadge label={item.label} count={count} /> : item.label}
-                    </NavLink>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-          <hr />
-          <nav aria-label="Quản trị kỹ thuật">
-            <ul className="m-0 list-none p-0">
-              <li className="tech">
-                <NavLink to="/admin">
-                  <span aria-hidden="true" className="ico">
-                    <Settings />
-                  </span>
-                  Quản trị kỹ thuật
-                </NavLink>
-              </li>
-            </ul>
-          </nav>
-          {status === "ready" && identity ? (
-            <div className="who mt-auto">
-              <span aria-hidden="true" className="avatar">
-                {identity.actor_id.charAt(0).toUpperCase()}
-              </span>
-              <span>
-                <span className="block font-semibold">{identity.actor_id}</span>
-                <span className="block opacity-80">{ROLE_NAMES[identity.role] ?? identity.role}</span>
-              </span>
-            </div>
-          ) : null}
-          <footer role="contentinfo" className="help mt-4">
-            Cần giúp? Gọi anh Minh (kỹ thuật viên), máy lẻ 115
-          </footer>
+          <div className="flex items-center justify-between gap-3">
+            <p className="brand px-2 pb-4 text-lg font-bold text-white">HUSC Tuyển sinh</p>
+            <button
+              type="button"
+              aria-expanded={navOpen}
+              aria-controls="admin-nav"
+              onClick={() => setNavOpen((open) => !open)}
+              className="mb-4 min-h-11 rounded-lg border border-white/30 px-3 text-sm font-semibold text-white lg:hidden"
+            >
+              {navOpen ? "Đóng menu" : "Mở menu"}
+            </button>
+          </div>
+          <div id="admin-nav" className={navOpen ? "flex flex-col" : "hidden lg:flex lg:flex-1 lg:flex-col"}>
+            <nav aria-label="Điều hướng chính">
+              <ul className="m-0 list-none p-0">
+                {visibleItems.map((item) => {
+                  const count = item.badge === "review" ? reviewCount : 0;
+                  return (
+                    <li key={item.to}>
+                      <NavLink to={item.to} end={item.end}>
+                        <span aria-hidden="true" className="ico">
+                          <item.Icon />
+                        </span>
+                        {count > 0 ? <SidebarBadge label={item.label} count={count} /> : item.label}
+                      </NavLink>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+            <hr />
+            <nav aria-label="Quản trị kỹ thuật">
+              <ul className="m-0 list-none p-0">
+                <li className="tech">
+                  <NavLink to="/admin">
+                    <span aria-hidden="true" className="ico">
+                      <Settings />
+                    </span>
+                    Quản trị kỹ thuật
+                  </NavLink>
+                </li>
+              </ul>
+            </nav>
+            {status === "ready" && identity ? (
+              <div className="who mt-auto">
+                <span aria-hidden="true" className="avatar">
+                  {identity.actor_id.charAt(0).toUpperCase()}
+                </span>
+                <span>
+                  <span className="block font-semibold">{identity.actor_id}</span>
+                  <span className="block opacity-80">{ROLE_NAMES[identity.role] ?? identity.role}</span>
+                </span>
+              </div>
+            ) : null}
+            <footer role="contentinfo" className="help mt-4">
+              Cần giúp? Gọi anh Minh (kỹ thuật viên), máy lẻ 115
+            </footer>
+          </div>
         </aside>
         <main id="main-content" className="min-w-0 flex-1 p-8">
           <div className="max-w-5xl">
