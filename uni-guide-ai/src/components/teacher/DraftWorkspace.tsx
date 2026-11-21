@@ -1,7 +1,8 @@
 // Teacher step 2 (design frame B8y2M): blocks that need a check on the left, the
 // PDF page they sit on in the middle, and the editor for the selected block on
 // the right. Data is the real block list of the uploaded document. Saving PATCHes
-// the block, the only draft-edit endpoint the backend offers.
+// the block, the only draft-edit endpoint the backend offers. Table blocks take a
+// pasted Excel range (table_tsv) through the same PATCH (frame ATska).
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
@@ -11,6 +12,7 @@ import {
   type ExceptionsListResponse,
 } from "@/lib/adminApi";
 import { warningLabel } from "@/lib/blockWarnings";
+import { ExcelPasteModal } from "@/components/admin/ExcelPasteModal";
 import { ExceptionBar } from "@/components/ui-kit/ExceptionBar";
 import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
 import { SecondaryButton } from "@/components/ui-kit/SecondaryButton";
@@ -18,6 +20,7 @@ import { SecondaryButton } from "@/components/ui-kit/SecondaryButton";
 type Block = ExceptionsListResponse["blocks"][number];
 
 const PREVIEW_CHARS = 90;
+const TABLE_TIER_WARNING = "TABLE_TIER_DISABLED";
 
 function blockTitle(block: Block): string {
   const text = block.text.trim().replace(/\s+/g, " ");
@@ -144,11 +147,13 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
           ) : (
             <BlockEditor
               key={selected.block_id}
+              documentId={documentId}
               block={selected}
               saving={save.isPending}
               errorMessage={save.isError ? messageOf(save.error) : null}
               onSave={(content) => save.mutate({ block: selected, content, nextId: next?.block_id ?? null })}
               onSkip={() => setPick(next?.block_id ?? null)}
+              onTableSaved={() => void exceptions.refetch()}
             />
           )}
         </div>
@@ -165,20 +170,32 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
 }
 
 interface BlockEditorProps {
+  documentId: string;
   block: Block;
   saving: boolean;
   errorMessage: string | null;
   onSave: (content: string) => void;
   onSkip: () => void;
+  onTableSaved: () => void;
 }
 
-function BlockEditor({ block, saving, errorMessage, onSave, onSkip }: BlockEditorProps) {
+function BlockEditor({ documentId, block, saving, errorMessage, onSave, onSkip, onTableSaved }: BlockEditorProps) {
   const [text, setText] = useState(block.text);
   const dirty = text !== block.text;
+  const isTable = block.block_type === "table";
   const labels = [...new Set(block.warnings.map(warningLabel))];
   return (
     <div className="space-y-3">
-      <h2 className="text-lg font-semibold text-[#143980]">Sửa mục · Trang {block.page}</h2>
+      <h2 className="text-lg font-semibold text-[#143980]">
+        {isTable ? "Sửa mục dạng bảng" : "Sửa mục"} · Trang {block.page}
+      </h2>
+      {block.warnings.includes(TABLE_TIER_WARNING) ? (
+        <ExceptionBar
+          severity="warning"
+          title="Bảng này chưa được đọc tự động"
+          detail="Số liệu lấy từ văn bản thô của trang bảng. Đối chiếu với trang PDF gốc, sửa nội dung hoặc dán lại bảng từ Excel."
+        />
+      ) : null}
       <div className="flex flex-wrap gap-1">
         {labels.map((label) => (
           <span key={label} className="rounded-999 bg-[#FFF3DC] px-2 py-0.5 text-xs font-semibold text-[#8A5A00]">
@@ -196,6 +213,9 @@ function BlockEditor({ block, saving, errorMessage, onSave, onSkip }: BlockEdito
         rows={12}
         className="w-full rounded-8 border border-[#D6DEEA] p-3 text-base text-[#0F1B2D] focus:outline-none focus:ring-2 focus:ring-[#143980]"
       />
+      {isTable ? (
+        <ExcelPasteModal documentId={documentId} blockId={block.block_id} onSuccess={onTableSaved} />
+      ) : null}
       {errorMessage !== null ? (
         <p role="alert" className="text-sm text-red-800">
           {errorMessage}
