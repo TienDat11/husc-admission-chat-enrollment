@@ -243,7 +243,7 @@ const History = () => {
           {!events.isError && rows.length === 0 ? (
             <p className="text-base text-[#4a5568]">Chưa có dòng nhật ký nào.</p>
           ) : null}
-          <ol aria-label="Dòng thời gian" className="m-0 list-none space-y-2 p-0">
+          <ol aria-label="Dòng thời gian" className="m-0 max-h-[70vh] list-none space-y-2 overflow-y-auto p-0 pr-1">
             {rows.map((row) => {
               const line = auditLine(row.event);
               const who = String(row.event.actor_id ?? "").trim();

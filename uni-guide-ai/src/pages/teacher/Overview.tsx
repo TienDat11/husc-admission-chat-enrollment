@@ -182,7 +182,7 @@ const Overview = () => {
                   </div>
                   <Link
                     to={action.to}
-                    className="inline-flex min-h-11 items-center rounded-lg bg-[#143980] px-4 text-base font-semibold text-white hover:bg-[#0f2d66]"
+                    className="inline-flex min-h-11 items-center rounded-lg bg-[#143980] px-4 text-base font-semibold !text-white hover:bg-[#0f2d66]"
                   >
                     {action.cta}
                   </Link>
