@@ -164,7 +164,7 @@ def _has_unresolved_blocker(codes: list[str]) -> bool:
 # ── routes ──────────────────────────────────────────────────────────────────
 
 
-@router.get("/{document_id}/exceptions", response_model=ExceptionsListResponse)
+@router.get("/{document_id:path}/exceptions", response_model=ExceptionsListResponse)
 async def list_exceptions(
     document_id: str = Path(..., description="Repo-relative source document id"),
     request: Request = None,
@@ -248,7 +248,7 @@ async def list_exceptions(
     )
 
 
-@router.patch("/{document_id}/blocks/{block_id}", response_model=PatchBlockResponse)
+@router.patch("/{document_id:path}/blocks/{block_id}", response_model=PatchBlockResponse)
 async def patch_block(
     document_id: str = Path(..., description="Repo-relative source document id"),
     block_id: str = Path(..., description="Block id"),
@@ -415,7 +415,7 @@ async def patch_block(
     )
 
 
-@router.post("/{document_id}/blocks/{block_id}/insert-missing-rows", response_model=InsertMissingRowsResponse)
+@router.post("/{document_id:path}/blocks/{block_id}/insert-missing-rows", response_model=InsertMissingRowsResponse)
 async def insert_missing_rows(
     document_id: str = Path(..., description="Repo-relative source document id"),
     block_id: str = Path(..., description="Block id"),
@@ -481,7 +481,7 @@ async def insert_missing_rows(
     )
 
 
-@router.post("/{document_id}/reocr", response_model=ReocrResponse)
+@router.post("/{document_id:path}/reocr", response_model=ReocrResponse)
 async def reocr(
     document_id: str = Path(..., description="Repo-relative source document id"),
     payload: ReocrRequest = ...,

@@ -68,7 +68,17 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
   });
 
   if (exceptions.isError) {
-    return <ExceptionBar title="Không tải được các mục của tài liệu" detail={messageOf(exceptions.error)} />;
+    // The draft list below stays usable: sending a draft does not need the block list.
+    return (
+      <div className="space-y-3 rounded-12 border border-[#D6DEEA] bg-white p-4">
+        <p className="font-semibold text-[#143980]">Chưa tải được các mục cần kiểm tra.</p>
+        <p className="text-sm text-[#4A5568]">Bạn vẫn có thể gửi duyệt các bản nháp bên dưới.</p>
+        <div className="flex flex-wrap gap-3">
+          <SecondaryButton onClick={() => void exceptions.refetch()}>Thử lại</SecondaryButton>
+          <SecondaryButton onClick={onRestart}>Quay lại Bước 1</SecondaryButton>
+        </div>
+      </div>
+    );
   }
   if (exceptions.isLoading) {
     return <p role="status" className="text-base">Đang tải các mục cần kiểm tra…</p>;

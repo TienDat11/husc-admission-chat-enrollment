@@ -200,3 +200,24 @@ def test_reocr_returns_202(pg_app):
     assert body["state"] == "queued"
     assert body["page_numbers"] == [1, 2]
     assert "job_id" in body
+
+
+def test_upload_ids_with_a_slash_match_the_exception_routes() -> None:
+    """``uploads/<sha256>.pdf`` ids carry a slash; each route must still match them.
+
+    The client sends the id as path segments. A single ``{document_id}`` segment
+    never matches a slash, so this fails on the old routes.
+    """
+    from starlette.routing import Match
+
+    upload_id = "uploads/" + "a" * 64 + ".pdf"
+    cases = [
+        ("GET", f"/source-documents/{upload_id}/exceptions"),
+        ("PATCH", f"/source-documents/{upload_id}/blocks/b-1"),
+        ("POST", f"/source-documents/{upload_id}/blocks/b-1/insert-missing-rows"),
+        ("POST", f"/source-documents/{upload_id}/reocr"),
+    ]
+    for method, path in cases:
+        scope = {"type": "http", "method": method, "path": path, "root_path": ""}
+        full = [r for r in admin_exceptions_router.routes if r.matches(scope)[0] == Match.FULL]
+        assert full, f"{method} {path} is not routed"

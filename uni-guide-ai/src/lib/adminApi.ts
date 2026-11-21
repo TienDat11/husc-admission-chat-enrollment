@@ -660,13 +660,19 @@ export type PreviewResponse = Schemas["PreviewResponse"];
 export type PreviewItem = Schemas["PreviewItem"];
 export type ChunkPreview = Schemas["ChunkPreview"];
 
+// Upload ids are "uploads/<sha256>.<ext>": the slash is part of the route path,
+// so each segment is encoded on its own and the separators stay.
+function documentPath(documentId: string): string {
+  return documentId.split("/").map(encodeURIComponent).join("/");
+}
+
 export async function listExceptions(
   token: string | null,
   documentId: string,
 ): Promise<ExceptionsListResponse> {
   return adminRequest<ExceptionsListResponse>(
     token,
-    `/admin/source-documents/${encodeURIComponent(documentId)}/exceptions`,
+    `/admin/source-documents/${documentPath(documentId)}/exceptions`,
   );
 }
 
@@ -678,7 +684,7 @@ export async function patchBlock(
 ): Promise<PatchBlockResponse> {
   return adminRequest<PatchBlockResponse>(
     token,
-    `/admin/source-documents/${encodeURIComponent(documentId)}/blocks/${blockId}`,
+    `/admin/source-documents/${documentPath(documentId)}/blocks/${blockId}`,
     {
       method: "PATCH",
       body: JSON.stringify(body),
@@ -694,7 +700,7 @@ export async function insertMissingRows(
 ): Promise<InsertMissingRowsResponse> {
   return adminRequest<InsertMissingRowsResponse>(
     token,
-    `/admin/source-documents/${encodeURIComponent(documentId)}/blocks/${blockId}/insert-missing-rows`,
+    `/admin/source-documents/${documentPath(documentId)}/blocks/${blockId}/insert-missing-rows`,
     {
       method: "POST",
       body: JSON.stringify(body),
@@ -708,7 +714,7 @@ export async function reocr(
   body: ReocrRequest,
 ): Promise<ReocrResponse> {
   const res = await fetch(
-    `${getApiBaseUrl()}/admin/source-documents/${encodeURIComponent(documentId)}/reocr`,
+    `${getApiBaseUrl()}/admin/source-documents/${documentPath(documentId)}/reocr`,
     {
       method: "POST",
       headers: {
