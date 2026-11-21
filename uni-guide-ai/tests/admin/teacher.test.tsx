@@ -1050,3 +1050,48 @@ describe("Lịch sử — khóa idempotency theo từng ý định khôi phục 
     expect(keys[2]).not.toBe(keys[0]);
   });
 });
+
+describe("Câu hỏi chưa trả lời: khung chi tiết", () => {
+  it("hiện câu hỏi đầu tiên ngay khi mở, không cần bấm", async () => {
+    const unanswered = {
+      items: [
+        {
+          trace_id: "t-1",
+          question: "Ngành Công nghệ thông tin có học bạ không?",
+          status_code: "NO_INFO",
+          occurrence_count: 2,
+          asked_at: "2026-04-01T08:00:00Z",
+          sla_due_at: "2099-01-01T00:00:00Z",
+          is_overdue: false,
+          resolved: false,
+          out_of_scope: false,
+          resolved_by_record_id: null,
+        },
+        {
+          trace_id: "t-2",
+          question: "Học phí hệ chính quy là bao nhiêu?",
+          status_code: "OUT_OF_DOMAIN",
+          occurrence_count: 1,
+          asked_at: "2026-04-01T09:00:00Z",
+          sla_due_at: "2099-01-01T00:00:00Z",
+          is_overdue: false,
+          resolved: false,
+          out_of_scope: false,
+          resolved_by_record_id: null,
+        },
+      ],
+      count: 2,
+    };
+    renderScreen("/quan-ly/cau-hoi", EDITOR, <Unanswered />, (url) => {
+      if (url.includes("/admin/unanswered")) return json(unanswered);
+      return defaultHandler(url);
+    });
+    expect(
+      await screen.findByRole("heading", { name: "Xử lý câu hỏi đang chọn" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Chế độ 1: Tạo mục Hỏi/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Đánh dấu Ngoài phạm vi/ }),
+    ).toBeInTheDocument();
+  });
+});
