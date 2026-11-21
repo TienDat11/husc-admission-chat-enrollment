@@ -39,16 +39,23 @@ export function ChatBotBubble({ message, onRetry, followUps, onFollowUp }: ChatB
   const generationFailure = isGenerationFailure(message);
   const isError = !!message.errorKind;
   const [rated, setRated] = useState<'helpful' | 'unclear' | null>(null);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const canRate = !!message.traceId && !isError && !generationFailure && !!message.content;
   const rate = (choice: 'helpful' | 'unclear') => {
-    const next = rated === choice ? null : choice;
-    setRated(next);
-    if (next === null || !message.traceId) return;
+    // The feedback API takes a boolean and has no retraction, so a given rating
+    // stays: pressing the same button again is a no-op, not a silent local reset.
+    if (rated === choice || !message.traceId) return;
+    const previous = rated;
+    setRated(choice);
+    setFeedbackError(null);
     sendFeedback({
       trace_id: message.traceId,
-      helpful: next === 'helpful',
+      helpful: choice === 'helpful',
       question: message.retryQuery ?? null,
-    }).catch(() => setRated(null));
+    }).catch(() => {
+      setRated(previous);
+      setFeedbackError('Chưa gửi được đánh giá. Vui lòng thử lại.');
+    });
   };
   // Dùng bản sao đã được trang trí (decorateAnswer đã chạy trong useChatStream);
   // khi transport lỗi, hiển thị bản dịch theo mã lỗi thay vì nội dung trống/raw err.message.
@@ -125,6 +132,11 @@ export function ChatBotBubble({ message, onRetry, followUps, onFollowUp }: ChatB
               <ThumbsDown className="h-3.5 w-3.5" aria-hidden="true" />
               Báo thông tin chưa rõ
             </button>
+            {feedbackError ? (
+              <p role="status" className="w-full text-[12px] text-[#9B1C1C]">
+                {feedbackError}
+              </p>
+            ) : null}
           </div>
         )}
 

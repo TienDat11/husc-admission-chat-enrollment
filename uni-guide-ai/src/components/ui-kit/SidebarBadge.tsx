@@ -9,7 +9,8 @@ export const SidebarBadge = ({ count }: { count: number }) => {
       data-testid="sidebar-badge"
       className="ml-auto shrink-0 rounded-full bg-white px-2 py-0.5 text-sm font-semibold text-[#103157]"
     >
-      {count}
+      <span>{count}</span>
+      <span className="sr-only"> mục cần xử lý</span>
     </span>
   );
 };

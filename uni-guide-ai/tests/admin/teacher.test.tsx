@@ -353,6 +353,69 @@ describe("Chờ duyệt", () => {
   });
 });
 
+describe("Chờ duyệt — đổi bản ghi không mang theo quyết định cũ (G1, G2)", () => {
+  const base = {
+    record_type: "HOC_PHI",
+    version: 2,
+    effective_from: "2026-01-01",
+    effective_to: "2027-01-01",
+    status: "review",
+    authority_level: "husc_official",
+    source_document_id: null,
+    source_url: null,
+    source_page: null,
+    published_at: null,
+    supersedes: null,
+    locale: "vi",
+    text: "Học phí Hán Nôm 15tr.",
+    values: {},
+  };
+  const recordA = { ...base, record_id: "HOC_PHI:2026", admission_year: 2026, authored_by: "cb.soan" };
+  const recordB = { ...base, record_id: "HOC_PHI:2027", admission_year: 2027, authored_by: "cb.duyet" };
+  const handler = (url: string): Response => {
+    if (url.includes("/admin/records") && url.includes("status=review"))
+      return json({ records: [recordA, recordB], total: 2 });
+    if (url.includes("/review-diff"))
+      return json({
+        record_id: "HOC_PHI:2026",
+        draft_version: 2,
+        high_impact_version: "2026.10",
+        diff: {
+          record_id: "HOC_PHI:2026",
+          baseline_version: 1,
+          draft_version: 2,
+          high_impact_version: "2026.10",
+          has_high_impact: false,
+          changes: [],
+        },
+        validation_errors: [],
+      });
+    if (url.includes("/review-preview"))
+      return json({ preview_status: "ok", answer: "", chunks: [], sources: [] });
+    return defaultHandler(url);
+  };
+
+  it("closes the publish confirmation when another record is selected", async () => {
+    renderScreen("/quan-ly/cho-duyet", REVIEWER, <PendingReview />, handler);
+    await screen.findByText(/Chờ duyệt · 2 mục/);
+    await userEvent.click(screen.getByText("Duyệt & Phát hành"));
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /2027/ }));
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+    });
+  });
+
+  it("clears a typed reject reason when another record is selected", async () => {
+    renderScreen("/quan-ly/cho-duyet", REVIEWER, <PendingReview />, handler);
+    await screen.findByText(/Chờ duyệt · 2 mục/);
+    const reason = screen.getByLabelText("Lý do trả lại (bắt buộc khi trả lại)");
+    await userEvent.type(reason, "Sai năm học");
+    await userEvent.click(screen.getByRole("button", { name: /2027/ }));
+    expect(screen.getByLabelText("Lý do trả lại (bắt buộc khi trả lại)")).toHaveValue("");
+  });
+});
+
 describe("Chờ duyệt — nhận nháp (T15)", () => {
   const seedDraft = {
     record_id: "HOC_PHI:2026",
@@ -934,5 +997,56 @@ describe("Lịch sử phát hành & Nhật ký kiểm toán", () => {
     await waitFor(() => {
       expect(screen.getByText(/Đã khôi phục/)).toBeInTheDocument();
     });
+  });
+});
+
+describe("Lịch sử — khóa idempotency theo từng ý định khôi phục (G5)", () => {
+  it("a retry of the same intention reuses its key; a new reason mints a new one", async () => {
+    const keys: Array<string | null> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/admin/identity")) return json(REVIEWER);
+        if (url.includes("/admin/releases/previous/rollback")) {
+          keys.push(new Headers(init?.headers).get("Idempotency-Key"));
+          return json({ detail: "Không khôi phục được." }, 400);
+        }
+        if (url.includes("/admin/releases"))
+          return json({
+            ...emptyRelease,
+            previous: { release_id: "R-0", created_at: "2026-08-01" },
+          });
+        return defaultHandler(url);
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AdminSessionProvider>
+          <MemoryRouter initialEntries={["/quan-ly/lich-su"]}>
+            <Routes>
+              <Route path="/quan-ly/lich-su" element={<RecordsGate />}>
+                <Route index element={<History />} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </AdminSessionProvider>
+      </QueryClientProvider>,
+    );
+    await userEvent.click(await screen.findByText("Khôi phục về phiên bản này (Rollback)"));
+    const reason = screen.getByLabelText("Lý do khôi phục (bắt buộc)");
+    await userEvent.type(reason, "Bản mới sai năm");
+    await userEvent.click(screen.getByText("Xác nhận khôi phục phiên bản trước"));
+    await waitFor(() => expect(keys).toHaveLength(1));
+    await userEvent.click(screen.getByText("Xác nhận khôi phục phiên bản trước"));
+    await waitFor(() => expect(keys).toHaveLength(2));
+    await userEvent.clear(reason);
+    await userEvent.type(reason, "Bản mới sai học phí");
+    await userEvent.click(screen.getByText("Xác nhận khôi phục phiên bản trước"));
+    await waitFor(() => expect(keys).toHaveLength(3));
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
   });
 });

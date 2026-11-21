@@ -89,6 +89,9 @@ export default {
         sm: "calc(var(--radius) - 4px)",
         "2xl": "1rem",
         "3xl": "1.5rem",
+        8: "8px",
+        12: "12px",
+        999: "9999px",
       },
       boxShadow: {
         glow: "var(--shadow-glow)",

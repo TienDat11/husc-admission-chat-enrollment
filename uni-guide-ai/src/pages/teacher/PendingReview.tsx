@@ -37,6 +37,8 @@ const recordTitle = (record: CanonicalRecord) =>
  * disabled for the record's author, who can still ask the Bot, compare, and
  * return the record with a reason.
  */
+const LIST_PAGE_SIZE = 25;
+
 const PendingReview = () => {
   const { identity } = useAdminSession();
   const queryClient = useQueryClient();
@@ -53,9 +55,11 @@ const PendingReview = () => {
     key: string;
     recordId: string;
     action: "approve" | "reject";
+    reason: string | null;
   } | null>(null);
   // T15 batch review: one key per record per intention so a retry replays.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
   const [batchConfirming, setBatchConfirming] = useState(false);
   const [batchKey, setBatchKey] = useState<string | null>(null);
   const [batchResult, setBatchResult] = useState<{
@@ -91,12 +95,26 @@ const PendingReview = () => {
   });
 
   const commit = (record: CanonicalRecord, action: "approve" | "reject", reason?: string) => {
+    // Four-eyes is re-checked here as well as on the button: a confirm dialog can
+    // outlive the selection it was opened on.
+    if (
+      action === "approve" &&
+      (record.authored_by === identity?.actor_id || !identity?.actions.includes("records.approve"))
+    ) {
+      setConfirming(false);
+      setActionError("Bạn không thể duyệt mục này.");
+      return;
+    }
+    const reasonValue = reason ?? null;
     const reused =
-      intent && intent.recordId === record.record_id && intent.action === action
+      intent &&
+      intent.recordId === record.record_id &&
+      intent.action === action &&
+      intent.reason === reasonValue
         ? intent.key
         : null;
     const key = reused ?? newIdempotencyKey();
-    setIntent({ key, recordId: record.record_id, action });
+    setIntent({ key, recordId: record.record_id, action, reason: reasonValue });
     setActionError(null);
     const run =
       action === "approve"
@@ -114,6 +132,16 @@ const PendingReview = () => {
           failure instanceof Error ? failure.message : "Hành động thất bại.",
         );
       });
+  };
+
+  // A pending confirm or a typed reject reason belongs to the record it was opened on.
+  const selectRecord = (recordId: string) => {
+    setSelectedId(recordId);
+    setPreview(null);
+    setColumn("proposed");
+    setConfirming(false);
+    setRejectReason("");
+    setActionError(null);
   };
 
   const toggleSelect = (recordId: string) => {
@@ -223,7 +251,7 @@ const PendingReview = () => {
             Chờ duyệt · {rows.length} mục
           </h2>
           <ul className="mt-3 space-y-2">
-            {rows.map((record) => {
+            {rows.slice(0, visibleCount).map((record) => {
               const active = selected.record_id === record.record_id;
               const own = record.authored_by === identity?.actor_id;
               return (
@@ -249,11 +277,7 @@ const PendingReview = () => {
                     <button
                       type="button"
                       aria-pressed={active}
-                      onClick={() => {
-                        setSelectedId(record.record_id);
-                        setPreview(null);
-                        setColumn("proposed");
-                      }}
+                      onClick={() => selectRecord(record.record_id)}
                       className="min-w-0 flex-1 text-left"
                     >
                       <span className="block font-display text-[14px] font-semibold text-[#0F1B2D]">
@@ -310,6 +334,16 @@ const PendingReview = () => {
               );
             })}
           </ul>
+          {rows.length > visibleCount ? (
+            <div className="mt-3 flex items-center justify-between gap-3 text-[13px] text-[#474747]">
+              <span>
+                Hiển thị {visibleCount} / {rows.length} mục
+              </span>
+              <button type="button" className="btn" onClick={() => setVisibleCount((n) => n + LIST_PAGE_SIZE)}>
+                Hiển thị thêm
+              </button>
+            </div>
+          ) : null}
 
           {claimError ? (
             <p role="alert" className="note bad mt-3">
@@ -388,6 +422,8 @@ const PendingReview = () => {
         <div className="min-w-0 space-y-4">
           <section
             aria-label="So sánh bản đang chạy, đề xuất mới và bản gốc PDF"
+            id="so-sanh-panel"
+            role="tabpanel"
             className="rounded-[12px] border border-[#D6DEEA] bg-white p-5"
           >
             <h2 className="!m-0 font-display text-[18px] font-semibold text-[#0F1B2D]">
@@ -400,6 +436,7 @@ const PendingReview = () => {
                   key={item.id}
                   type="button"
                   role="tab"
+                  aria-controls="so-sanh-panel"
                   aria-selected={column === item.id}
                   onClick={() => setColumn(item.id)}
                   className={cn(
@@ -576,7 +613,7 @@ const PendingReview = () => {
               </p>
             ) : null}
 
-            {confirming ? (
+            {confirming && canReview ? (
               <div
                 role="alertdialog"
                 aria-labelledby="xac-nin-h"

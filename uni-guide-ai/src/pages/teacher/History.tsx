@@ -70,7 +70,7 @@ const History = () => {
   const [rollbackReason, setRollbackReason] = useState("");
   const [rollbackDone, setRollbackDone] = useState(false);
   const [rollbackError, setRollbackError] = useState<string | null>(null);
-  const [rollbackKey, setRollbackKey] = useState<string | null>(null);
+  const [rollbackKey, setRollbackKey] = useState<{ key: string; reason: string } | null>(null);
 
   const events = useQuery({
     queryKey: ["admin", "audit-events"],
@@ -85,12 +85,12 @@ const History = () => {
   });
 
   const rollback = useMutation({
-    mutationFn: async (reason: string) => {
-      const key = rollbackKey ?? newIdempotencyKey();
-      setRollbackKey(key);
-      return rollbackRelease(null, { reason }, { idempotencyKey: key });
-    },
+    // The key is minted per click and passed in as a variable. Reading state here
+    // would be a stale closure that reuses the previous intention's key.
+    mutationFn: ({ reason, key }: { reason: string; key: string }) =>
+      rollbackRelease(null, { reason }, { idempotencyKey: key }),
     onSuccess: () => {
+      setRollbackKey(null);
       setRollbackDone(true);
       setRollbackOpen(false);
       setRollbackReason("");
@@ -209,8 +209,11 @@ const History = () => {
                   className="min-h-11 rounded-lg bg-[#6b4300] px-4 text-base font-semibold text-white disabled:opacity-50"
                   disabled={!rollbackReason.trim() || rollback.isPending}
                   onClick={() => {
-                    setRollbackKey(null);
-                    rollback.mutate(rollbackReason.trim());
+                    const reason = rollbackReason.trim();
+                    // Same reason as the last attempt is a retry of that intention and keeps its key.
+                    const key = rollbackKey?.reason === reason ? rollbackKey.key : newIdempotencyKey();
+                    setRollbackKey({ key, reason });
+                    rollback.mutate({ reason, key });
                   }}
                 >
                   {rollback.isPending ? "Đang khôi phục…" : "Xác nhận khôi phục phiên bản trước"}
