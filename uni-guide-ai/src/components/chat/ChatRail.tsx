@@ -28,7 +28,8 @@ export function ChatRail({
   profile,
 }: ChatRailProps) {
   return (
-    <aside className="flex flex-col h-full w-[320px] overflow-y-auto border-r border-[#E3E8F0] bg-white shrink-0">
+    <aside className="flex flex-col h-full w-[320px] overflow-hidden border-r border-[#E3E8F0] bg-white shrink-0">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       {/* Khối thương hiệu */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-[#E3E8F0]">
         <Shield className="w-6 h-[28px] text-[#143980]" aria-hidden="true" />
@@ -97,10 +98,11 @@ export function ChatRail({
           ))}
         </div>
       </div>
+      </div>
 
       {/* Hồ sơ xét tuyển của thí sinh */}
       {profile !== null ? (
-        <div className="shrink-0 max-h-[45%] overflow-y-auto border-t border-[#E3E8F0] p-4">
+        <div className="shrink-0 max-h-[50%] overflow-y-auto border-t border-[#E3E8F0] p-4">
           {profile}
         </div>
       ) : null}

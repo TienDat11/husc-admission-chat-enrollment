@@ -45,20 +45,20 @@ const KV_OPTIONS = [
   { value: 'KV2', label: 'KV2 — ưu tiên 0,25' },
 ];
 
-const DT_OPTIONS = [
+export const DT_OPTIONS = [
   { value: 'none', label: 'Không' },
   { value: 'UT1', label: 'UT1 — ưu tiên 2,0' },
   { value: 'UT2', label: 'UT2 — ưu tiên 1,0' },
 ];
 
-const METHOD_OPTIONS = [
+export const METHOD_OPTIONS = [
   { value: 'thi_thpt', label: 'Xét điểm thi tốt nghiệp' },
   { value: 'xe_tuyen_thang', label: 'Xét tuyển thẳng' },
   { value: 'cn_sinh_vien', label: 'Cử nhân selben ngành' },
   { value: 'khac', label: 'Khác' },
 ];
 
-export function StudentProfileForm() {
+export function StudentProfileForm({ onSaved }: { onSaved?: () => void } = {}) {
   const { profile, setProfile, clearProfile, hasProfile } = useStudentProfile();
   const [saving, setSaving] = useState(false);
   const [rateLimitedMs, setRateLimitedMs] = useState(0); // 0 = not limited
@@ -125,6 +125,7 @@ export function StudentProfileForm() {
       setProfile(data as never);
       setMessage({ kind: 'ok', text: 'Đã lưu hồ sơ thí sinh.' });
       toast.success('Đã lưu hồ sơ thí sinh');
+      onSaved?.();
     } catch (err) {
       setMessage({ kind: 'err', text: 'Không thể kết nối máy chủ. Vui lòng thử lại.' });
     } finally {

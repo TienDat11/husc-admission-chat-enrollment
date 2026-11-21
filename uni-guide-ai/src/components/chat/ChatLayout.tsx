@@ -11,6 +11,7 @@ import { useChatStream } from '@/hooks/useChatStream';
 import { useBackendReadiness, type ReadinessStage } from '@/hooks/useBackendReadiness';
 import { useStudentProfile } from '@/hooks/useStudentProfile';
 import { StudentProfileForm } from '@/components/student/StudentProfileForm';
+import { EligibilityCard } from '@/components/student/EligibilityCard';
 import { RoadmapPanel } from '@/components/student/RoadmapPanel';
 import { OutOfScopeCard } from '@/components/student/OutOfScopeCard';
 import { LOCALIZED_ERROR_COPY } from '@/lib/chat-helpers';
@@ -177,7 +178,7 @@ export function ChatLayout() {
           history={history}
           activeMessageId={activeMessageId}
           onSelectEntry={handleSelectEntry}
-          profile={isDesktop ? <StudentProfileForm /> : null}
+          profile={isDesktop ? <EligibilityCard /> : null}
         />
       </div>
         {/* Lịch sử phiên — phục hồi hành vi từ HEAD (test ids luôn có mặt trong DOM). */}
