@@ -14,7 +14,7 @@ test.describe("Thêm thông tin — tải tài liệu", () => {
     await page.goto("/quan-ly/them");
     const pdf = uniquePdf();
     await page.locator('input[type="file"]').setInputFiles(pdf);
-    await page.getByRole("button", { name: "Tải lên" }).click();
+    await page.getByRole("button", { name: "Đọc và kiểm tra tài liệu →" }).click();
 
     await expect(page.getByRole("status")).toContainText(/Hoàn tất|Đang xử lý/, { timeout: 60_000 });
     await expect(page.getByText("Số trang đã đọc:")).toBeVisible({ timeout: 60_000 });
@@ -30,7 +30,7 @@ test.describe("Thêm thông tin — tải tài liệu", () => {
     const pdf = uniquePdf();
     await page.route("**/admin/source-documents/upload", (route) => route.abort());
     await page.locator('input[type="file"]').setInputFiles(pdf);
-    await page.getByRole("button", { name: "Tải lên" }).click();
+    await page.getByRole("button", { name: "Đọc và kiểm tra tài liệu →" }).click();
 
     await expect(page.getByText("Không kết nối được máy chủ")).toBeVisible();
     await page.unroute("**/admin/source-documents/upload");

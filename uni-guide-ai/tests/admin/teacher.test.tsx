@@ -229,10 +229,10 @@ describe("Thêm thông tin (tải tài liệu)", () => {
     expect(document.querySelector('input[type="file"]')).toBeNull();
   });
 
-  it("editor: shows the file input and a disabled Tải lên until a file is chosen", async () => {
+  it("editor: shows the file input and a disabled upload button until a file is chosen", async () => {
     renderScreen("/quan-ly/them", EDITOR, <AddInfo />, defaultHandler);
     expect(await screen.findByLabelText(/Chọn tệp PDF/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Tải lên" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Đọc và kiểm tra tài liệu →" })).toBeDisabled();
   });
 });
 

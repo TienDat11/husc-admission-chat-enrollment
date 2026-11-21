@@ -201,10 +201,6 @@ const AddInfo = () => {
 
   return (
     <section data-workarea="" aria-labelledby="addinfo-title" className="space-y-6">
-      <h1 id="addinfo-title" className="text-2xl font-bold text-[#143980]">
-        Thêm thông tin
-      </h1>
-
       <ol aria-label="Các bước" className="flex flex-wrap gap-2">
         {STEPS.map((label, index) => (
           <li key={label}>
@@ -220,6 +216,15 @@ const AddInfo = () => {
         ))}
       </ol>
 
+      <div className="space-y-2">
+        <h1 id="addinfo-title" className="text-2xl font-bold text-[#143980]">
+          Thêm thông tin tuyển sinh
+        </h1>
+        <p className="text-base text-[#4A5568]">
+          Chọn tài liệu để Bot kiểm tra. Bot chỉ dùng thông tin sau khi được duyệt và phát hành.
+        </p>
+      </div>
+
       {!canUpload ? (
         <ExceptionBar severity="info" title="Bạn chỉ có quyền xem" detail="Liên hệ người soạn để tải tài liệu lên." />
       ) : null}
@@ -231,14 +236,14 @@ const AddInfo = () => {
               Chọn tệp PDF, DOCX hoặc XLSX (tối đa 20 MB)
             </label>
             {chosen ? (
-              <div className="flex items-center justify-between gap-4 rounded-12 border border-[#143980] bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-12 border border-[#143980] bg-white p-4">
                 <div className="min-w-0">
-                  <p className="truncate font-semibold text-[#143980]">{chosen.name}</p>
+                  <p className="truncate text-[15px] font-semibold text-[#143980]">{chosen.name}</p>
                   <p className="text-sm text-[#6B7686]">{formatFileSize(chosen.size)} · Sẵn sàng tải lên</p>
                 </div>
-                <span className="shrink-0 rounded-full bg-[#E6ECF7] px-3 py-1 text-sm font-semibold text-[#143980]">
-                  Đã chọn
-                </span>
+                <SecondaryButton onClick={() => fileInputRef.current?.click()} disabled={upload.isPending}>
+                  Đổi tệp khác
+                </SecondaryButton>
               </div>
             ) : null}
             <input
@@ -250,9 +255,11 @@ const AddInfo = () => {
               onChange={(event) => setChosen(event.target.files?.[0] ?? null)}
               className="sr-only"
             />
-            <SecondaryButton onClick={() => fileInputRef.current?.click()} disabled={upload.isPending}>
-              {chosen ? "Đổi tệp khác" : "Chọn tệp"}
-            </SecondaryButton>
+            {chosen === null ? (
+              <SecondaryButton onClick={() => fileInputRef.current?.click()} disabled={upload.isPending}>
+                Chọn tệp
+              </SecondaryButton>
+            ) : null}
           </div>
 
           {failure !== null && failure.kind !== "duplicate-document" ? (
@@ -284,7 +291,7 @@ const AddInfo = () => {
           <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-[#E3E8F0] bg-white py-3">
             <p className="text-sm text-[#6B7686]">Bước 1 / 2 · Chưa hiển thị cho thí sinh</p>
             <PrimaryButton type="submit" disabled={chosen === null || upload.isPending} className="w-full md:w-auto">
-              {upload.isPending ? "Đang tải lên..." : "Tải lên"}
+              {upload.isPending ? "Đang tải lên..." : "Đọc và kiểm tra tài liệu →"}
             </PrimaryButton>
           </div>
         </form>

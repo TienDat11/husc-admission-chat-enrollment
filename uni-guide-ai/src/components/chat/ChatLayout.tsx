@@ -257,7 +257,7 @@ export function ChatLayout() {
             </div>
           ))}
           {isDesktop && (
-            <div className="max-w-[640px]">
+            <div className="max-w-[960px]">
               <RoadmapPanel />
             </div>
           )}
