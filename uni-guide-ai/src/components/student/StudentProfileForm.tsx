@@ -54,7 +54,7 @@ export const DT_OPTIONS = [
 export const METHOD_OPTIONS = [
   { value: 'thi_thpt', label: 'Xét điểm thi tốt nghiệp' },
   { value: 'xe_tuyen_thang', label: 'Xét tuyển thẳng' },
-  { value: 'cn_sinh_vien', label: 'Cử nhân selben ngành' },
+  { value: 'cn_sinh_vien', label: 'Cử nhân cùng ngành' },
   { value: 'khac', label: 'Khác' },
 ];
 

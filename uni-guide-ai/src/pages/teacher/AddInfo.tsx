@@ -15,6 +15,7 @@ import { ExceptionBar } from "@/components/ui-kit/ExceptionBar";
 import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
 import { SecondaryButton } from "@/components/ui-kit/SecondaryButton";
 import { StatusPill, type PillTone } from "@/components/ui-kit/StatusPill";
+import { DraftWorkspace } from "@/components/teacher/DraftWorkspace";
 
 const STEPS = ["01 · Chọn tài liệu", "02 · Kiểm tra & gửi duyệt"];
 const STORAGE_KEY = "admin.addinfo.upload";
@@ -23,6 +24,7 @@ const POLL_MS = 2000;
 const NETWORK_MESSAGE = "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.";
 
 const StoredUploadSchema = z.object({
+  documentId: z.string(),
   parseJobId: z.string(),
   fileName: z.string(),
   pageCount: z.number(),
@@ -40,6 +42,7 @@ function readStored(): StoredUpload | null {
 
 function toStored(report: UploadReport, fileName: string): StoredUpload {
   return {
+    documentId: report.document_id,
     parseJobId: report.parse_job_id,
     fileName,
     pageCount: report.report.page_count,
@@ -74,7 +77,7 @@ type DraftSend = { status: "idle" } | { status: "sending" } | { status: "sent" }
 
 const SEND_CONCURRENCY = 3;
 
-function DraftReview({ ids }: { ids: string[] }) {
+function DraftReview({ ids, documentId }: { ids: string[]; documentId: string }) {
   const [sends, setSends] = useState<Record<string, DraftSend>>({});
   const busy = Object.values(sends).some((send) => send.status === "sending");
   useEffect(() => {
@@ -106,11 +109,11 @@ function DraftReview({ ids }: { ids: string[] }) {
         {busy ? "Đang gửi duyệt…" : sentCount > 0 ? `Đã gửi duyệt ${sentCount}/${ids.length} bản nháp.` : null}
       </div>
       <ul className="space-y-3">
-        {ids.map((id) => {
+        {ids.map((id, index) => {
           const send: DraftSend = sends[id] ?? { status: "idle" };
           return (
             <li key={id} className="space-y-2 rounded-md border border-zinc-400 bg-white p-3">
-              <p className="break-all text-sm">{id}</p>
+              <p className="text-sm font-semibold">Bản nháp {index + 1}</p>
               {send.status === "sent" ? (
                 <p className="font-semibold text-emerald-800">Đã gửi duyệt</p>
               ) : (
@@ -118,7 +121,7 @@ function DraftReview({ ids }: { ids: string[] }) {
                   onClick={() => void sendOne(id)}
                   disabled={busy}
                   aria-busy={send.status === "sending"}
-                  aria-label={`Gửi duyệt bản nháp ${id}`}
+                  aria-label={`Gửi duyệt bản nháp ${index + 1}`}
                 >
                   {send.status === "sending" ? "Đang gửi…" : "Gửi duyệt"}
                 </PrimaryButton>
@@ -128,7 +131,7 @@ function DraftReview({ ids }: { ids: string[] }) {
                   {send.message}
                 </p>
               ) : null}
-              <Link to={`/quan-ly/them/ngoai-le/${encodeURIComponent(id)}`} className="block underline">
+              <Link to={`/quan-ly/them/ngoai-le/${encodeURIComponent(documentId)}`} className="block underline">
                 Xử lý ngoại lệ bảng
               </Link>
             </li>
@@ -333,7 +336,17 @@ const AddInfo = () => {
                 <p key={warning}>{warning}</p>
               ))}
               {stored.draftRecordIds.length > 0 ? (
-                <DraftReview key={stored.parseJobId} ids={stored.draftRecordIds} />
+                <>
+                  <DraftWorkspace
+                    documentId={stored.documentId}
+                    pageCount={stored.pageCount}
+                    onRestart={() => {
+                      sessionStorage.removeItem(STORAGE_KEY);
+                      setStored(null);
+                    }}
+                  />
+                  <DraftReview key={stored.parseJobId} ids={stored.draftRecordIds} documentId={stored.documentId} />
+                </>
               ) : null}
             </div>
           ) : null}
