@@ -320,6 +320,30 @@ export async function editRecord(
   );
 }
 
+/** One event of the audit ledger, as `GET /admin/audit/events` returns it. */
+export interface AuditEventView {
+  seq: number;
+  entry_hash: string;
+  event: {
+    action: string;
+    actor_id: string;
+    role?: string | null;
+    target: string;
+    timestamp: string;
+    reason?: string | null;
+    before_version?: number | null;
+    after_version?: number | null;
+  };
+}
+
+/** `GET /admin/audit/events?target=` — newest-first ledger events for one record. */
+export async function fetchRecordHistory(
+  token: string | null,
+  recordId: string,
+): Promise<{ events: AuditEventView[]; count: number }> {
+  return adminRequest(token, `/admin/audit/events?target=${encodeURIComponent(recordId)}&limit=100`);
+}
+
 export async function transitionRecord(
   token: string | null,
   recordId: string,

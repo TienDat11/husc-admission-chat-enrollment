@@ -1240,3 +1240,91 @@ describe("Chờ duyệt: tác giả, khung trống và nội dung hộp thoại"
     expect(screen.queryByText(/phút/)).not.toBeInTheDocument();
   });
 });
+
+describe("Kho thông tin: thu hồi và lịch sử phiên bản", () => {
+  const WITHDRAWER: AdminIdentity = {
+    actor_id: "cb.duyet",
+    role: "reviewer_publisher",
+    actions: ["records.read", "records.edit", "records.withdraw"],
+  };
+  const publishedRecord = {
+    schema_version: "1",
+    record_id: "HOC_PHI_2026",
+    record_type: "HOC_PHI",
+    version: 2,
+    admission_year: 2026,
+    effective_from: "2026-01-01",
+    effective_to: null,
+    status: "published",
+    authority_level: "official",
+    source_document_id: null,
+    source_url: null,
+    source_page: null,
+    published_at: "2026-01-02T03:04:05Z",
+    authored_by: "nguyenvana",
+    supersedes: null,
+    locale: "vi",
+    text: "Học phí hệ chính quy năm 2026 là 15.000.000 đồng.",
+  };
+  const auditHistory = {
+    events: [
+      {
+        seq: 1,
+        entry_hash: "h1",
+        event: {
+          action: "publish",
+          actor_id: "cb.duyet",
+          role: "reviewer_publisher",
+          target: "HOC_PHI_2026",
+          timestamp: "2026-01-02T03:04:05Z",
+          reason: null,
+          before_version: 1,
+          after_version: 2,
+        },
+      },
+    ],
+    count: 1,
+  };
+  const vaultHandler = (url: string, method: string): Response => {
+    if (url.includes("/admin/audit")) return json(auditHistory);
+    if (url.includes("/admin/records/") && method === "POST")
+      return json({ record: publishedRecord });
+    if (url.includes("/admin/records"))
+      return json({ records: [publishedRecord], total: 1 });
+    throw new Error(`Unmocked URL: ${url}`);
+  };
+
+  it("thu hồi: xác nhận bị khóa đến khi có lý do, rồi gửi transition withdraw kèm phiên bản", async () => {
+    const calls = renderScreen("/quan-ly/kho", WITHDRAWER, <Vault />, vaultHandler);
+    await userEvent.click(await screen.findByRole("button", { name: "Thu hồi" }));
+    const confirmButton = screen.getByRole("button", { name: "Xác nhận thu hồi" });
+    expect(confirmButton).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Lý do"), "Sai học phí");
+    expect(confirmButton).toBeEnabled();
+    await userEvent.click(confirmButton);
+    await waitFor(() =>
+      expect(
+        calls.some((call) => call.method === "POST" && call.url.includes("/transitions")),
+      ).toBe(true),
+    );
+    const post = calls.find((call) => call.url.includes("/transitions"));
+    expect(post?.body).toMatchObject({
+      action: "withdraw",
+      expected_version: 2,
+      reason: "Sai học phí",
+    });
+  });
+
+  it("hiện lịch sử phiên bản từ nhật ký kiểm toán của bản ghi", async () => {
+    renderScreen("/quan-ly/kho", WITHDRAWER, <Vault />, vaultHandler);
+    expect(await screen.findByText(/publish · v1 → v2/)).toBeInTheDocument();
+  });
+
+  it("không hiện Thu hồi khi người dùng không có records.withdraw", async () => {
+    renderScreen("/quan-ly/kho", EDITOR, <Vault />, vaultHandler);
+    expect(
+      await screen.findByRole("button", { name: "Tạo bản sửa đổi mới" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Thu hồi" })).toBeNull();
+  });
+});

@@ -187,7 +187,7 @@ const Unanswered = () => {
                   {canCreate ? (
                     <Link
                       to={`/quan-ly/them/qa?question=${encodeURIComponent(selected.question)}&trace_id=${encodeURIComponent(selected.trace_id)}&promote=1`}
-                      className="inline-flex min-h-11 items-center rounded-[8px] bg-[#143980] px-5 text-[14px] font-semibold text-white hover:bg-[#1a4a9e]"
+                      className="inline-flex min-h-11 items-center rounded-[8px] bg-[#143980] px-5 text-[14px] font-semibold !text-white hover:bg-[#1a4a9e]"
                     >
                       Trả lời & Đưa vào bộ câu hỏi chuẩn
                     </Link>

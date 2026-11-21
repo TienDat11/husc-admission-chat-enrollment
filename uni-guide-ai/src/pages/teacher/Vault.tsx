@@ -1,12 +1,18 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  editRecord,
+  fetchRecordHistory,
   listRecords,
+  newIdempotencyKey,
+  transitionRecord,
   type CanonicalRecord,
   type RecordFilters,
   type RecordStatus,
 } from "@/lib/adminApi";
+import { useAdminSession } from "@/hooks/useAdminSession";
+import { invalidateRecordTransition } from "@/lib/recordTransitions";
 import { RECORD_TYPE_LABELS } from "@/lib/adminValidation";
 import { cn } from "@/lib/utils";
 
@@ -77,6 +83,11 @@ const Vault = () => {
   const [bucket, setBucket] = useState<Bucket>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  const { identity } = useAdminSession();
+  const queryClient = useQueryClient();
+  const [confirm, setConfirm] = useState<"revise" | "withdraw" | null>(null);
+  const [reason, setReason] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const list = useQuery({
     queryKey: ["admin", "vault", { text, year }],
@@ -94,6 +105,36 @@ const Vault = () => {
     : loaded;
   const shown = typed.filter((record) => matchesBucket(record, bucket));
   const selected = shown.find((record) => record.record_id === selectedId) ?? shown[0] ?? null;
+
+  const log = useQuery({
+    queryKey: ["admin", "record-history", selected?.record_id ?? null],
+    queryFn: () => fetchRecordHistory(null, selected?.record_id ?? ""),
+    enabled: Boolean(selected),
+  });
+
+  const act = useMutation({
+    mutationFn: (kind: "revise" | "withdraw") => {
+      if (!selected) throw new Error("Chưa chọn bản ghi.");
+      if (kind === "withdraw") {
+        return transitionRecord(
+          null,
+          selected.record_id,
+          { action: "withdraw", expected_version: selected.version, reason: reason.trim() },
+          { idempotencyKey: newIdempotencyKey() },
+        );
+      }
+      return editRecord(null, selected.record_id, { expected_version: selected.version });
+    },
+    onSuccess: () => {
+      setConfirm(null);
+      setReason("");
+      setActionError(null);
+      void queryClient.invalidateQueries({ queryKey: ["admin", "vault"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "record-history"] });
+      invalidateRecordTransition(queryClient);
+    },
+    onError: (error) => setActionError(error instanceof Error ? error.message : "Thao tác thất bại."),
+  });
   const pageCount = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
   const pageRows = shown.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
@@ -333,6 +374,122 @@ const Vault = () => {
                   </>
                 ) : null}
               </dl>
+
+              {identity?.actions.includes("records.edit") || identity?.actions.includes("records.withdraw") ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {identity?.actions.includes("records.edit") ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={act.isPending}
+                      onClick={() => {
+                        setActionError(null);
+                        setConfirm("revise");
+                      }}
+                    >
+                      Tạo bản sửa đổi mới
+                    </button>
+                  ) : null}
+                  {identity?.actions.includes("records.withdraw") ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={act.isPending}
+                      onClick={() => {
+                        setActionError(null);
+                        setConfirm("withdraw");
+                      }}
+                    >
+                      Thu hồi
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {confirm ? (
+                <div
+                  role="alertdialog"
+                  aria-labelledby="kho-xac-nhan"
+                  className="mt-4 rounded-[8px] border border-[#D6DEEA] bg-[#F3F5F9] p-4"
+                >
+                  <h3 id="kho-xac-nhan" className="!m-0 text-[15px] font-semibold text-[#0F1B2D]">
+                    {confirm === "withdraw" ? "Thu hồi bản ghi này?" : "Tạo bản sửa đổi mới?"}
+                  </h3>
+                  <p className="mt-2 text-[14px] text-[#0F1B2D]">
+                    {confirm === "withdraw"
+                      ? "Bản ghi sẽ rời khỏi bộ dữ liệu Bot dùng. Lý do được lưu vào lịch sử."
+                      : "Hệ thống tạo một bản nháp mới của bản ghi này. Bản nháp phải được duyệt lại trước khi xuất bản."}
+                  </p>
+                  {confirm === "withdraw" ? (
+                    <label className="mt-3 block text-[14px] font-medium text-[#0F1B2D]">
+                      Lý do
+                      <textarea
+                        className="mt-1 w-full rounded-[8px] border border-[#D6DEEA] p-2 text-[14px] font-normal"
+                        rows={3}
+                        value={reason}
+                        onChange={(event) => setReason(event.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                  {actionError ? (
+                    <p role="alert" className="mt-2 text-[14px] text-[#B42318]">
+                      {actionError}
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={act.isPending || (confirm === "withdraw" && reason.trim() === "")}
+                      onClick={() => act.mutate(confirm)}
+                    >
+                      {confirm === "withdraw" ? "Xác nhận thu hồi" : "Tạo bản nháp"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        setConfirm(null);
+                        setReason("");
+                        setActionError(null);
+                      }}
+                    >
+                      Huỷ
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <h3 className="!mt-6 text-[15px] font-semibold text-[#0F1B2D]">Lịch sử phiên bản</h3>
+              {log.isError ? (
+                <p role="alert" className="mt-2 text-[14px] text-[#B42318]">
+                  Không tải được lịch sử.
+                </p>
+              ) : log.data && log.data.events.length > 0 ? (
+                <ol className="mt-2 space-y-2 text-[13px] text-[#0F1B2D]">
+                  {log.data.events.map((item) => (
+                    <li key={item.seq} className="rounded-[8px] border border-[#D6DEEA] p-2">
+                      <div className="font-mono text-[12px] text-[#6B7686]">
+                        {formatDate(item.event.timestamp) ?? item.event.timestamp}
+                      </div>
+                      <div>
+                        {item.event.action}
+                        {item.event.before_version != null || item.event.after_version != null
+                          ? ` · v${item.event.before_version ?? "?"} → v${item.event.after_version ?? "?"}`
+                          : ""}
+                      </div>
+                      <div className="text-[#6B7686]">
+                        {item.event.actor_id}
+                        {item.event.reason ? ` · ${item.event.reason}` : ""}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="mt-2 text-[14px] text-[#6B7686]">
+                  {log.isPending ? "Đang tải…" : "Chưa có sự kiện nào."}
+                </p>
+              )}
               {selected.source_url ? (
                 <a
                   href={selected.source_url}
