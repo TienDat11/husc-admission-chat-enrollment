@@ -605,6 +605,43 @@ def test_four_eyes_on_blocks_self_change_without_writing_or_emitting(
         assert events[0]["review_id"] == "four_eyes=on"
 
 
+def test_four_eyes_on_allows_self_password_change(store_root, monkeypatch):
+    """A self password change is not a permission change, so four-eyes lets it through.
+
+    The UI sends ``{reason, password}`` on the actor's own subject; refusing that
+    with 403 made self-service password change impossible while the control is on.
+    """
+    client = _client_for(store_root, monkeypatch, four_eyes=True)
+    with client:
+        _prime(client)
+        changed = _patch(client, ACTORS["admin"][0], extra={"password": "mat-khau-moi-2026"})
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["role"] == "admin"
+
+
+def test_four_eyes_on_still_blocks_self_role_or_disable_with_password(store_root, monkeypatch):
+    """Role and disabled edits on one's own subject stay refused, even alongside a password.
+
+    The block happens before any write, so the store file must not move.
+    """
+    client = _client_for(store_root, monkeypatch, four_eyes=True)
+    with client:
+        _prime(client)
+        before = _identities_file(store_root).read_bytes()
+
+        role_change = _patch(
+            client,
+            ACTORS["admin"][0],
+            role="reviewer",
+            extra={"password": "mat-khau-moi-2026"},
+        )
+        assert role_change.status_code == 403, role_change.text
+
+        disable = _patch(client, ACTORS["admin"][0], disabled=True)
+        assert disable.status_code == 403, disable.text
+        assert _identities_file(store_root).read_bytes() == before
+
+
 def test_four_eyes_off_allows_self_change_and_records_the_flag(
     store_root, monkeypatch
 ):

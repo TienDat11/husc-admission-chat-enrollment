@@ -236,12 +236,20 @@ def _require_reason(reason: str) -> str:
     return reason.strip()
 
 
+def _changes_privilege(target: IdentityEntry, payload: IdentityPatchRequest) -> bool:
+    """Whether the patch changes the role or the disabled flag (privilege-affecting)."""
+    changes_role = payload.role is not None and payload.role != target.role
+    changes_disabled = payload.disabled is not None and payload.disabled != target.disabled
+    return changes_role or changes_disabled
+
+
 def _four_eyes_blocks(
     identity: Identity,
     target: IdentityEntry,
+    payload: IdentityPatchRequest,
     four_eyes_on: bool,
 ) -> None:
-    """Refuse an actor changing their own grants while the control is on.
+    """Refuse an actor changing their own role or disabled flag while the control is on.
 
     The comparison is on ``actor_id`` rather than on the credential: the
     caller proves who they are through ``current_identity``, and the target
@@ -249,6 +257,8 @@ def _four_eyes_blocks(
     someone else by restating an id.
     """
     if not four_eyes_on or target.actor_id != identity.actor_id:
+        return
+    if not _changes_privilege(target, payload):
         return
     raise HTTPException(
         status_code=403,
@@ -374,7 +384,7 @@ def patch_identity(
         )
     if isinstance(store, SqlIdentityRepository):
         _refuse_self_change(identity, current, payload)
-    _four_eyes_blocks(identity, current, four_eyes_on)
+    _four_eyes_blocks(identity, current, payload, four_eyes_on)
     audit = PermissionAudit(
         actor_id=identity.actor_id,
         actor_role=identity.role.value,
