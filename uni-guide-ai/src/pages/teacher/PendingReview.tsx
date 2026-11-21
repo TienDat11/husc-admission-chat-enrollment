@@ -569,14 +569,6 @@ const PendingReview = () => {
             >
               Quyết định
             </h2>
-            <div className="field mt-3">
-              <label htmlFor="duyet-ly-do">Lý do trả lại (bắt buộc khi trả lại)</label>
-              <textarea
-                id="duyet-ly-do"
-                value={rejectReason}
-                onChange={(event) => setRejectReason(event.target.value)}
-              />
-            </div>
 
             {actionError ? (
               <p role="alert" className="note bad mt-3">
@@ -612,10 +604,19 @@ const PendingReview = () => {
             ) : null}
 
             <div className="fixed inset-x-0 bottom-0 z-10 space-y-2 border-t border-[#D6DEEA] bg-white p-3 md:static md:mt-4 md:space-y-3 md:border-0 md:bg-transparent md:p-0">
-              <div className="flex gap-2 md:justify-end">
+              <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-end">
+                <div className="field w-full min-w-0 flex-1 md:min-w-[16rem]">
+                  <label htmlFor="duyet-ly-do">Lý do trả lại (bắt buộc khi trả lại)</label>
+                  <textarea
+                    id="duyet-ly-do"
+                    rows={1}
+                    value={rejectReason}
+                    onChange={(event) => setRejectReason(event.target.value)}
+                  />
+                </div>
                 <button
                   type="button"
-                  className="btn flex-1 md:flex-none"
+                  className="btn flex-1 !border-[#143980] !bg-white !text-[#143980] md:flex-none"
                   disabled={!rejectReason.trim() || diff.isPending}
                   onClick={() => commit(selected, "reject", rejectReason.trim())}
                 >

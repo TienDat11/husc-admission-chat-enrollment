@@ -23,6 +23,7 @@ const BUCKETS: { id: Bucket; label: string }[] = [
 ];
 
 const PENDING_STATUSES: RecordStatus[] = ["draft", "review", "approved"];
+const PAGE_SIZE = 25;
 
 /** A published record whose validity ends within the next 30 days. */
 const isExpiring = (record: CanonicalRecord) => {
@@ -75,6 +76,7 @@ const Vault = () => {
   const [recordType, setRecordType] = useState("");
   const [bucket, setBucket] = useState<Bucket>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
   const list = useQuery({
     queryKey: ["admin", "vault", { text, year }],
@@ -92,6 +94,9 @@ const Vault = () => {
     : loaded;
   const shown = typed.filter((record) => matchesBucket(record, bucket));
   const selected = shown.find((record) => record.record_id === selectedId) ?? shown[0] ?? null;
+  const pageCount = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
+  const current = Math.min(page, pageCount - 1);
+  const pageRows = shown.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
 
   if (list.isPending) {
     return (
@@ -169,7 +174,7 @@ const Vault = () => {
         </select>
       </div>
 
-      <div role="group" aria-label="Lọc theo trạng thái" className="flex flex-wrap gap-2">
+      <div role="group" aria-label="Lọc theo trạng thái" className="flex flex-nowrap gap-2 overflow-x-auto">
         {BUCKETS.map(({ id, label }) => {
           const active = bucket === id;
           const count = typed.filter((record) => matchesBucket(record, id)).length;
@@ -215,7 +220,7 @@ const Vault = () => {
                 </tr>
               </thead>
               <tbody>
-                {shown.map((record) => {
+                {pageRows.map((record) => {
                   const active = selected?.record_id === record.record_id;
                   const status = botStatus(record);
                   const label = `${RECORD_TYPE_LABELS[record.record_type] ?? record.record_type} ${record.admission_year}`;
@@ -260,12 +265,36 @@ const Vault = () => {
                 })}
               </tbody>
             </table>
+            <div className="flex items-center justify-between gap-3 border-t border-[#E4E9F2] px-4 py-3 text-[13px] text-[#474747]">
+              <span>
+                Hiển thị {shown.length === 0 ? 0 : current * PAGE_SIZE + 1}–
+                {Math.min((current + 1) * PAGE_SIZE, shown.length)} / {shown.length}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={current === 0}
+                  onClick={() => setPage(current - 1)}
+                >
+                  Trước
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={current >= pageCount - 1}
+                  onClick={() => setPage(current + 1)}
+                >
+                  Sau
+                </button>
+              </div>
+            </div>
           </div>
 
           {selected ? (
             <aside
               aria-labelledby="kho-chi-tiet"
-              className="self-start rounded-[12px] border border-[#D6DEEA] bg-white p-5"
+              className="self-start lg:sticky lg:top-4 rounded-[12px] border border-[#D6DEEA] bg-white p-5"
             >
               <h2
                 id="kho-chi-tiet"

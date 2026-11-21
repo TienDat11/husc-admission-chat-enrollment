@@ -105,7 +105,7 @@ const Unanswered = () => {
             >
               Danh sách câu hỏi · {rows.length}
             </h2>
-            <ul className="mt-3 space-y-2">
+            <ul className="mt-3 max-h-[60vh] space-y-2 overflow-y-auto pr-1 lg:max-h-[calc(100vh-15rem)]">
               {rows.map((item) => {
                 const active = selected?.trace_id === item.trace_id;
                 return (
