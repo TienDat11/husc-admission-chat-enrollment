@@ -9,6 +9,7 @@ import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Bot,
   ClipboardCheck,
   History,
   HelpCircle,
@@ -49,11 +50,13 @@ const navItems: NavItem[] = [
   { to: "/quan-ly/them", label: "Thêm thông tin", Icon: Plus },
   { to: "/quan-ly/cho-duyet", label: "Chờ duyệt", Icon: ClipboardCheck, badge: "review" },
   { to: "/quan-ly/kho", label: "Kho thông tin", Icon: Library },
-  { to: "/quan-ly/cau-hoi", label: "Câu hỏi bot chưa trả lời được", Icon: HelpCircle },
-  { to: "/quan-ly/hoi-thu", label: "Hỏi thử bot", Icon: MessageSquare },
-  { to: "/quan-ly/lich-su", label: "Lịch sử & khôi phục", Icon: History },
+  { to: "/quan-ly/cau-hoi", label: "Câu hỏi chưa trả lời", Icon: HelpCircle },
+  { to: "/quan-ly/phan-hoi", label: "Phản hồi & Golden", Icon: MessageSquare },
+  { to: "/quan-ly/tai-khoan", label: "Tài khoản & RBAC", Icon: Users, action: "roles.manage" },
+  { to: "/quan-ly/lich-su", label: "Lịch sử", Icon: History },
+  // Live screens the design frames do not draw; kept reachable below the frame set.
+  { to: "/quan-ly/hoi-thu", label: "Hỏi thử bot", Icon: Bot },
   { to: "/quan-ly/van-hanh", label: "Vận hành", Icon: Wrench, action: "ops.warmup" },
-  { to: "/quan-ly/tai-khoan", label: "Tài khoản", Icon: Users, action: "roles.manage" },
 ];
 
 const TeacherLayout = () => {

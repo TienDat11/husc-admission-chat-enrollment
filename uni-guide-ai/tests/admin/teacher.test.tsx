@@ -204,9 +204,9 @@ describe("Tổng quan", () => {
 
   it("shows the counts from GET /admin/overview", async () => {
     renderScreen("/quan-ly", REVIEWER, <Overview />, overviewHandler({ review_count: 3, unanswered_open_count: 2, open_blocker_count: 1 }));
-    expect(await screen.findByText("Chờ duyệt")).toBeInTheDocument();
+    expect(await screen.findByText(/Đang chờ duyệt & cập nhật/)).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("Mâu thuẫn chưa phân xử")).toBeInTheDocument();
+    expect(screen.getByText(/mâu thuẫn chưa phân xử/)).toBeInTheDocument();
   });
 
   it("marks overdue unanswered questions with text, not colour alone", async () => {
@@ -908,11 +908,11 @@ describe("Hỏi thử bot", () => {
   });
 });
 
-describe("Lịch sử & khôi phục", () => {
-  it("renders the timeline and disables rollback with no previous release", async () => {
+describe("Lịch sử phát hành & Nhật ký kiểm toán", () => {
+  it("renders the timeline and says so when there is no previous release", async () => {
     renderScreen("/quan-ly/lich-su", REVIEWER, <History />, defaultHandler);
-    const rollbackButton = await screen.findByText("Khôi phục bản trước");
-    expect(rollbackButton).toBeDisabled();
+    expect(await screen.findByText("Chưa có phiên bản trước để khôi phục.")).toBeInTheDocument();
+    expect(screen.queryByText("Khôi phục về phiên bản này (Rollback)")).toBeNull();
   });
 
   it("asks for a reason before rolling back when a previous release exists", async () => {
@@ -926,9 +926,9 @@ describe("Lịch sử & khôi phục", () => {
       return defaultHandler(url);
     };
     renderScreen("/quan-ly/lich-su", REVIEWER, <History />, withRelease);
-    await userEvent.click(await screen.findByText("Khôi phục bản trước"));
+    await userEvent.click(await screen.findByText("Khôi phục về phiên bản này (Rollback)"));
     const reasonInput = screen.getByLabelText("Lý do khôi phục (bắt buộc)");
-    const confirmButton = screen.getByText("Khôi phục");
+    const confirmButton = screen.getByText("Xác nhận khôi phục phiên bản trước");
     expect(confirmButton).toBeDisabled();
     await userEvent.type(reasonInput, "Bản mới sai năm");
     await userEvent.click(confirmButton);
