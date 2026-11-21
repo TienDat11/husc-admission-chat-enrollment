@@ -1,8 +1,8 @@
-// Teacher step 2 (design frame B8y2M): blocks that need a check on the left, the
-// PDF page they sit on in the middle, and the editor for the selected block on
-// the right. Data is the real block list of the uploaded document. Saving PATCHes
-// the block, the only draft-edit endpoint the backend offers. Table blocks take a
-// pasted Excel range (table_tsv) through the same PATCH (frame ATska).
+// Teacher step 2 (design frames B8y2M and N8GHat): blocks that need a check, the
+// PDF page they sit on, and the editor for the selected block. Data is the real
+// block list of the uploaded document. Saving PATCHes the block, the only
+// draft-edit endpoint the backend offers. Table blocks take a pasted Excel range
+// (table_tsv) through the same PATCH. Below lg the three panels become tabs.
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
@@ -18,6 +18,7 @@ import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
 import { SecondaryButton } from "@/components/ui-kit/SecondaryButton";
 
 type Block = ExceptionsListResponse["blocks"][number];
+type MobileTab = "list" | "pdf" | "detail";
 
 const PREVIEW_CHARS = 90;
 const TABLE_TIER_WARNING = "TABLE_TIER_DISABLED";
@@ -52,6 +53,7 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
   const flagged = blocks.filter((block) => block.warnings.length > 0);
 
   const [pick, setPick] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<MobileTab>("list");
   const selected = flagged.find((block) => block.block_id === pick) ?? flagged[0] ?? null;
   const selectedIndex = selected === null ? -1 : flagged.indexOf(selected);
   const next = selectedIndex >= 0 ? (flagged[selectedIndex + 1] ?? null) : null;
@@ -73,6 +75,11 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
   }
 
   const pageBlocks = selected === null ? [] : blocks.filter((block) => block.page === selected.page);
+  const panel = (name: MobileTab) => `${mobileTab === name ? "block" : "hidden"} lg:block`;
+  const tabClass = (name: MobileTab) =>
+    `rounded-8 px-3 py-2 text-sm font-semibold ${
+      mobileTab === name ? "bg-[#143980] text-white" : "bg-[#F3F5F9] text-[#143980]"
+    }`;
 
   return (
     <section aria-label="Kiểm tra từng mục" className="space-y-4">
@@ -84,8 +91,20 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
         </p>
       </div>
 
+      <div role="tablist" aria-label="Phần kiểm tra" className="grid grid-cols-3 gap-2 lg:hidden">
+        <button type="button" role="tab" aria-selected={mobileTab === "list"} className={tabClass("list")} onClick={() => setMobileTab("list")}>
+          Nội dung ({blocks.length})
+        </button>
+        <button type="button" role="tab" aria-selected={mobileTab === "pdf"} className={tabClass("pdf")} onClick={() => setMobileTab("pdf")}>
+          Bản gốc PDF
+        </button>
+        <button type="button" role="tab" aria-selected={mobileTab === "detail"} className={tabClass("detail")} onClick={() => setMobileTab("detail")}>
+          Chi tiết
+        </button>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
-        <div className="rounded-12 border border-[#D6DEEA] bg-white p-3">
+        <div className={`${panel("list")} rounded-12 border border-[#D6DEEA] bg-white p-3`}>
           <h2 className="mb-2 text-sm font-semibold text-[#143980]">
             Mục cần kiểm tra · {flagged.length}/{blocks.length}
           </h2>
@@ -98,7 +117,10 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
                   <button
                     type="button"
                     aria-pressed={active}
-                    onClick={() => setPick(block.block_id)}
+                    onClick={() => {
+                      setPick(block.block_id);
+                      setMobileTab("detail");
+                    }}
                     className={`w-full rounded-8 border p-3 text-left ${
                       active ? "border-[#143980] bg-[#E6ECF7]" : "border-[#D6DEEA] bg-white"
                     }`}
@@ -120,7 +142,7 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
           <p className="mt-3 text-xs text-[#6B7686]">{blocks.length - flagged.length} mục đã đạt chuẩn</p>
         </div>
 
-        <div className="rounded-12 border border-[#D6DEEA] bg-[#F3F5F9] p-3">
+        <div className={`${panel("pdf")} rounded-12 border border-[#D6DEEA] bg-[#F3F5F9] p-3`}>
           <h2 className="mb-2 text-sm font-semibold text-[#143980]">
             Văn bản PDF gốc{selected !== null ? ` · Trang ${selected.page} / ${pageCount}` : ""}
           </h2>
@@ -141,7 +163,7 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
           </div>
         </div>
 
-        <div className="rounded-12 border border-[#D6DEEA] bg-white p-3">
+        <div className={`${panel("detail")} rounded-12 border border-[#D6DEEA] bg-white p-3`}>
           {selected === null ? (
             <p className="text-base">Không còn mục nào cần sửa.</p>
           ) : (
@@ -216,18 +238,22 @@ function BlockEditor({ documentId, block, saving, errorMessage, onSave, onSkip, 
       {isTable ? (
         <ExcelPasteModal documentId={documentId} blockId={block.block_id} onSuccess={onTableSaved} />
       ) : null}
-      {errorMessage !== null ? (
-        <p role="alert" className="text-sm text-red-800">
-          {errorMessage}
-        </p>
-      ) : null}
-      {dirty ? (
-        <PrimaryButton onClick={() => onSave(text)} disabled={saving}>
-          {saving ? "Đang lưu…" : "Lưu & mục tiếp theo →"}
-        </PrimaryButton>
-      ) : (
-        <SecondaryButton onClick={onSkip}>Mục tiếp theo →</SecondaryButton>
-      )}
+      <div className="space-y-2 max-lg:sticky max-lg:bottom-0 max-lg:bg-white max-lg:py-2">
+        {errorMessage !== null ? (
+          <p role="alert" className="text-sm text-red-800">
+            {errorMessage}
+          </p>
+        ) : null}
+        {dirty ? (
+          <PrimaryButton onClick={() => onSave(text)} disabled={saving} className="w-full lg:w-auto">
+            {saving ? "Đang lưu…" : "Lưu & mục tiếp theo →"}
+          </PrimaryButton>
+        ) : (
+          <SecondaryButton onClick={onSkip} className="w-full lg:w-auto">
+            Mục tiếp theo →
+          </SecondaryButton>
+        )}
+      </div>
     </div>
   );
 }
