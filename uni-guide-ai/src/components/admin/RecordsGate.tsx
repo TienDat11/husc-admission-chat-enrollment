@@ -6,8 +6,6 @@
 import { useState, type FormEvent } from "react";
 import { Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useAdminSession } from "@/hooks/useAdminSession";
 
 function LoginForm() {
@@ -28,51 +26,53 @@ function LoginForm() {
   };
 
   return (
-    <form className="max-w-sm space-y-3" onSubmit={onSubmit}>
+    <form className="max-w-sm space-y-4" onSubmit={onSubmit}>
       <div className="space-y-1">
-        <h2 className="text-sm font-medium text-foreground dark:text-zinc-100">Dữ liệu tuyển sinh</h2>
-        <p className="text-xs text-muted-foreground dark:text-zinc-400">
-          Đăng nhập bằng tài khoản quản trị do quản trị viên cấp.
-        </p>
+        <h2 className="text-lg font-semibold text-[#143980]">Dữ liệu tuyển sinh</h2>
+        <p className="text-sm text-[#4a5568]">Đăng nhập bằng tài khoản quản trị do quản trị viên cấp.</p>
       </div>
-      <div className="space-y-1">
-        <Label htmlFor="admin-actor-id" className="text-xs text-foreground dark:text-zinc-300">
+      <div className="space-y-1.5">
+        <label htmlFor="admin-actor-id" className="block text-sm font-semibold text-[#0f1b2d]">
           Tài khoản
-        </Label>
-        <Input
+        </label>
+        <input
           id="admin-actor-id"
           type="text"
           autoComplete="username"
-          className="!border-zinc-500"
+          className="min-h-11 w-full rounded-lg border border-[#d6deea] bg-white px-3 text-base text-[#0f1b2d]"
           value={actorId}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? "admin-login-error" : undefined}
           onChange={(event) => setActorId(event.target.value)}
         />
       </div>
-      <div className="space-y-1">
-        <Label htmlFor="admin-password" className="text-xs text-foreground dark:text-zinc-300">
+      <div className="space-y-1.5">
+        <label htmlFor="admin-password" className="block text-sm font-semibold text-[#0f1b2d]">
           Mật khẩu
-        </Label>
-        <Input
+        </label>
+        <input
           id="admin-password"
           type="password"
           autoComplete="current-password"
-          className="!border-zinc-500"
+          className="min-h-11 w-full rounded-lg border border-[#d6deea] bg-white px-3 text-base text-[#0f1b2d]"
           value={password}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? "admin-login-error" : undefined}
           onChange={(event) => setPassword(event.target.value)}
         />
         {error ? (
-          <p id="admin-login-error" role="alert" className="text-xs text-destructive">
+          <p id="admin-login-error" role="alert" className="text-sm text-[#9b1c1c]">
             {error}
           </p>
         ) : null}
       </div>
-      <Button type="submit" size="sm" className="bg-blue-600 text-white" disabled={submitting}>
+      <button
+        type="submit"
+        disabled={submitting}
+        className="min-h-11 w-full rounded-lg bg-[#143980] px-4 text-base font-semibold text-white hover:bg-[#0f2d66] disabled:opacity-50"
+      >
         Đăng nhập
-      </Button>
+      </button>
     </form>
   );
 }
