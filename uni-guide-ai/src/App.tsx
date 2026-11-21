@@ -24,6 +24,7 @@ const Accounts = lazy(() => import("./pages/teacher/Accounts"));
 const LoginGate = lazy(() => import("./pages/teacher/LoginGate"));
 const Ops = lazy(() => import("./pages/teacher/Ops"));
 const TableFix = lazy(() => import("./pages/teacher/TableFix"));
+const Feedback = lazy(() => import("./pages/teacher/Feedback"));
 
 const queryClient = new QueryClient();
 
@@ -77,6 +78,9 @@ const App = () => (
               </Route>
               <Route path="cau-hoi" element={<RecordsGate />}>
                 <Route index element={<Unanswered />} />
+              </Route>
+              <Route path="phan-hoi" element={<RecordsGate />}>
+                <Route index element={<Feedback />} />
               </Route>
               <Route path="hoi-thu" element={<RecordsGate />}>
                 <Route index element={<AskTest />} />
