@@ -11,6 +11,7 @@ import { AdminApiError } from "@/lib/adminApi";
 import type { ApiFailure } from "@/lib/apiError";
 import { fetchJob, uploadSourceDocument, type UploadReport } from "@/lib/adminOpsApi";
 import { forEachLimited, sendDraftForReview } from "@/lib/draftSubmit";
+import { jobStageLabel, uploadWarningMessage } from "@/lib/uploadMessages";
 import { ExceptionBar } from "@/components/ui-kit/ExceptionBar";
 import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
 import { SecondaryButton } from "@/components/ui-kit/SecondaryButton";
@@ -320,7 +321,7 @@ const AddInfo = () => {
             )}
             {job.data ? (
               <p className="text-base">
-                Giai đoạn: {String(job.data.progress.stage ?? "chưa rõ")}
+                Giai đoạn: {jobStageLabel(job.data.progress.stage)}
                 {job.data.progress.total !== undefined
                   ? ` — ${String(job.data.progress.done ?? 0)}/${String(job.data.progress.total)}`
                   : ""}
@@ -332,8 +333,8 @@ const AddInfo = () => {
             <div className="space-y-2 text-base">
               <p>Số trang đã đọc: {stored.pageCount}</p>
               {stored.draftRecordIds.length === 0 ? <p>Tệp này không tạo bản nháp nào.</p> : null}
-              {stored.warnings.map((warning) => (
-                <p key={warning}>{warning}</p>
+              {Array.from(new Set(stored.warnings.map(uploadWarningMessage))).map((message) => (
+                <p key={message}>{message}</p>
               ))}
               {stored.draftRecordIds.length > 0 ? (
                 <>
