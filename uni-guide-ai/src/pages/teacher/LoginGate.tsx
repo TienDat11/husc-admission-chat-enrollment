@@ -76,10 +76,6 @@ const LoginGate = () => {
         <p className="text-base leading-relaxed opacity-90">
           Mọi điều khoản được kiểm tra, duyệt độc lập bởi hai người và có vết kiểm toán trước khi phát hành lên Bot.
         </p>
-        <div className="space-y-6">
-          <p className="text-sm opacity-70">Phiên bản 29/10/2026 · 487 mục chuẩn</p>
-          <p className="text-sm opacity-80">Dữ liệu minh họa, cần đối chiếu để án tuyển sinh 2026.</p>
-        </div>
       </aside>
 
       <div className="flex flex-1 items-center justify-center px-6 py-10">
@@ -163,9 +159,7 @@ const LoginGate = () => {
                 </li>
               ))}
             </ul>
-            <p className="text-sm text-[#4a5568]">
-              Tài khoản demo chỉ dùng để duyệt thiết kế, không dùng cho dữ liệu thật.
-            </p>
+            <p className="text-sm text-[#4a5568]">Tài khoản dùng thử cho đợt kiểm thử nội bộ.</p>
           </div>
 
           <address className="space-y-1 pt-2 text-sm not-italic text-[#4a5568]">

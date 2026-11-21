@@ -26,14 +26,14 @@ function LoginForm() {
   };
 
   return (
-    <form className="max-w-sm space-y-4" onSubmit={onSubmit}>
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-[#143980]">Dữ liệu tuyển sinh</h2>
-        <p className="text-sm text-[#4a5568]">Đăng nhập bằng tài khoản quản trị do quản trị viên cấp.</p>
+    <form className="w-full max-w-[420px] space-y-5" onSubmit={onSubmit} noValidate>
+      <div className="space-y-2">
+        <h2 className="text-4xl font-bold text-[#143980]">Đăng nhập vào khu quản trị</h2>
+        <p className="text-base text-[#4a5568]">Dùng tài khoản được cấp để vào khu quản trị.</p>
       </div>
       <div className="space-y-1.5">
         <label htmlFor="admin-actor-id" className="block text-sm font-semibold text-[#0f1b2d]">
-          Tài khoản
+          Tên đăng nhập
         </label>
         <input
           id="admin-actor-id"

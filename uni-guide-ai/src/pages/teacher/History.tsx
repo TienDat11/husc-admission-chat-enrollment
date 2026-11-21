@@ -161,7 +161,7 @@ const History = () => {
 
           {rollbackDone ? (
             <p role="status" className="rounded-lg border border-[#BFDCC4] bg-[#E7F4E8] p-4 text-base text-[#1E6B34]">
-              Đã khôi phục. Bot trả lời theo bản trước trong vòng 5–10 phút.
+              Đã khôi phục phiên bản trước.
             </p>
           ) : null}
           {rollbackError ? (
