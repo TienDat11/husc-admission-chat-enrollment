@@ -10,29 +10,38 @@ import {
   type CanonicalRecord,
   type ReviewPreviewResult,
 } from "@/lib/adminApi";
-import { approveAndPublish, approveAndPublishMany, claimDraft, rejectWithReason } from "@/lib/teacherApi";
+import { RECORD_TYPE_LABELS } from "@/lib/adminValidation";
+import {
+  approveAndPublish,
+  approveAndPublishMany,
+  claimDraft,
+  rejectWithReason,
+} from "@/lib/teacherApi";
+import { cn } from "@/lib/utils";
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Bản nháp",
-  review: "Chờ duyệt",
-  approved: "Đã duyệt",
-  published: "Đang dùng",
-  archived: "Đã lưu trữ",
-};
+type Column = "current" | "proposed" | "pdf";
+
+const COLUMNS: { id: Column; tab: string }[] = [
+  { id: "current", tab: "Đang chạy" },
+  { id: "proposed", tab: "Đề xuất" },
+  { id: "pdf", tab: "PDF gốc" },
+];
+
+const recordTitle = (record: CanonicalRecord) =>
+  `${RECORD_TYPE_LABELS[record.record_type] ?? record.record_type} ${record.admission_year}`;
 
 /**
- * Ticket T09 — "Chờ duyệt" (mockup 04, 05 §4.4).
- *
- * The card list, the side-by-side diff, the two actions ("Trả lại để sửa"
- * with a required reason; "Duyệt và xuất bản" behind a confirmation box that
- * names the consequence). Four-eyes is enforced by hiding the publish button
- * when the record's author is the signed-in reviewer — the text reads
- * "Cần một người khác duyệt" instead.
+ * "Chờ duyệt & phát hành" (frame Xcckq; mobile N8GHat). The list of records
+ * waiting for review on the left; the selected record's three comparison
+ * columns, sandbox and decision on the right. Four-eyes: the publish button is
+ * disabled for the record's author, who can still ask the Bot, compare, and
+ * return the record with a reason.
  */
 const PendingReview = () => {
   const { identity } = useAdminSession();
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<CanonicalRecord | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [column, setColumn] = useState<Column>("proposed");
   const [preview, setPreview] = useState<ReviewPreviewResult | null>(null);
   const [previewQuery, setPreviewQuery] = useState("");
   const [rejectReason, setRejectReason] = useState("");
@@ -63,6 +72,9 @@ const PendingReview = () => {
     queryFn: () => listRecords(null, { status: "review" }),
     retry: false,
   });
+
+  const rows = list.data?.records ?? [];
+  const selected = rows.find((record) => record.record_id === selectedId) ?? rows[0] ?? null;
 
   const diff = useQuery({
     queryKey: ["admin", "review-diff", selected?.record_id],
@@ -104,7 +116,6 @@ const PendingReview = () => {
       });
   };
 
-  const rows = list.data?.records ?? [];
   const toggleSelect = (recordId: string) => {
     setSelectedIds((ids) =>
       ids.includes(recordId) ? ids.filter((id) => id !== recordId) : [...ids, recordId],
@@ -146,6 +157,12 @@ const PendingReview = () => {
     }
   };
 
+  const heading = (
+    <h1 className="!m-0 font-display text-[24px] font-bold leading-8 text-[#0F1B2D]">
+      Chờ duyệt & phát hành
+    </h1>
+  );
+
   if (list.isPending) {
     return (
       <p role="status" aria-live="polite" className="text-zinc-600">
@@ -157,128 +174,198 @@ const PendingReview = () => {
   if (list.isError) {
     return (
       <div role="alert" className="note bad">
-        <span aria-hidden="true">⚠</span> Chưa lấy được danh sách chờ duyệt.
-        Kiểm tra kết nối mạng rồi thử lại.
+        Chưa lấy được danh sách chờ duyệt. Kiểm tra kết nối mạng rồi thử lại.
       </div>
     );
   }
 
-  if (rows.length === 0) {
+  if (!selected) {
     return (
-      <p role="status" className="note ok">
-        <span aria-hidden="true">✓</span> Không có thông tin nào chờ duyệt.
-      </p>
+      <div className="space-y-5">
+        {heading}
+        <p role="status" className="note ok">
+          Không có thông tin nào chờ duyệt.
+        </p>
+      </div>
     );
   }
 
   const changes = diff.data?.diff?.changes ?? [];
-  const isOwnWork =
-    selected !== null && selected.authored_by === identity?.actor_id;
+  const baselineVersion = diff.data?.diff?.baseline_version;
+  const isOwnWork = selected.authored_by === identity?.actor_id;
   const canReview = !isOwnWork && Boolean(identity?.actions.includes("records.approve"));
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Chờ duyệt ({rows.length})</h1>
+    <div className="space-y-5 pb-24 md:pb-0">
+      {heading}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        {rows.map((record) => (
-          <div key={record.record_id} className="card">
-            <h3>
-              {STATUS_LABELS[record.record_type] ?? record.record_type} (
-              {record.admission_year})
-            </h3>
-            <p>
-              {record.authored_by ?? "không rõ"} · {record.version} thay đổi
-            </p>
-            {record.authored_by === identity?.actor_id ? (
-              <p>
-                <span className="status s-muted">Cần một người khác duyệt</span>
-              </p>
-            ) : (
-              <div className="flex items-center gap-3">
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(record.record_id)}
-                    onChange={() => toggleSelect(record.record_id)}
-                    aria-label={`Chọn ${record.record_type} (${record.admission_year}) để duyệt hàng loạt`}
-                  />
-                  Chọn
-                </label>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    setSelected(record);
-                    setPreview(null);
-                  }}
+      {isOwnWork ? (
+        <div className="rounded-[8px] border border-[#F2C77A] bg-[#FFF3DC] p-4 text-[#6B3E00]">
+          <p className="font-display text-[15px] font-semibold">
+            Bạn là người tạo mục này nên cần một quản trị viên khác duyệt.
+          </p>
+          <p className="mt-1 text-[14px] leading-6">
+            Hệ thống khóa nút Duyệt với tài khoản tác giả. Bạn vẫn có thể hỏi thử, so sánh và
+            trả lại kèm lý do.
+          </p>
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(260px,3fr)_7fr]">
+        <section
+          aria-labelledby="cho-duyet-danh-sach"
+          className="self-start rounded-[12px] border border-[#D6DEEA] bg-white p-4"
+        >
+          <h2
+            id="cho-duyet-danh-sach"
+            className="!m-0 font-display text-[15px] font-semibold text-[#0F1B2D]"
+          >
+            Chờ duyệt · {rows.length} mục
+          </h2>
+          <ul className="mt-3 space-y-2">
+            {rows.map((record) => {
+              const active = selected.record_id === record.record_id;
+              const own = record.authored_by === identity?.actor_id;
+              return (
+                <li
+                  key={record.record_id}
+                  className={cn(
+                    "rounded-[8px] border p-3",
+                    active
+                      ? "border-[#143980] bg-[#E6ECF7]"
+                      : "border-[#E4E9F2] bg-[#F7F9FC]",
+                  )}
                 >
-                  Mở để duyệt
-                </button>
-                {record.authored_by == null ? (
-                  <>
+                  <div className="flex items-start gap-2">
+                    {own ? null : (
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={selectedIds.includes(record.record_id)}
+                        onChange={() => toggleSelect(record.record_id)}
+                        aria-label={`Chọn ${record.record_type} (${record.admission_year}) để duyệt hàng loạt`}
+                      />
+                    )}
                     <button
                       type="button"
-                      className="btn"
-                      onClick={() => setClaimConfirmingId(record.record_id)}
+                      aria-pressed={active}
+                      onClick={() => {
+                        setSelectedId(record.record_id);
+                        setPreview(null);
+                        setColumn("proposed");
+                      }}
+                      className="min-w-0 flex-1 text-left"
                     >
-                      Nhận nháp
+                      <span className="block font-display text-[14px] font-semibold text-[#0F1B2D]">
+                        {recordTitle(record)}
+                      </span>
+                      <span className="block text-[13px] text-[#6B7686]">
+                        Tác giả: {own ? "bạn" : (record.authored_by ?? "không rõ")} · phiên bản{" "}
+                        {record.version}
+                      </span>
                     </button>
-                    {claimConfirmingId === record.record_id ? (
-                      <div role="alertdialog" aria-label="Xác nhận nhận nháp" className="dialog">
-                        <h3>Xác nhận nhận nháp?</h3>
-                        <p>
-                          Sau khi nhận, bạn sẽ trở thành tác giả của bản nháp này và{" "}
-                          <strong>không thể tự duyệt</strong> — cần một người khác duyệt.
-                        </p>
-                        <div className="actions">
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => setClaimConfirmingId(null)}
-                          >
-                            Chưa, quay lại
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            onClick={() => void runClaim(record)}
-                          >
-                            Nhận nháp
-                          </button>
+                  </div>
+                  {own ? (
+                    <span className="mt-2 inline-flex h-6 items-center rounded-full bg-[#E6E9EF] px-2.5 text-[12px] font-medium text-[#474747]">
+                      Cần người khác duyệt
+                    </span>
+                  ) : null}
+                  {record.authored_by == null ? (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => setClaimConfirmingId(record.record_id)}
+                      >
+                        Nhận nháp
+                      </button>
+                      {claimConfirmingId === record.record_id ? (
+                        <div role="alertdialog" aria-label="Xác nhận nhận nháp" className="dialog">
+                          <h3>Xác nhận nhận nháp?</h3>
+                          <p>
+                            Sau khi nhận, bạn sẽ trở thành tác giả của bản nháp này và{" "}
+                            <strong>không thể tự duyệt</strong> — cần một người khác duyệt.
+                          </p>
+                          <div className="actions">
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => setClaimConfirmingId(null)}
+                            >
+                              Chưa, quay lại
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              onClick={() => void runClaim(record)}
+                            >
+                              Nhận nháp
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ) : null}
-                    {claimError ? (
-                      <p role="alert" className="note bad">
-                        <span aria-hidden="true">⚠</span> {claimError}
-                      </p>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-            )}
+                      ) : null}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
 
-          </div>
-        ))}
-      </div>
+          {claimError ? (
+            <p role="alert" className="note bad mt-3">
+              {claimError}
+            </p>
+          ) : null}
 
-      {/* T15 batch action bar */}
-      {selectedIds.length > 0 || batchResult !== null ? (
-        <div className="space-y-3" aria-label="Duyệt hàng loạt">
           {selectedIds.length > 0 ? (
-            <div className="actions">
+            <div className="mt-3 space-y-3" aria-label="Duyệt hàng loạt">
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn"
                 onClick={() => setBatchConfirming(true)}
               >
                 Duyệt và xuất bản {selectedIds.length} mục
               </button>
+              {batchConfirming ? (
+                <div
+                  role="alertdialog"
+                  aria-labelledby="xac-nin-nhieu-h"
+                  aria-describedby="xac-nin-nhieu-d"
+                  className="dialog"
+                >
+                  <h3 id="xac-nin-nhieu-h">
+                    Duyệt và xuất bản {selectedIds.length} mục?
+                  </h3>
+                  <p id="xac-nin-nhieu-d">
+                    Bot sẽ trả lời theo thông tin mới cho {selectedIds.length} mục này cho
+                    thí sinh, trong khoảng 5–10 phút sau khi xuất bản. Có thể khôi phục
+                    bản trước bất cứ lúc nào.
+                  </p>
+                  <div className="actions">
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => setBatchConfirming(false)}
+                    >
+                      Chưa, quay lại
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        void runBatchApprove();
+                      }}
+                    >
+                      Duyệt và xuất bản {selectedIds.length} mục
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
+
           {batchResult ? (
-            <div role="status" aria-live="polite" className="note">
+            <div role="status" aria-live="polite" className="note mt-3">
               <p>
                 Đã xuất bản {batchResult.succeeded.length} mục
                 {batchResult.failures.length > 0
@@ -296,97 +383,147 @@ const PendingReview = () => {
               ) : null}
             </div>
           ) : null}
-          {batchConfirming ? (
-            <div
-              role="alertdialog"
-              aria-labelledby="xac-nin-nhieu-h"
-              aria-describedby="xac-nin-nhieu-d"
-              className="dialog"
-            >
-              <h3 id="xac-nin-nhieu-h">
-                Duyệt và xuất bản {selectedIds.length} mục?
-              </h3>
-              <p id="xac-nin-nhieu-d">
-                Bot sẽ trả lời theo thông tin mới cho {selectedIds.length} mục này cho
-                thí sinh, trong khoảng 5–10 phút sau khi xuất bản. Có thể khôi phục
-                bản trước bất cứ lúc nào.
+        </section>
+
+        <div className="min-w-0 space-y-4">
+          <section
+            aria-label="So sánh bản đang chạy, đề xuất mới và bản gốc PDF"
+            className="rounded-[12px] border border-[#D6DEEA] bg-white p-5"
+          >
+            <h2 className="!m-0 font-display text-[18px] font-semibold text-[#0F1B2D]">
+              {recordTitle(selected)}
+            </h2>
+
+            <div role="tablist" aria-label="Chọn cột so sánh" className="mt-4 flex gap-2 md:hidden">
+              {COLUMNS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={column === item.id}
+                  onClick={() => setColumn(item.id)}
+                  className={cn(
+                    "min-h-11 flex-1 rounded-[8px] border px-2 text-[13px] font-medium",
+                    column === item.id
+                      ? "border-[#143980] bg-[#143980] text-white"
+                      : "border-[#D6DEEA] bg-white text-[#0F1B2D]",
+                  )}
+                >
+                  {item.tab}
+                </button>
+              ))}
+            </div>
+
+            {diff.isPending ? (
+              <p role="status" className="mt-4 text-zinc-600">
+                Đang tải so sánh…
               </p>
-              <div className="actions">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => setBatchConfirming(false)}
+            ) : diff.isError ? (
+              <p role="alert" className="note bad mt-4">
+                Không tải được bản so sánh.
+              </p>
+            ) : (
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div
+                  className={cn(
+                    "rounded-[8px] bg-[#F3F5F9] p-4",
+                    column === "current" ? "block" : "hidden",
+                    "md:block",
+                  )}
                 >
-                  Chưa, quay lại
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => {
-                    void runBatchApprove();
-                  }}
+                  <h3 className="!m-0 font-display text-[15px] font-semibold">Đang chạy trên Bot</h3>
+                  {baselineVersion == null ? (
+                    <p className="mt-2 text-[14px] text-[#474747]">
+                      Chưa có bản đang chạy để so sánh.
+                    </p>
+                  ) : changes.length === 0 ? (
+                    <p className="mt-2 text-[14px] text-[#474747]">Không có thay đổi.</p>
+                  ) : (
+                    <ul className="mt-2 list-none space-y-2 p-0 text-[14px]">
+                      {changes.map((change) => (
+                        <li key={change.field}>
+                          <span className="font-medium">{change.field}:</span>{" "}
+                          {change.old != null ? String(change.old) : "chưa có"}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div
+                  className={cn(
+                    "rounded-[8px] border border-[#143980] p-4",
+                    column === "proposed" ? "block" : "hidden",
+                    "md:block",
+                  )}
                 >
-                  Duyệt và xuất bản {selectedIds.length} mục
-                </button>
+                  <h3 className="!m-0 font-display text-[15px] font-semibold">Đề xuất mới</h3>
+                  <p className="mt-2 whitespace-pre-line text-[14px] leading-6 text-[#0F1B2D]">
+                    {selected.text}
+                  </p>
+                  {changes.length > 0 ? (
+                    <ul className="mt-3 list-none space-y-1 p-0 text-[13px]">
+                      {changes.map((change) => (
+                        <li key={change.field}>
+                          {change.field}:{" "}
+                          <span className="changed">{String(change.new ?? "")} (đã đổi)</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+
+                <div
+                  className={cn(
+                    "rounded-[8px] bg-[#F3F5F9] p-4",
+                    column === "pdf" ? "block" : "hidden",
+                    "md:block",
+                  )}
+                >
+                  <h3 className="!m-0 font-display text-[15px] font-semibold">Bản gốc PDF</h3>
+                  <p className="mt-2 font-mono text-[13px] text-[#0F1B2D]">
+                    {selected.source_document_id ?? "không ghi nhận"}
+                    {selected.source_page ? ` · trang ${selected.source_page}` : ""}
+                  </p>
+                  <p className="mt-2 text-[13px] text-[#474747]">
+                    Đối chiếu nội dung trực tiếp trên tệp gốc.
+                  </p>
+                  {selected.source_url ? (
+                    <a
+                      href={selected.source_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-flex min-h-11 items-center text-[14px] font-semibold text-[#143980] underline"
+                    >
+                      Mở tài liệu gốc
+                    </a>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+            )}
+          </section>
 
-      {selected ? (
-        <section aria-label="So sánh bản đang dùng và bản mới" className="space-y-4">
-          <h2 className="text-xl font-bold">
-            {selected.record_type} — so sánh bản đang dùng và bản mới
-          </h2>
-
-          {diff.isPending ? (
-            <p role="status" className="text-zinc-600">
-              Đang tải so sánh…
+          <section
+            aria-labelledby="cho-duyet-sandbox"
+            className="rounded-[12px] border border-[#D6DEEA] bg-white p-5"
+          >
+            <h2
+              id="cho-duyet-sandbox"
+              className="!m-0 font-display text-[15px] font-semibold text-[#0F1B2D]"
+            >
+              Hỏi thử Bot với dữ liệu này (Sandbox)
+            </h2>
+            <p className="mt-1 text-[13px] text-[#6B7686]">
+              Chỉ tìm trong bản nháp và chỉ mục đang phục vụ. Không ghi vào phiên bản phát hành.
             </p>
-          ) : diff.isError ? (
-            <p role="alert" className="note bad">
-              <span aria-hidden="true">⚠</span> Không tải được bản so sánh.
-            </p>
-          ) : (
-            <div className="diff">
-              <div className="col">
-                <h3>Bản đang dùng</h3>
-                <p>{selected.text}</p>
-              </div>
-              <div className="col">
-                <h3>Bản mới</h3>
-                {changes.length === 0 ? (
-                  <p>Không có thay đổi.</p>
-                ) : (
-                  <ul className="m-0 list-none space-y-1 p-0">
-                    {changes.map((change) => (
-                      <li key={change.field}>
-                        {change.field}:{" "}
-                        {change.old != null ? (
-                          <span className="line-through opacity-60">{String(change.old)}</span>
-                        ) : null}{" "}
-                        <span className="changed">
-                          {String(change.new ?? "")} (đã đổi)
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Test-ask before deciding */}
-          <div className="space-y-2">
-            <label className="font-semibold" htmlFor="duyet-cau-hoi">
-              Hỏi thử trước khi quyết định
-            </label>
-            <div className="flex gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
+              <label htmlFor="duyet-cau-hoi" className="sr-only">
+                Câu hỏi thử của thí sinh
+              </label>
               <input
                 id="duyet-cau-hoi"
                 type="text"
-                className="flex-1"
+                className="min-w-[14rem] flex-1"
                 value={previewQuery}
                 onChange={(event) => setPreviewQuery(event.target.value)}
                 placeholder="Câu hỏi của thí sinh"
@@ -401,33 +538,39 @@ const PendingReview = () => {
               </button>
             </div>
             {preview ? (
-              <div className="answer" role="status" aria-live="polite">
+              <div className="answer mt-3" role="status" aria-live="polite">
                 <p>
                   <strong>Bot sẽ trả lời:</strong> {preview.answer ?? "(chưa có câu trả lời)"}
                 </p>
                 {preview.sources.length > 0 ? (
                   <div>
-                    <p className="hint">Nguồn (bấm để mở đúng chỗ):</p>
-                    {preview.sources.map((source, index) => (
-                      <a
-                        key={`${source.source_document_id ?? source.source}-${index}`}
+                    <p className="hint">Nguồn trích dẫn:</p>
+                    {preview.sources.map((source) => (
+                      <span
+                        key={`${source.source_document_id ?? ""}|${source.section ?? ""}|${source.source}`}
                         className="cite"
-                        href="#"
-                        onClick={(event) => event.preventDefault()}
                       >
-                        📄 {source.title ?? source.section ?? source.source}
-                      </a>
+                        {source.title ?? source.section ?? source.source}
+                      </span>
                     ))}
                   </div>
                 ) : null}
               </div>
             ) : null}
-          </div>
+          </section>
 
-          {/* Actions */}
-          <div className="space-y-3">
-            <div className="field">
-              <label htmlFor="duyet-ly-do">Lý do trả lại (bắt buộc nếu trả lại)</label>
+          <section
+            aria-labelledby="cho-duyet-quyet-dinh"
+            className="rounded-[12px] border border-[#D6DEEA] bg-white p-5"
+          >
+            <h2
+              id="cho-duyet-quyet-dinh"
+              className="!m-0 font-display text-[15px] font-semibold text-[#0F1B2D]"
+            >
+              Quyết định
+            </h2>
+            <div className="field mt-3">
+              <label htmlFor="duyet-ly-do">Lý do trả lại (bắt buộc khi trả lại)</label>
               <textarea
                 id="duyet-ly-do"
                 value={rejectReason}
@@ -436,55 +579,25 @@ const PendingReview = () => {
             </div>
 
             {actionError ? (
-              <p role="alert" className="note bad">
-                <span aria-hidden="true">⚠</span> {actionError}
+              <p role="alert" className="note bad mt-3">
+                {actionError}
               </p>
             ) : null}
-
-            {isOwnWork ? (
-              <p className="text-zinc-600">
-                <span className="status s-muted">👤 Cần một người khác duyệt</span> —
-                người soạn không duyệt được bài của mình.
-              </p>
-            ) : (
-              <div className="actions">
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={!rejectReason.trim() || diff.isPending}
-                  onClick={() => commit(selected, "reject", rejectReason.trim())}
-                >
-                  Trả lại để sửa
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={!canReview || diff.isPending}
-                  onClick={() => setConfirming(true)}
-                >
-                  Duyệt và xuất bản
-                </button>
-              </div>
-            )}
 
             {confirming ? (
               <div
                 role="alertdialog"
                 aria-labelledby="xac-nin-h"
                 aria-describedby="xac-nin-d"
-                className="dialog"
+                className="dialog mt-3"
               >
-                <h3 id="xac-nin-h">Xuất bản "{selected.record_type} ({selected.admission_year})"?</h3>
+                <h3 id="xac-nin-h">Xuất bản "{recordTitle(selected)}"?</h3>
                 <p id="xac-nin-d">
                   Bot sẽ trả lời theo thông tin này cho thí sinh, trong khoảng 5–10 phút
                   sau khi xuất bản. Có thể khôi phục bản trước bất cứ lúc nào.
                 </p>
                 <div className="actions">
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => setConfirming(false)}
-                  >
+                  <button type="button" className="btn" onClick={() => setConfirming(false)}>
                     Chưa, quay lại
                   </button>
                   <button
@@ -497,21 +610,38 @@ const PendingReview = () => {
                 </div>
               </div>
             ) : null}
-          </div>
 
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              setSelected(null);
-              setPreview(null);
-              setConfirming(false);
-            }}
-          >
-            Quay lại danh sách
-          </button>
-        </section>
-      ) : null}
+            <div className="fixed inset-x-0 bottom-0 z-10 space-y-2 border-t border-[#D6DEEA] bg-white p-3 md:static md:mt-4 md:space-y-3 md:border-0 md:bg-transparent md:p-0">
+              <div className="flex gap-2 md:justify-end">
+                <button
+                  type="button"
+                  className="btn flex-1 md:flex-none"
+                  disabled={!rejectReason.trim() || diff.isPending}
+                  onClick={() => commit(selected, "reject", rejectReason.trim())}
+                >
+                  Trả lại kèm lý do
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary flex-1 md:flex-none"
+                  disabled={!canReview || diff.isPending}
+                  onClick={() => setConfirming(true)}
+                >
+                  Duyệt & Phát hành
+                  <span aria-hidden="true" className="md:hidden">
+                    {" "}→
+                  </span>
+                </button>
+              </div>
+              {isOwnWork ? (
+                <p className="text-[13px] text-[#474747]">
+                  Không thể tự duyệt mục do bạn tạo.
+                </p>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      </div>
 
       <p className="text-sm text-zinc-600">
         Về <Link to="/quan-ly">Tổng quan</Link>

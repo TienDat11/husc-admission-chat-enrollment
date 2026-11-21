@@ -330,27 +330,26 @@ describe("Chờ duyệt", () => {
         return json({ records: [ownWork], total: 1 });
       return withReview(url);
     });
-    expect(await screen.findByText(/Chờ duyệt \(1\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Cần một người khác duyệt/)).toBeInTheDocument();
+    expect(await screen.findByText(/Chờ duyệt · 1 mục/)).toBeInTheDocument();
+    expect(screen.getByText(/cần một quản trị viên khác duyệt/)).toBeInTheDocument();
   });
 
-  it("opens the diff view when the teacher clicks Mở để duyệt", async () => {
+  it("opens the diff view for the selected record", async () => {
     renderScreen("/quan-ly/cho-duyet", REVIEWER, <PendingReview />, withReview);
-    await userEvent.click(await screen.findByText(/Mở để duyệt/));
-    expect(await screen.findByText("Bản đang dùng")).toBeInTheDocument();
-    expect(screen.getByText("Bản mới")).toBeInTheDocument();
+    expect(await screen.findByText("Đang chạy trên Bot")).toBeInTheDocument();
+    expect(screen.getByText("Đề xuất mới")).toBeInTheDocument();
   });
 
   it("rejects only with a reason typed", async () => {
     renderScreen("/quan-ly/cho-duyet", REVIEWER, <PendingReview />, withReview);
-    await userEvent.click(await screen.findByText(/Mở để duyệt/));
-    const rejectButton = screen.getByText("Trả lại để sửa");
+    await screen.findByText(/Chờ duyệt · 1 mục/);
+    const rejectButton = screen.getByText("Trả lại kèm lý do");
     expect(rejectButton).toBeDisabled();
     await userEvent.type(
-      screen.getByLabelText("Lý do trả lại (bắt buộc nếu trả lại)"),
+      screen.getByLabelText("Lý do trả lại (bắt buộc khi trả lại)"),
       "Sai năm học",
     );
-    expect(screen.getByText("Trả lại để sửa")).toBeEnabled();
+    expect(screen.getByText("Trả lại kèm lý do")).toBeEnabled();
   });
 });
 
@@ -413,7 +412,7 @@ describe("Chờ duyệt — nhận nháp (T15)", () => {
         </AdminSessionProvider>
       </QueryClientProvider>,
     );
-    await screen.findByText(/Chờ duyệt \(1\)/);
+    await screen.findByText(/Chờ duyệt · 1 mục/);
 
     // The claim action is present on the unclaimed card
     expect(await screen.findByText("Nhận nháp")).toBeInTheDocument();
@@ -465,7 +464,7 @@ describe("Chờ duyệt — nhận nháp (T15)", () => {
         </AdminSessionProvider>
       </QueryClientProvider>,
     );
-    await screen.findByText(/Chờ duyệt \(1\)/);
+    await screen.findByText(/Chờ duyệt · 1 mục/);
     await userEvent.click(screen.getAllByText("Nhận nháp")[0]);
     await userEvent.click(screen.getByText("Chưa, quay lại"));
     expect(
@@ -508,7 +507,7 @@ describe("Chờ duyệt — nhận nháp (T15)", () => {
         </AdminSessionProvider>
       </QueryClientProvider>,
     );
-    await screen.findByText(/Chờ duyệt \(1\)/);
+    await screen.findByText(/Chờ duyệt · 1 mục/);
     const listFetchesBefore = listFetches;
 
     await userEvent.click(screen.getAllByText("Nhận nháp")[0]);
@@ -542,7 +541,7 @@ describe("Chờ duyệt — nhận nháp (T15)", () => {
         return defaultHandler(url);
       },
     );
-    await screen.findByText(/Chờ duyệt \(2\)/);
+    await screen.findByText(/Chờ duyệt · 2 mục/);
     expect(screen.queryByText("Nhận nháp")).toBeNull();
   });
 
@@ -559,7 +558,7 @@ describe("Chờ duyệt — nhận nháp (T15)", () => {
         return defaultHandler(url);
       },
     );
-    await screen.findByText(/Chờ duyệt \(1\)/);
+    await screen.findByText(/Chờ duyệt · 1 mục/);
     const listFetchesBefore = calls.filter(
       (c) => c.url.includes("/admin/records") && c.url.includes("status=review"),
     ).length;
@@ -642,7 +641,7 @@ describe("Chờ duyệt — duyệt hàng loạt (T15)", () => {
       </QueryClientProvider>,
     );
 
-    await screen.findByText(/Chờ duyệt \(3\)/);
+    await screen.findByText(/Chờ duyệt · 3 mục/);
 
     // Select two reviewable records
     const checkboxA = screen.getByLabelText(/Chọn HOC_PHI \(2026\)/) as HTMLInputElement;
@@ -696,13 +695,13 @@ describe("Chờ duyệt — duyệt hàng loạt (T15)", () => {
         return defaultHandler(url);
       },
     );
-    await screen.findByText(/Chờ duyệt \(3\)/);
+    await screen.findByText(/Chờ duyệt · 3 mục/);
 
     // Own record: checkbox must NOT be present; four-eyes text must be
     expect(
       screen.queryByLabelText(/Chọn RIENG \(2026\)/),
     ).toBeNull();
-    expect(screen.getAllByText(/Cần một người khác duyệt/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Cần người khác duyệt/).length).toBeGreaterThanOrEqual(1);
 
     // Batch action bar must NOT appear (0 selected)
     expect(
@@ -749,7 +748,7 @@ describe("Chờ duyệt — duyệt hàng loạt (T15)", () => {
         </AdminSessionProvider>
       </QueryClientProvider>,
     );
-    await screen.findByText(/Chờ duyệt \(3\)/);
+    await screen.findByText(/Chờ duyệt · 3 mục/);
 
     await userEvent.click(screen.getByLabelText(/Chọn HOC_PHI \(2026\)/));
     await userEvent.click(screen.getByLabelText(/Chọn NGANH \(2026\)/));
@@ -806,7 +805,7 @@ describe("Chờ duyệt — duyệt hàng loạt (T15)", () => {
         </AdminSessionProvider>
       </QueryClientProvider>,
     );
-    await screen.findByText(/Chờ duyệt \(3\)/);
+    await screen.findByText(/Chờ duyệt · 3 mục/);
 
     await userEvent.click(screen.getByLabelText(/Chọn HOC_PHI \(2026\)/));
 
@@ -864,7 +863,7 @@ describe("Câu hỏi bot chưa trả lời được", () => {
       if (url.includes("/admin/unanswered")) return json(unanswered);
       return defaultHandler(url);
     });
-    expect(await screen.findByText("Trường có ký túc xá không?")).toBeInTheDocument();
+    expect((await screen.findAllByText("Trường có ký túc xá không?")).length).toBeGreaterThan(0);
     expect(
       screen.getByText(/Trả lời & Đưa vào bộ câu hỏi chuẩn/)
     ).toBeInTheDocument();
