@@ -246,7 +246,9 @@ const AddInfo = () => {
               <div className="flex flex-wrap items-center justify-between gap-4 rounded-12 border border-[#143980] bg-white p-4">
                 <div className="min-w-0">
                   <p className="truncate text-[15px] font-semibold text-[#143980]">{chosen.name}</p>
-                  <p className="text-sm text-[#6B7686]">{formatFileSize(chosen.size)} · Sẵn sàng tải lên</p>
+                  <p className="text-sm text-[#6B7686]">
+                    {(chosen.name.split(".").pop() ?? "").toUpperCase()} · {formatFileSize(chosen.size)} · Sẵn sàng tải lên
+                  </p>
                 </div>
                 <SecondaryButton onClick={() => fileInputRef.current?.click()} disabled={upload.isPending}>
                   Đổi tệp khác
@@ -268,6 +270,17 @@ const AddInfo = () => {
               </SecondaryButton>
             ) : null}
           </div>
+
+          <section aria-labelledby="split-mode-title" className="space-y-2 rounded-12 border border-[#D6DEEA] bg-white p-4">
+            <h2 id="split-mode-title" className="text-base font-semibold text-[#143980]">
+              Cách tách nội dung
+            </h2>
+            <p className="text-sm font-semibold text-[#143980]">Tự nhận diện (mặc định)</p>
+            <p className="text-sm text-[#4A5568]">
+              Hệ thống đọc chữ trong tệp và tách thành từng mục nhỏ để bạn kiểm tra. Bảng được đọc ở chế độ văn bản, nên
+              các bảng sẽ được đánh dấu để bạn kiểm tra số liệu bằng tay.
+            </p>
+          </section>
 
           {failure !== null && failure.kind !== "duplicate-document" ? (
             <ExceptionBar title={failure.message}>

@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import {
   AdminApiError,
   listExceptions,
+  openSourceDocument,
   patchBlock,
   type ExceptionsListResponse,
 } from "@/lib/adminApi";
@@ -68,6 +69,17 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
       await exceptions.refetch();
     },
   });
+
+  // The original file is fetched once per document. Only PDFs can be shown in the viewer;
+  // other types keep the extracted-text view.
+  const source = useQuery({
+    queryKey: ["source-document-url", documentId],
+    queryFn: () => openSourceDocument(null, documentId),
+    enabled: documentId.toLowerCase().endsWith(".pdf"),
+    staleTime: Infinity,
+    retry: false,
+  });
+  const pdfUrl = source.data ?? null;
 
   if (exceptions.isError) {
     // The draft list below stays usable: sending a draft does not need the block list.
@@ -158,21 +170,41 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
           <h2 className="mb-2 text-sm font-semibold text-[#143980]">
             Văn bản PDF gốc{selected !== null ? ` · Trang ${selected.page} / ${pageCount}` : ""}
           </h2>
-          <div className="space-y-2">
-            {pageBlocks.map((block) => {
-              const current = selected?.block_id === block.block_id;
-              return (
-                <p
-                  key={block.block_id}
-                  className={`whitespace-pre-wrap rounded-8 border p-3 text-sm text-[#0F1B2D] ${
-                    current ? "border-[#143980] bg-[#FFF3DC]" : "border-transparent bg-white"
-                  }`}
-                >
-                  {block.text}
+          {pdfUrl !== null ? (
+            <iframe
+              title={`Văn bản PDF gốc${selected !== null ? `, trang ${selected.page}` : ""}`}
+              src={`${pdfUrl}#page=${selected?.page ?? 1}`}
+              className="h-[70vh] min-h-[360px] w-full rounded-8 border border-[#D6DEEA] bg-white"
+            />
+          ) : source.isLoading ? (
+            <p role="status" className="text-sm text-[#4A5568]">
+              Đang mở tệp gốc…
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {source.isError ? (
+                <p className="text-sm text-[#4A5568]">
+                  Chưa mở được tệp gốc. Nội dung đã tách của trang được hiển thị bên dưới.
                 </p>
-              );
-            })}
-          </div>
+              ) : null}
+              {pageBlocks.map((block) => {
+                const current = selected?.block_id === block.block_id;
+                return (
+                  <p
+                    key={block.block_id}
+                    className={`whitespace-pre-wrap rounded-8 border p-3 text-sm text-[#0F1B2D] ${
+                      current ? "border-[#143980] bg-[#FFF3DC]" : "border-transparent bg-white"
+                    }`}
+                  >
+                    {block.text}
+                  </p>
+                );
+              })}
+              {pageBlocks.length === 0 ? (
+                <p className="text-sm text-[#4A5568]">Trang này chưa có nội dung đã tách.</p>
+              ) : null}
+            </div>
+          )}
         </div>
 
         <div className={`${panel("detail")} rounded-12 border border-[#D6DEEA] bg-white p-3`}>

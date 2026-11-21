@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listExceptions, patchBlock } from "@/lib/adminApi";
+import { listExceptions, openSourceDocument, patchBlock } from "@/lib/adminApi";
 
 // Upload ids look like "uploads/<sha256>.pdf". The backend routes take the id as
 // path segments, so an encoded "%2F" is never routed and answers 404.
@@ -39,5 +39,23 @@ describe("document ids that contain a slash", () => {
     const url = String(fetchMock.mock.calls[0][0]);
     expect(url).toMatch(/\/admin\/source-documents\/uploads\/89bf[0-9a-f]+\.pdf\/blocks\/b-1$/);
     expect(url).not.toContain("%2F");
+  });
+});
+
+describe("source document content for the original PDF", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the whole upload id as the document_id query value", async () => {
+    const fetchMock = vi.fn(async () => new Response(new Blob(["%PDF-1.4"]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:original") }));
+
+    await openSourceDocument(null, UPLOAD_ID);
+
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.pathname).toMatch(/\/admin\/source-documents\/content$/);
+    expect(url.searchParams.get("document_id")).toBe(UPLOAD_ID);
   });
 });
