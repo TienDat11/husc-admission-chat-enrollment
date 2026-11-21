@@ -216,6 +216,15 @@ const PendingReview = () => {
         <p role="status" className="note ok">
           Không có thông tin nào chờ duyệt.
         </p>
+        <div className="flex flex-wrap gap-2" aria-label="Quyết định">
+          <button type="button" className="btn" disabled>
+            Trả lại kèm lý do
+          </button>
+          <button type="button" className="btn btn-primary" disabled>
+            Duyệt & Phát hành
+          </button>
+        </div>
+        <p className="text-[13px] text-[#474747]">Chưa có mục nào để quyết định.</p>
       </div>
     );
   }
@@ -223,7 +232,8 @@ const PendingReview = () => {
   const changes = diff.data?.diff?.changes ?? [];
   const baselineVersion = diff.data?.diff?.baseline_version;
   const isOwnWork = selected.authored_by === identity?.actor_id;
-  const canReview = !isOwnWork && Boolean(identity?.actions.includes("records.approve"));
+  const canApprove = Boolean(identity?.actions.includes("records.approve"));
+  const canReview = !isOwnWork && canApprove;
 
   return (
     <div className="space-y-5 pb-24 md:pb-0">
@@ -235,8 +245,9 @@ const PendingReview = () => {
             Bạn là người tạo mục này nên cần một quản trị viên khác duyệt.
           </p>
           <p className="mt-1 text-[14px] leading-6">
-            Hệ thống khóa nút Duyệt với tài khoản tác giả. Bạn vẫn có thể hỏi thử, so sánh và
-            trả lại kèm lý do.
+            {canApprove
+              ? "Hệ thống khóa nút Duyệt với tài khoản tác giả. Bạn vẫn có thể hỏi thử, so sánh và trả lại kèm lý do."
+              : "Vai trò hiện tại của bạn không có quyền duyệt nên nút Duyệt bị khóa. Bạn vẫn có thể hỏi thử và so sánh."}
           </p>
         </div>
       ) : null}
@@ -373,9 +384,8 @@ const PendingReview = () => {
                     Duyệt và xuất bản {selectedIds.length} mục?
                   </h3>
                   <p id="xac-nin-nhieu-d">
-                    Bot sẽ trả lời theo thông tin mới cho {selectedIds.length} mục này cho
-                    thí sinh, trong khoảng 5–10 phút sau khi xuất bản. Có thể khôi phục
-                    bản trước bất cứ lúc nào.
+                    Bot sẽ dùng thông tin mới cho {selectedIds.length} mục này sau khi xuất
+                    bản. Có thể khôi phục bản trước trong Lịch sử.
                   </p>
                   <div className="actions">
                     <button
@@ -625,8 +635,8 @@ const PendingReview = () => {
               >
                 <h3 id="xac-nin-h">Xuất bản "{recordTitle(selected)}"?</h3>
                 <p id="xac-nin-d">
-                  Bot sẽ trả lời theo thông tin này cho thí sinh, trong khoảng 5–10 phút
-                  sau khi xuất bản. Có thể khôi phục bản trước bất cứ lúc nào.
+                  Bot sẽ dùng thông tin này sau khi xuất bản. Có thể khôi phục bản trước
+                  trong Lịch sử.
                 </p>
                 <div className="actions">
                   <button type="button" className="btn" onClick={() => setConfirming(false)}>

@@ -94,7 +94,7 @@ const Unanswered = () => {
           Bot đã trả lời được mọi câu hỏi trong 7 ngày qua.
         </p>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,7fr)]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,7fr)]">
           <section
             aria-labelledby="cau-hoi-danh-sach"
             className="rounded-[12px] border border-[#D6DEEA] bg-white p-4"

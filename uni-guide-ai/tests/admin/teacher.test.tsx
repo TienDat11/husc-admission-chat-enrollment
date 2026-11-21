@@ -1183,3 +1183,60 @@ describe("Câu hỏi chưa trả lời: khung chi tiết", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("Chờ duyệt: tác giả, khung trống và nội dung hộp thoại", () => {
+  const pendingRecord = (overrides: Record<string, unknown>) => ({
+    schema_version: "1",
+    record_id: "HOC_PHI_2026",
+    record_type: "HOC_PHI",
+    version: 3,
+    admission_year: 2026,
+    effective_from: "2026-01-01",
+    effective_to: null,
+    status: "review",
+    authority_level: "official",
+    source_document_id: null,
+    source_url: null,
+    source_page: null,
+    published_at: null,
+    authored_by: "nguyenvana",
+    supersedes: null,
+    locale: "vi",
+    text: "Học phí hệ chính quy năm 2026 là 15.000.000 đồng.",
+    ...overrides,
+  });
+
+  it("khóa nút Duyệt và đánh dấu khi reviewer là tác giả của mục", async () => {
+    renderScreen("/quan-ly/cho-duyet", REVIEWER, <PendingReview />, (url) => {
+      if (url.includes("/admin/records"))
+        return json({ records: [pendingRecord({ authored_by: "cb.duyet" })], total: 1 });
+      return defaultHandler(url);
+    });
+    expect(await screen.findByText("Cần người khác duyệt")).toBeInTheDocument();
+    expect(screen.getByText(/Bạn là người tạo mục này/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Duyệt & Phát hành" })).toBeDisabled();
+  });
+
+  it("giữ nút quyết định hiển thị và bị khóa khi chưa có mục nào", async () => {
+    renderScreen("/quan-ly/cho-duyet", REVIEWER, <PendingReview />, (url) => {
+      if (url.includes("/admin/records")) return json({ records: [], total: 0 });
+      return defaultHandler(url);
+    });
+    expect(await screen.findByText("Chưa có mục nào để quyết định.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Duyệt & Phát hành" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Trả lại kèm lý do" })).toBeDisabled();
+  });
+
+  it("hộp thoại xuất bản không ghi khoảng thời gian chưa kiểm chứng", async () => {
+    renderScreen("/quan-ly/cho-duyet", REVIEWER, <PendingReview />, (url) => {
+      if (url.includes("/admin/records"))
+        return json({ records: [pendingRecord({})], total: 1 });
+      return defaultHandler(url);
+    });
+    const publish = await screen.findByRole("button", { name: "Duyệt & Phát hành" });
+    await waitFor(() => expect(publish).toBeEnabled());
+    await userEvent.click(publish);
+    expect(await screen.findByText(/Bot sẽ dùng thông tin này sau khi xuất bản/)).toBeInTheDocument();
+    expect(screen.queryByText(/phút/)).not.toBeInTheDocument();
+  });
+});

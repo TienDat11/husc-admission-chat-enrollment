@@ -208,7 +208,7 @@ const Vault = () => {
           </Link>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(280px,3fr)]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(280px,3fr)]">
           <div className="table-wrap rounded-[12px] border border-[#D6DEEA] bg-white">
             <table>
               <thead>
