@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import RecordsGate from "@/components/admin/RecordsGate";
 import Overview from "@/pages/teacher/Overview";
@@ -21,6 +21,7 @@ import Unanswered from "@/pages/teacher/Unanswered";
 import AskTest from "@/pages/teacher/AskTest";
 import History from "@/pages/teacher/History";
 import { AdminSessionProvider } from "@/hooks/useAdminSession";
+import { fetchAdminOverview } from "@/lib/adminOpsApi";
 import {
   type AdminIdentity,
 } from "@/lib/adminApi";
@@ -887,6 +888,93 @@ describe("Chờ duyệt — duyệt hàng loạt (T15)", () => {
     expect(
       calls.filter((c) => c.url.includes("/transitions")),
     ).toHaveLength(0);
+  });
+});
+
+/** Mirrors the sidebar badge: the same query key TeacherLayout reads. */
+function SidebarCountProbe() {
+  const overview = useQuery({
+    queryKey: ["admin", "overview"],
+    queryFn: () => fetchAdminOverview(null),
+    retry: false,
+  });
+  return <p>Số đếm: {overview.data?.review_count ?? "—"}</p>;
+}
+
+describe("Chờ duyệt — số đếm thanh bên làm mới sau khi đổi bản ghi", () => {
+  const draft = {
+    record_id: "HOC_PHI:2026",
+    record_type: "HOC_PHI",
+    version: 1,
+    admission_year: 2026,
+    effective_from: "2026-01-01",
+    effective_to: "2027-01-01",
+    status: "review",
+    authority_level: "husc_official",
+    source_document_id: null,
+    source_url: null,
+    source_page: null,
+    published_at: null,
+    authored_by: null,
+    supersedes: null,
+    locale: "vi",
+    text: "Học phí.",
+    values: {},
+  };
+
+  it("refetches the overview count after a transition, so the sidebar badge is not stale", async () => {
+    let reviewCount = 1;
+    const overviewFetches = { n: 0 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/admin/identity")) return json({ ...REVIEWER, actions: [...REVIEWER.actions, "records.edit"] });
+        if (url.includes("/admin/overview")) {
+          overviewFetches.n += 1;
+          return json({ review_count: reviewCount, unanswered_open_count: 0, open_blocker_count: 0 });
+        }
+        if (url.includes("/admin/records") && url.includes("status=review"))
+          return json({ records: reviewCount > 0 ? [draft] : [], total: reviewCount });
+        if (url.includes("/claim")) {
+          reviewCount = 0;
+          return json({ record: draft, event: {} });
+        }
+        return defaultHandler(url);
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AdminSessionProvider>
+          <MemoryRouter initialEntries={["/quan-ly/cho-duyet"]}>
+            <Routes>
+              <Route path="/quan-ly/cho-duyet" element={<RecordsGate />}>
+                <Route
+                  index
+                  element={
+                    <>
+                      <SidebarCountProbe />
+                      <PendingReview />
+                    </>
+                  }
+                />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </AdminSessionProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByText("Số đếm: 1");
+    const fetchesBefore = overviewFetches.n;
+
+    await userEvent.click(screen.getAllByText("Nhận nháp")[0]);
+    await userEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Nhận nháp" }),
+    );
+
+    expect(await screen.findByText("Số đếm: 0")).toBeInTheDocument();
+    expect(overviewFetches.n).toBeGreaterThan(fetchesBefore);
   });
 });
 

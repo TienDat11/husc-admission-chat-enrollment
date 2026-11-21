@@ -2,7 +2,7 @@
 // Upload is real: POST /admin/source-documents/upload answers 202 with the
 // parse job; GET /admin/jobs/{id} is polled until it is terminal. The job id is
 // kept in sessionStorage, so a reload keeps following the same job.
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { z } from "zod";
@@ -11,6 +11,7 @@ import { AdminApiError } from "@/lib/adminApi";
 import type { ApiFailure } from "@/lib/apiError";
 import { fetchJob, uploadSourceDocument, type UploadReport } from "@/lib/adminOpsApi";
 import { forEachLimited, sendDraftForReview } from "@/lib/draftSubmit";
+import { invalidateRecordTransition } from "@/lib/recordTransitions";
 import { jobStageLabel, uploadWarningMessage } from "@/lib/uploadMessages";
 import { ExceptionBar } from "@/components/ui-kit/ExceptionBar";
 import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
@@ -80,6 +81,7 @@ const SEND_CONCURRENCY = 3;
 
 function DraftReview({ ids, documentId }: { ids: string[]; documentId: string }) {
   const [sends, setSends] = useState<Record<string, DraftSend>>({});
+  const queryClient = useQueryClient();
   const busy = Object.values(sends).some((send) => send.status === "sending");
   useEffect(() => {
     if (!busy) return;
@@ -98,6 +100,7 @@ function DraftReview({ ids, documentId }: { ids: string[]; documentId: string })
     try {
       await sendDraftForReview(id);
       setSends((prev) => ({ ...prev, [id]: { status: "sent" } }));
+      invalidateRecordTransition(queryClient);
     } catch (error: unknown) {
       setSends((prev) => ({ ...prev, [id]: { status: "error", message: failureOf(error).message } }));
     }

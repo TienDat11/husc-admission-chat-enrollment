@@ -10,6 +10,7 @@ import {
   type CanonicalRecord,
   type ReviewPreviewResult,
 } from "@/lib/adminApi";
+import { invalidateRecordTransition } from "@/lib/recordTransitions";
 import { RECORD_TYPE_LABELS } from "@/lib/adminValidation";
 import {
   approveAndPublish,
@@ -125,7 +126,7 @@ const PendingReview = () => {
         setConfirming(false);
         setRejectReason("");
         setIntent(null);
-        void queryClient.invalidateQueries({ queryKey: ["admin", "records"] });
+        invalidateRecordTransition(queryClient);
       })
       .catch((failure: unknown) => {
         setActionError(
@@ -164,7 +165,7 @@ const PendingReview = () => {
     setBatchResult(result);
     setBatchKey(null);
     setSelectedIds([]);
-    void queryClient.invalidateQueries({ queryKey: ["admin", "records"] });
+    invalidateRecordTransition(queryClient);
   };
   const runClaim = async (record: CanonicalRecord) => {
     const key = claimKey ?? newIdempotencyKey();
@@ -174,7 +175,7 @@ const PendingReview = () => {
     try {
       await claimDraft(null, record.record_id, record.version, key);
       setClaimKey(null);
-      void queryClient.invalidateQueries({ queryKey: ["admin", "records"] });
+      invalidateRecordTransition(queryClient);
     } catch (failure: unknown) {
       const message =
         failure instanceof Error
