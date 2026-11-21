@@ -16,9 +16,11 @@ import { ExcelPasteModal } from "@/components/admin/ExcelPasteModal";
 import { ExceptionBar } from "@/components/ui-kit/ExceptionBar";
 import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
 import { SecondaryButton } from "@/components/ui-kit/SecondaryButton";
+import { handleTablistKey } from "@/lib/tablistKeys";
 
 type Block = ExceptionsListResponse["blocks"][number];
 type MobileTab = "list" | "pdf" | "detail";
+const MOBILE_TABS: MobileTab[] = ["list", "pdf", "detail"];
 
 const PREVIEW_CHARS = 90;
 const TABLE_TIER_WARNING = "TABLE_TIER_DISABLED";
@@ -101,14 +103,14 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
         </p>
       </div>
 
-      <div role="tablist" aria-label="Phần kiểm tra" className="grid grid-cols-3 gap-2 lg:hidden">
-        <button type="button" role="tab" aria-selected={mobileTab === "list"} className={tabClass("list")} onClick={() => setMobileTab("list")}>
+      <div role="tablist" aria-label="Phần kiểm tra" className="grid grid-cols-3 gap-2 lg:hidden" onKeyDown={(event) => handleTablistKey(event, (index) => setMobileTab(MOBILE_TABS[index]))}>
+        <button type="button" role="tab" aria-selected={mobileTab === "list"} tabIndex={mobileTab === "list" ? 0 : -1} className={tabClass("list")} onClick={() => setMobileTab("list")}>
           Nội dung ({blocks.length})
         </button>
-        <button type="button" role="tab" aria-selected={mobileTab === "pdf"} className={tabClass("pdf")} onClick={() => setMobileTab("pdf")}>
+        <button type="button" role="tab" aria-selected={mobileTab === "pdf"} tabIndex={mobileTab === "pdf" ? 0 : -1} className={tabClass("pdf")} onClick={() => setMobileTab("pdf")}>
           Bản gốc PDF
         </button>
-        <button type="button" role="tab" aria-selected={mobileTab === "detail"} className={tabClass("detail")} onClick={() => setMobileTab("detail")}>
+        <button type="button" role="tab" aria-selected={mobileTab === "detail"} tabIndex={mobileTab === "detail" ? 0 : -1} className={tabClass("detail")} onClick={() => setMobileTab("detail")}>
           Chi tiết
         </button>
       </div>

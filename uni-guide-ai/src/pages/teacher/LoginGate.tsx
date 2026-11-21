@@ -141,7 +141,7 @@ const LoginGate = () => {
                     type="button"
                     onClick={() => setActorId(account.actorId)}
                     disabled={busy || locked}
-                    className="flex min-h-11 w-full items-center gap-3 rounded-lg border border-[#d6deea] bg-white p-3 text-left hover:bg-[#f7f9fc]"
+                    className="flex min-h-11 w-full items-center gap-3 rounded-12 border border-[#d6deea] bg-white p-3 text-left hover:bg-[#f7f9fc]"
                   >
                     <span
                       aria-hidden="true"

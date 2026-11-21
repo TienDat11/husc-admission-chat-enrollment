@@ -19,6 +19,7 @@ import {
   rejectWithReason,
 } from "@/lib/teacherApi";
 import { cn } from "@/lib/utils";
+import { handleTablistKey } from "@/lib/tablistKeys";
 
 type Column = "current" | "proposed" | "pdf";
 
@@ -431,14 +432,15 @@ const PendingReview = () => {
               {recordTitle(selected)}
             </h2>
 
-            <div role="tablist" aria-label="Chọn cột so sánh" className="mt-4 flex gap-2 md:hidden">
-              {COLUMNS.map((item) => (
+            <div role="tablist" aria-label="Chọn cột so sánh" className="mt-4 flex gap-2 md:hidden" onKeyDown={(event) => handleTablistKey(event, (index) => setColumn(COLUMNS[index].id))}>
+              {COLUMNS.map((item, index) => (
                 <button
                   key={item.id}
                   type="button"
                   role="tab"
                   aria-controls="so-sanh-panel"
                   aria-selected={column === item.id}
+                  tabIndex={column === item.id ? 0 : -1}
                   onClick={() => setColumn(item.id)}
                   className={cn(
                     "min-h-11 flex-1 rounded-[8px] border px-2 text-[13px] font-medium",
