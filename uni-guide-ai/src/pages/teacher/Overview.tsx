@@ -109,7 +109,7 @@ const Overview = () => {
               type="button"
               aria-pressed={view === option.value}
               onClick={() => setView(option.value)}
-              className={`min-h-11 rounded-lg border px-4 text-sm font-semibold ${
+              className={`min-h-11 rounded-8 border px-4 text-sm font-semibold ${
                 view === option.value
                   ? "border-[#143980] bg-[#143980] text-white"
                   : "border-[#d6deea] bg-white text-[#143980] hover:bg-[#eef3fb]"
@@ -182,7 +182,7 @@ const Overview = () => {
                   </div>
                   <Link
                     to={action.to}
-                    className="inline-flex min-h-11 items-center rounded-lg bg-[#143980] px-4 text-base font-semibold !text-white hover:bg-[#0f2d66]"
+                    className="inline-flex min-h-11 items-center rounded-8 bg-[#143980] px-4 text-base font-semibold !text-white hover:bg-[#0f2d66]"
                   >
                     {action.cta}
                   </Link>
@@ -230,7 +230,7 @@ const Overview = () => {
                 </div>
                 <Link
                   to="/quan-ly/cho-duyet"
-                  className="inline-flex min-h-11 items-center rounded-lg border border-[#143980] bg-white px-4 text-base font-semibold text-[#143980] hover:bg-[#eef3fb]"
+                  className="inline-flex min-h-11 items-center rounded-8 border border-[#143980] bg-white px-4 text-base font-semibold text-[#143980] hover:bg-[#eef3fb]"
                 >
                   Mở màn hình duyệt
                 </Link>

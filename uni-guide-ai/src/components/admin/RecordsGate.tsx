@@ -39,7 +39,7 @@ function LoginForm() {
           id="admin-actor-id"
           type="text"
           autoComplete="username"
-          className="min-h-11 w-full rounded-lg border border-[#d6deea] bg-white px-3 text-base text-[#0f1b2d]"
+          className="min-h-11 w-full rounded-8 border border-[#d6deea] bg-white px-3 text-base text-[#0f1b2d]"
           value={actorId}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? "admin-login-error" : undefined}
@@ -54,7 +54,7 @@ function LoginForm() {
           id="admin-password"
           type="password"
           autoComplete="current-password"
-          className="min-h-11 w-full rounded-lg border border-[#d6deea] bg-white px-3 text-base text-[#0f1b2d]"
+          className="min-h-11 w-full rounded-8 border border-[#d6deea] bg-white px-3 text-base text-[#0f1b2d]"
           value={password}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? "admin-login-error" : undefined}
@@ -69,7 +69,7 @@ function LoginForm() {
       <button
         type="submit"
         disabled={submitting}
-        className="min-h-11 w-full rounded-lg bg-[#143980] px-4 text-base font-semibold text-white hover:bg-[#0f2d66] disabled:opacity-50"
+        className="min-h-11 w-full rounded-8 bg-[#143980] px-4 text-base font-semibold text-white hover:bg-[#0f2d66] disabled:opacity-50"
       >
         Đăng nhập
       </button>

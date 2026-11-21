@@ -135,7 +135,7 @@ const History = () => {
                 <ReleaseCard release={previous} tone="previous" title="Bản lưu trước đó" />
                 <button
                   type="button"
-                  className="min-h-11 rounded-lg border border-[#143980] bg-white px-4 text-base font-semibold text-[#143980] hover:bg-[#eef3fb] disabled:opacity-50"
+                  className="min-h-11 rounded-8 border border-[#143980] bg-white px-4 text-base font-semibold text-[#143980] hover:bg-[#eef3fb] disabled:opacity-50"
                   onClick={() => {
                     setRollbackDone(false);
                     setRollbackError(null);
@@ -193,20 +193,20 @@ const History = () => {
                   value={rollbackReason}
                   placeholder="Ví dụ: Phát hiện bảng phụ lục trang 9 của thông báo mới cần đính chính"
                   onChange={(event) => setRollbackReason(event.target.value)}
-                  className="min-h-11 w-full rounded-lg border border-[#143980] bg-white px-3 text-base"
+                  className="min-h-11 w-full rounded-8 border border-[#143980] bg-white px-3 text-base"
                 />
               </div>
               <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
-                  className="min-h-11 rounded-lg border border-[#d6deea] bg-white px-4 text-base font-semibold text-[#0f1b2d] hover:bg-[#f7f9fc]"
+                  className="min-h-11 rounded-8 border border-[#d6deea] bg-white px-4 text-base font-semibold text-[#0f1b2d] hover:bg-[#f7f9fc]"
                   onClick={() => setRollbackOpen(false)}
                 >
                   Không khôi phục
                 </button>
                 <button
                   type="button"
-                  className="min-h-11 rounded-lg bg-[#6b4300] px-4 text-base font-semibold text-white disabled:opacity-50"
+                  className="min-h-11 rounded-8 bg-[#6b4300] px-4 text-base font-semibold text-white disabled:opacity-50"
                   disabled={!rollbackReason.trim() || rollback.isPending}
                   onClick={() => {
                     const reason = rollbackReason.trim();

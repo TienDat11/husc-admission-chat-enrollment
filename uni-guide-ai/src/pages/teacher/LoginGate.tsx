@@ -109,7 +109,7 @@ const LoginGate = () => {
                 value={actorId}
                 onChange={(event) => setActorId(event.target.value)}
                 disabled={busy || locked}
-                className="min-h-11 w-full rounded-lg border border-[#d6deea] bg-white px-3 text-base"
+                className="min-h-11 w-full rounded-8 border border-[#d6deea] bg-white px-3 text-base"
               />
             </div>
             <div className="space-y-1.5">
@@ -124,7 +124,7 @@ const LoginGate = () => {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 disabled={busy || locked}
-                className="min-h-11 w-full rounded-lg border border-[#d6deea] bg-white px-3 text-base"
+                className="min-h-11 w-full rounded-8 border border-[#d6deea] bg-white px-3 text-base"
               />
             </div>
             <PrimaryButton type="submit" disabled={busy || locked} className="w-full">

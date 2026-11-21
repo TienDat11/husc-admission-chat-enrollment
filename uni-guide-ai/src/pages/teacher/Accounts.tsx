@@ -179,7 +179,7 @@ const Accounts = () => {
         </div>
         <a
           href="#personal-password"
-          className="inline-flex min-h-11 items-center rounded-lg border border-[#143980] bg-white px-4 text-base font-semibold text-[#143980] hover:bg-[#eef3fb]"
+          className="inline-flex min-h-11 items-center rounded-8 border border-[#143980] bg-white px-4 text-base font-semibold text-[#143980] hover:bg-[#eef3fb]"
         >
           Đổi mật khẩu của tôi
         </a>
@@ -221,7 +221,7 @@ const Accounts = () => {
           <p className="text-sm">Sao chép và gửi cho người được cấp. Sau khi đóng thông báo, mã không thể xem lại.</p>
           <button
             type="button"
-            className="min-h-11 rounded-lg border border-[#8A5A00] bg-white px-4 text-sm font-semibold text-[#6b4300]"
+            className="min-h-11 rounded-8 border border-[#8A5A00] bg-white px-4 text-sm font-semibold text-[#6b4300]"
             onClick={() => setCreatedToken(null)}
           >
             Đã sao chép, đóng
@@ -272,7 +272,7 @@ const Accounts = () => {
                       </label>
                       <select
                         id={`role-${row.subject_id}`}
-                        className="min-h-11 rounded-lg border border-[#d6deea] bg-white px-3 text-sm"
+                        className="min-h-11 rounded-8 border border-[#d6deea] bg-white px-3 text-sm"
                         value={row.role}
                         disabled={busy || reasonMissing}
                         onChange={(event) => void onChangeRole(row, event.target.value as Role)}
