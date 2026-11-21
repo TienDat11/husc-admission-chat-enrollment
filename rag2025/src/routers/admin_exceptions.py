@@ -76,6 +76,7 @@ class BlockView(BaseModel):
     ordinal: int
     block_type: str
     text: str
+    table_tsv: str | None = None
     state: str | None = None
     warnings: list[str] = []
     missing_pypdf_rows: list[list[str]] = []
@@ -201,6 +202,7 @@ async def list_exceptions(
                 ordinal=row["ordinal"],
                 block_type=row["block_type"],
                 text=row["text"],
+                table_tsv=row["table_tsv"] or None,
                 state=(row.get("state") or "open"),
                 warnings=[c for c in codes],
                 missing_pypdf_rows=[],
