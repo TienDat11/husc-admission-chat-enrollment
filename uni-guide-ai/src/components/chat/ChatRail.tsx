@@ -105,12 +105,15 @@ export function ChatRail({
         </div>
       ) : null}
 
-      {/* Đáy rail */}
-      <div className="shrink-0 px-4 py-4 border-t border-[#E3E8F0]">
-        <p className="text-[12px] leading-[18px] text-[#4A5568]">
-          Phòng Đào tạo &amp; Công tác sinh viên · 0234.3823290 ·
-          tuyensinh@husc.edu.vn · 07:30–17:00 (T2–T6)
-        </p>
+      {/* Thông tin liên hệ: thẻ navy ở đáy rail */}
+      <div className="shrink-0 m-4 rounded-12 bg-[#143980] p-4 text-white">
+        <p className="text-[13px] font-semibold leading-[18px]">Phòng Đào tạo &amp; Công tác sinh viên</p>
+        <p className="mt-0.5 text-[12px] leading-[16px] text-white/80">Trường ĐH Khoa học, ĐH Huế</p>
+        <dl className="mt-3 space-y-1 text-[12px] leading-[16px]">
+          <div className="flex gap-2"><dt className="w-16 shrink-0 text-white/70">Hotline</dt><dd>0234.3823290</dd></div>
+          <div className="flex gap-2"><dt className="w-16 shrink-0 text-white/70">Email</dt><dd className="break-all">tuyensinh@husc.edu.vn</dd></div>
+          <div className="flex gap-2"><dt className="w-16 shrink-0 text-white/70">Giờ làm</dt><dd>07:30–17:00 (T2–T6)</dd></div>
+        </dl>
       </div>
     </aside>
   );

@@ -99,6 +99,12 @@ export function ChatLayout() {
 
   const history = useMemo(() => buildSessionHistory(messages), [messages]);
   const followUps = useMemo(() => deriveFollowUpQuestions(messages), [messages]);
+  const lastAnswerId = useMemo(
+    () =>
+      messages.filter((m) => m.role !== 'user' && m.statusCode !== 'NOT_IN_HUSC_SCOPE').at(-1)?.id ??
+      null,
+    [messages],
+  );
 
   const isOutOfScope = (message: Message) =>
     message.statusCode === 'NOT_IN_HUSC_SCOPE';
@@ -252,6 +258,8 @@ export function ChatLayout() {
                   onRetry={
                     message.retryQuery ? () => handleSendMessage(message.retryQuery) : undefined
                   }
+                  followUps={!isTyping && message.id === lastAnswerId ? followUps : undefined}
+                  onFollowUp={handleTopicSelect}
                 />
               )}
             </div>
@@ -262,9 +270,6 @@ export function ChatLayout() {
             </div>
           )}
 
-          {followUps.length > 0 && !isTyping && (
-            <SuggestedQuestions questions={followUps} onSelect={handleTopicSelect} />
-          )}
         </div>
 
         <ChatComposer

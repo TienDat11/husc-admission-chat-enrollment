@@ -10,11 +10,15 @@ import type { Message } from '@/lib/chat-types';
 import { sendFeedback } from '@/lib/api';
 import { isGenerationFailure, LOCALIZED_ERROR_COPY } from '@/lib/chat-helpers';
 import { SourceChip } from '@/components/student/SourceChip';
+import { SuggestedQuestions } from './SuggestedQuestions';
 
 interface ChatBotBubbleProps {
   message: Message;
   /** Ticket 43: gửi lại ngay câu hỏi trước đó qua handleSendMessage của ChatLayout. */
   onRetry?: () => void;
+  /** Câu hỏi gợi ý của câu trả lời mới nhất; chỉ truyền cho bubble đó. */
+  followUps?: string[];
+  onFollowUp?: (question: string) => void;
 }
 
 const ANSWER_COMPONENTS: Components = {
@@ -31,7 +35,7 @@ const ANSWER_COMPONENTS: Components = {
   ),
 };
 
-export function ChatBotBubble({ message, onRetry }: ChatBotBubbleProps) {
+export function ChatBotBubble({ message, onRetry, followUps, onFollowUp }: ChatBotBubbleProps) {
   const generationFailure = isGenerationFailure(message);
   const isError = !!message.errorKind;
   const [rated, setRated] = useState<'helpful' | 'unclear' | null>(null);
@@ -122,6 +126,10 @@ export function ChatBotBubble({ message, onRetry }: ChatBotBubbleProps) {
               Báo thông tin chưa rõ
             </button>
           </div>
+        )}
+
+        {followUps && followUps.length > 0 && onFollowUp && (
+          <SuggestedQuestions questions={followUps} onSelect={onFollowUp} />
         )}
 
         {/* Nút thử lại chỉ xuất hiện khi sinh thất bại; gửi lại ngay câu hỏi trước đó, không bao giờ rỗng. */}
