@@ -115,14 +115,13 @@ def _list_chunk_files(chunks_dir: Path) -> List[Path]:
     #     crawl stubs + boilerplate navigation rác (batch_thongbao_* carries
     #     only "Trang chủ Thông báo Tuyển sinh..." chrome, not corpus) — T1.3 G1
     #   - chunked_test: fixture, not corpus
-    #   - husc_yearly_{year}: literal template with braces, not a real file
     #   - .* hidden files (manifest etc.)
     #   - *_enhanced: T1.5-bl now INCLUDES these — chunked_10_enhanced.jsonl is
     #     real 2026 subject data (38 rows); T1.2 text-dedup collapses its
     #     overlap with the base file at insert.
     files = sorted(chunks_dir.glob("*.jsonl"))
     _stub_prefixes = ("chunked_thongbao_", "batch_thongbao_", "crawl_thongbao_")
-    _exact_names = {"chunked_test.jsonl", "husc_yearly_{year}.jsonl"}
+    _exact_names = {"chunked_test.jsonl"}
     return [
         f for f in files
         if not f.name.startswith(_stub_prefixes)

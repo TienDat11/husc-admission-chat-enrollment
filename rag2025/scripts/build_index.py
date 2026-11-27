@@ -5,7 +5,7 @@ Reads chunked JSONL files, generates embeddings, and builds vector index.
 
 Usage:
     python scripts/build_index.py \
-        data/chunked_2.jsonl \
+        data/chunked/<file>.jsonl \
         index/vector_store.npz
 """
 import sys
@@ -251,7 +251,7 @@ def main():
         print("\nExamples:")
         print("  Single file:")
         print("    python scripts/build_index.py \\")
-        print("        data/chunked_2.jsonl \\")
+        print("        data/chunked/<file>.jsonl \\")
         print("        index/vector_store.npz")
         print("\n  All chunked files:")
         print("    python scripts/build_index.py \\")

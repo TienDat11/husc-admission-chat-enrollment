@@ -6,10 +6,13 @@ Enhance chunked_10.jsonl with missing fields required for Qdrant ingestion
 import json
 import re
 from datetime import datetime
+from pathlib import Path
+
+CHUNKED_DIR = Path(__file__).resolve().parents[1] / "data" / "chunked"
 
 # Read original chunks
 original_chunks = []
-with open(r"D:\chunking\rag2025_2\rag2025\data\chunked\chunked_10.jsonl", "r", encoding="utf-8") as f:
+with open(CHUNKED_DIR / "chunked_10.jsonl", "r", encoding="utf-8") as f:
     for line in f:
         if line.strip():
             original_chunks.append(json.loads(line))
@@ -99,7 +102,7 @@ for idx, chunk in enumerate(original_chunks):
     print(f"Processed chunk {idx + 1}/{len(original_chunks)}: {chunk_id}")
 
 # Write to new file
-output_path = r"D:\chunking\rag2025_2\rag2025\data\chunked\chunked_10_enhanced.jsonl"
+output_path = CHUNKED_DIR / "chunked_10_enhanced.jsonl"
 with open(output_path, "w", encoding="utf-8") as f:
     for chunk in enhanced_chunks:
         f.write(json.dumps(chunk, ensure_ascii=False) + "\n")

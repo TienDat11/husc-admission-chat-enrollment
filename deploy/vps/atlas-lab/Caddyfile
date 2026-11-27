@@ -36,6 +36,15 @@
 	# Browser navigation to a screen the SPA router owns → index.html.
 	# Listed BEFORE the API handle; handle blocks are mutually exclusive and
 	# evaluated in source order, so the more specific one must come first.
+	# Security headers for every response (SPA shell, assets and API).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+	}
+
 	@spa_nav {
 		method GET HEAD
 		header Accept *text/html*
@@ -49,9 +58,9 @@
 
 	# ── API paths → BE container ─────────────────────────────────────────────
 	# FastAPI routes served at root (no /api/ prefix). Full list: api/openapi.json.
-	#   /api/*  /v2/*  /v3/*  /query  /health  /warmup  /metrics  /admin/*
+	#   /api/*  /v2/*  /v3/*  /query  /health  /warmup  /admin/*
 	@backend_api {
-		path /api/* /v2/* /v3/* /query /health /warmup /metrics /admin/*
+		path /api/* /v2/* /v3/* /query /health /warmup /admin/*
 	}
 	handle @backend_api {
 		reverse_proxy app:8000

@@ -40,6 +40,7 @@ def test_list_chunk_files_includes_all_sources(tmp_path):
         "thongbao_2026_v2.jsonl",
         "husc_diem_ranking_2025.jsonl",
         "baiviet_2026.jsonl",
+        "husc_yearly_2027.jsonl",  # yearly auto-ingest output (year substituted)
     ]
     _mk(d, names)
 
@@ -53,7 +54,7 @@ def test_list_chunk_files_excludes_stubs_and_noise(tmp_path):
     T1.5-bl: `*_enhanced.jsonl` carries real 2026 subject data and must be
     included (see test_ingest_incremental_no_mass_delete.py). Only true crawl
     stubs (chunked_thongbao_/batch_thongbao_/crawl_thongbao_), the test
-    fixture, and the yearly template are excluded.
+    fixture, are excluded.
     """
     d = tmp_path / "chunked"
     d.mkdir()
@@ -64,7 +65,6 @@ def test_list_chunk_files_excludes_stubs_and_noise(tmp_path):
         "crawl_thongbao_76_2026-07-30T04.03.14.002542+00.00.jsonl",
         "chunked_10_enhanced.jsonl",
         "chunked_test.jsonl",
-        "husc_yearly_{year}.jsonl",
     ]
     _mk(d, names)
 

@@ -1,214 +1,63 @@
-# Byte-compiled / optimized / DLL files
+# ---- Python ----
 __pycache__/
-*.py[codz]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-/lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
+*.py[cod]
 *.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py.cover
-.hypothesis/
 .pytest_cache/
-cover/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-.pybuilder/
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
-
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
-#poetry.toml
-
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
-#   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
-#pdm.lock
-#pdm.toml
-.pdm-python
-.pdm-build/
-
-# pixi
-#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
-#pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
-#   in the .venv directory. It is recommended not to include this directory in version control.
-.pixi
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.envrc
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-deploy-env.json
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
 .mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-.idea/
-
-# Abstra
-# Abstra is an AI-powered process automation framework.
-# Ignore directories containing user credentials, local state, and settings.
-# Learn more at https://abstra.io/docs
-.abstra/
-
-# Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the entire vscode folder
-.vscode/
-.cursor/
-
-# Ruff stuff:
 .ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+rag2025/venv/
+*.log
 
-# PyPI configuration file
-.pypirc
+# ---- Node / frontend ----
+node_modules/
+dist/
+coverage/
+.lighthouseci/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
+# ---- Env, secrets, keys (never commit) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+deploy-env.json
+secrets/
 
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
+# ---- Editors / OS ----
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+.DS_Store
 
+# ---- Agent / tooling workspaces ----
+.omp/
+.scratch/
+.scratch-imports.txt
+.gitnexus/
+graphify-out/
+.claude/
+.omc/
+.superpowers/
+.cache/
+.git_untrack_list.txt
 
+# ---- Corpus and runtime data ----
+# Tracked corpus stays tracked; this only hides untracked local output (LanceDB, graph, caches).
 rag2025/data/*
 !rag2025/data/chunked/
 !rag2025/data/chunked/**
@@ -218,535 +67,67 @@ rag2025/data/*
 !rag2025/data/normalized/**
 !rag2025/data/validated/
 !rag2025/data/validated/**
-rag2025/index/
-rag2025/venv/
-rag2025/.env*
-rag2025/=*.0
-rag2025/nul
-
-# Node.js
-**/node_modules/
-**/dist/
-**/build/
-**/.next/
-**/.env*
-
-# OS files
-.DS_Store
-Thumbs.db
-.gitnexus
-
-# Autodev workflow state (runtime, not committed)
-.workflow/
-
-# mega-template additions
-.claude/settings.local.json
-docs/specs/
-docs/plans/
-.omc/
-.superpowers/
-
-# ── Local-only docs / reports / thesis artifacts (keep on disk, never commit) ──
-# Load-bearing docs stay tracked via negations below.
-*.pdf
-*.docx
-*.doc
-*.rtf
-# Report/thesis markdown sprawl — broad ignore, then re-include load-bearing docs.
-GraphRAG_*.md
-Chapter2_*.md
-draft_chapter2_graphrag.md
-graph_rag_document.md
-thesis_context.md
-prompt.md
-requirements.md
-arxiv_results.txt
-clean_text.txt
-extracted_text.txt
-pdf_text.txt
-create-image/
-docs/reviews/
-docs/superpowers/
-docs/assessment-*.md
-docs/coverage.md
-docs/*-comparison.md
-docs/qwen3-*.md
-rag2025/backup_mail_package_2026/
-rag2025/results/**/*.md
-rag2025/results/**/*.pdf
-rag2025/results/**/*.json
-# T00 baseline pin (commit SHA + config): the measured artifacts around it
-# stay local-only, but the regression anchor itself must be tracked.
-!rag2025/results/baseline_T00/PIN.md
-rag2025/ai_report_section*.md
-rag2025/AI_Engineering_Thesis_Report.md
-rag2025/thesis_*.md
-rag2025/docs/
-rag2025/rules/
-rag2025/plan/
-rag2025/momus_audit.txt
-rag2025/oracle_audit.txt
-rag2025/rag_book_extracted.txt
-rag2025/uvicorn_error_log.md
-# Re-include load-bearing docs that must stay in git:
-!CLAUDE.md
-!AGENTS.md
-!PROGRESS.md
-!docs/rag-chatbot-husc-spec.md
-!**/README.md
-
-# Amp report artifacts (local-only)
-.amp/in/artifacts/
-
-# Scratch dumps (local-only)
-status.txt
-test.txt
-toc_dump.txt
-
-# Claude agent worktrees (runtime, local-only)
-.claude/worktrees/
-
-# --- Local agent / runtime artifacts (not code) ---
-.claude/sessions/
-.claude/state/
-**/.claude/
-.serena/
-.playwright-mcp/
-.git_untrack_list.txt
-
-# Logs and server scratch output
-rag2025/logs/
-server_*.err
-server_*.out
-*.err.log
-
-# Backup / scratch files
-*.bak
-*.bak_*
-rag2025/_gr_hotfix.py
-rag2025/_gr_review.py
-rag2025/analyze_partial.py
-
-# Stray screenshot / e2e artifacts
-e2e_screenshot_test.png
-docs/e2e-screenshots/
-
-# Accidental nested copy
-rag2025/rag2025/
-
-# ── Repo-local secrets and tool output (2026-10-28) ──────────────────────────
-# Private keys must never enter the index, even by accident.
-/id_rsa
-/id_ed25519
-# Graphify tool output (generated, never hand-edited)
-/graphify-out/
-# Agent harness working state (plans, work records, archives)
-/.omp/
-
-# Per-run crawler batch dumps (timestamped). Regenerated by every crawl; not corpus.
-rag2025/data/chunked/batch_thongbao_*_20[0-9][0-9]-*.jsonl
-rag2025/data/chunked/crawl_thongbao_*_20[0-9][0-9]-*.jsonl
-
-# T00 baseline measurements (jsonl only). PIN.md stays tracked — the existing
-# !rag2025/results/baseline_T00/PIN.md negation is unaffected (different extension).
-rag2025/results/baseline_T00/*.jsonl
-
-# PDF preview renders emitted by the QA harness.
-rag2025/results/_qa_pdf_preview/*.png
-
-# Eval-harness run output (whole directory).
-rag2025/results/eval_harness/
-
-# Root-level results/ scratch output. Leading slash is required: a bare
-# `results/` would also match rag2025/results/ and defeat the PIN.md negation.
-/results/
-
-# Crawler runtime state: hash log + resume cursor.
-data/crawl_hash_log.json
-data/crawler_state.json
-
-# NER cache — rebuildable from data/graph/.
-data/graph/ner_cache.jsonl
-
-# Pre-B4 LanceDB backup snapshot.
-data/lancedb_backup_pre_b4_20260729/
-
-# Misnamed chunk file: JSONL_OUT in auto_ingest_yearly.py is never .format()ed,
-# so the literal-brace name is what lands on disk. Kept, not deleted: its 2
-# chunks are unique across the corpus. Fix the writer, then re-ingest and drop this.
 rag2025/data/chunked/husc_yearly_{year}.jsonl
-.omp/work/
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[codz]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-/lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py.cover
-.hypothesis/
-.pytest_cache/
-cover/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-.pybuilder/
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
-
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
-#poetry.toml
-
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
-#   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
-#pdm.lock
-#pdm.toml
-.pdm-python
-.pdm-build/
-
-# pixi
-#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
-#pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
-#   in the .venv directory. It is recommended not to include this directory in version control.
-.pixi
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.envrc
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-deploy-env.json
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-.idea/
-
-# Abstra
-# Abstra is an AI-powered process automation framework.
-# Ignore directories containing user credentials, local state, and settings.
-# Learn more at https://abstra.io/docs
-.abstra/
-
-# Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the entire vscode folder
-.vscode/
-.cursor/
-
-# Ruff stuff:
-.ruff_cache/
-
-# PyPI configuration file
-.pypirc
-
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
-
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
-
-
-rag2025/data/*
-!rag2025/data/chunked/
-!rag2025/data/chunked/**
-!rag2025/data/raw/
-!rag2025/data/raw/**
-!rag2025/data/normalized/
-!rag2025/data/normalized/**
-!rag2025/data/validated/
-!rag2025/data/validated/**
 rag2025/index/
-rag2025/venv/
-rag2025/.env*
-rag2025/=*.0
-rag2025/nul
-
-# Node.js
-**/node_modules/
-**/dist/
-**/build/
-**/.next/
-**/.env*
-
-# OS files
-.DS_Store
-Thumbs.db
-.gitnexus
-
-# Autodev workflow state (runtime, not committed)
-.workflow/
-
-# mega-template additions
-.claude/settings.local.json
-docs/specs/
-docs/plans/
-.omc/
-.superpowers/
-
-# ── Local-only docs / reports / thesis artifacts (keep on disk, never commit) ──
-# Load-bearing docs stay tracked via negations below.
+rag2025/docs/
+/data/lancedb_backup_*/
+/data/crawler_state.json
+/data/crawl_hash_log.json
+new_data/
 *.pdf
-*.docx
-*.doc
-*.rtf
-# Report/thesis markdown sprawl — broad ignore, then re-include load-bearing docs.
-GraphRAG_*.md
-Chapter2_*.md
-draft_chapter2_graphrag.md
-graph_rag_document.md
-thesis_context.md
-prompt.md
-requirements.md
-arxiv_results.txt
-clean_text.txt
-extracted_text.txt
-pdf_text.txt
-create-image/
+*.bak
+*.bak_*
+
+# ---- Local-only docs and reports ----
 docs/reviews/
 docs/superpowers/
+docs/e2e-screenshots/
 docs/assessment-*.md
 docs/coverage.md
 docs/*-comparison.md
 docs/qwen3-*.md
-rag2025/backup_mail_package_2026/
-rag2025/results/**/*.md
-rag2025/results/**/*.pdf
-rag2025/results/**/*.json
-# T00 baseline pin (commit SHA + config): the measured artifacts around it
-# stay local-only, but the regression anchor itself must be tracked.
-!rag2025/results/baseline_T00/PIN.md
-rag2025/ai_report_section*.md
-rag2025/AI_Engineering_Thesis_Report.md
-rag2025/thesis_*.md
-rag2025/docs/
-rag2025/rules/
-rag2025/plan/
-rag2025/momus_audit.txt
-rag2025/oracle_audit.txt
-rag2025/rag_book_extracted.txt
-rag2025/uvicorn_error_log.md
-# Re-include load-bearing docs that must stay in git:
-!CLAUDE.md
-!AGENTS.md
-!PROGRESS.md
-!docs/rag-chatbot-husc-spec.md
-!**/README.md
 
-# Amp report artifacts (local-only)
-.amp/in/artifacts/
+# ---- Added after review: crawl stubs, agent state inside the corpus, root runtime data, scratch dirs ----
+rag2025/data/chunked/batch_thongbao_*
+rag2025/data/chunked/chunked_thongbao_*
+rag2025/data/chunked/crawl_thongbao_*
+rag2025/data/chunked/.claude/
+rag2025/data/chunked/.omc/
+/data/graph/
+/data/lancedb/**/_versions/
+.scratch*/
+docs/plans/*
+!docs/plans/.gitkeep
+docs/specs/*
+!docs/specs/.gitkeep
+docs/GRAPHRAG_KNOWLEDGE.md
 
-# Scratch dumps (local-only)
-status.txt
-test.txt
-toc_dump.txt
-
-# Claude agent worktrees (runtime, local-only)
-.claude/worktrees/
-
-# --- Local agent / runtime artifacts (not code) ---
-.claude/sessions/
-.claude/state/
-**/.claude/
-.serena/
-.playwright-mcp/
-.git_untrack_list.txt
-
-# Logs and server scratch output
-rag2025/logs/
-server_*.err
-server_*.out
-*.err.log
-
-# Backup / scratch files
-*.bak
-*.bak_*
-rag2025/_gr_hotfix.py
-rag2025/_gr_review.py
-rag2025/analyze_partial.py
-
-# Stray screenshot / e2e artifacts
-e2e_screenshot_test.png
-docs/e2e-screenshots/
-
-# Accidental nested copy
+# ---- Restored after trim regression: local eval/result output the HEAD ignore hid ----
 rag2025/rag2025/
-
-# ── Repo-local secrets and tool output (2026-10-28) ──────────────────────────
-# Private keys must never enter the index, even by accident.
-/id_rsa
-/id_ed25519
-# Graphify tool output (generated, never hand-edited)
-/graphify-out/
-# Agent harness working state (plans, work records, archives)
-/.omp/
-
-# Per-run crawler batch dumps (timestamped). Regenerated by every crawl; not corpus.
-rag2025/data/chunked/batch_thongbao_*_20[0-9][0-9]-*.jsonl
-rag2025/data/chunked/crawl_thongbao_*_20[0-9][0-9]-*.jsonl
-
-# T00 baseline measurements (jsonl only). PIN.md stays tracked — the existing
-# !rag2025/results/baseline_T00/PIN.md negation is unaffected (different extension).
-rag2025/results/baseline_T00/*.jsonl
-
-# PDF preview renders emitted by the QA harness.
-rag2025/results/_qa_pdf_preview/*.png
-
-# Eval-harness run output (whole directory).
 rag2025/results/eval_harness/
-
-# Root-level results/ scratch output. Leading slash is required: a bare
-# `results/` would also match rag2025/results/ and defeat the PIN.md negation.
+rag2025/results/_qa_pdf_preview/*.png
+rag2025/results/baseline_T00/*.jsonl
+rag2025/results/**/*.json
+rag2025/results/**/*.md
 /results/
-
-# Crawler runtime state: hash log + resume cursor.
-data/crawl_hash_log.json
-data/crawler_state.json
-
-# NER cache — rebuildable from data/graph/.
-data/graph/ner_cache.jsonl
-
-# Pre-B4 LanceDB backup snapshot.
-data/lancedb_backup_pre_b4_20260729/
-.omp/work/
-.omp/memory/
+# ---- Tracked files that the rules above would otherwise hide (kept tracked) ----
+!rag2025/data/eval/guardrail_500_cases.json
+!rag2025/data/major_codes/diem_chuan_history.json
+!rag2025/data/major_codes/husc_majors_current.json
+!rag2025/results/baseline_T00/PIN.md
+!rag2025/results/case_study_analysis.json
+!rag2025/results/final_metrics.json
+!rag2025/results/regression_baseline_pre_reingest.json
+!rag2025/results/test_questions.json
+!rag2025/results/ultraqa_metrics/abstain_oos_triage.json
+!rag2025/results/ultraqa_metrics/fact_level_gt_v2.json
+!rag2025/results/ultraqa_metrics/multidim_metrics.json
+!rag2025/results/ultraqa_metrics/offline_recall_abstain.json
+# ---- Tracked corpus under data/eval and data/major_codes: re-open dir, hide untracked siblings ----
+!rag2025/data/eval/
+rag2025/data/eval/*
+!rag2025/data/eval/guardrail_500_cases.json
+!rag2025/data/major_codes/
+rag2025/data/major_codes/*
+!rag2025/data/major_codes/diem_chuan_history.json
+!rag2025/data/major_codes/husc_majors_current.json

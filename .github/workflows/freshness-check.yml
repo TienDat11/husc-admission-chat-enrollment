@@ -23,7 +23,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install dependencies
         run: |
@@ -32,5 +32,9 @@ jobs:
 
       - name: Run freshness check
         run: |
-          python rag2025/scripts/freshness_alert.py \
-            --audit-path rag2025/data/audit_pre_reingest.json
+          AUDIT=rag2025/data/audit_pre_reingest.json
+          if [ ! -f "$AUDIT" ]; then
+            echo "::warning title=Freshness check skipped::audit file $AUDIT is not in this checkout; no freshness alert was evaluated"
+            exit 0
+          fi
+          python rag2025/scripts/freshness_alert.py --audit-path "$AUDIT"

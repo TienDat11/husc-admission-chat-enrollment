@@ -55,7 +55,6 @@ MIN_CONTENT_CHARS = 1500
 NOT_FOUND_SENTINELS = ("nội dung không tồn tại", "không tìm thấy")
 
 CHUNKED_DIR = REPO_ROOT / "data" / "chunked"
-JSONL_OUT = CHUNKED_DIR / "husc_yearly_{year}.jsonl"  # formatted at runtime
 
 # Section-detect regex: maps page text → section slug used in chunk_id.
 # Order matters: more specific first.
@@ -437,7 +436,7 @@ def run_against_live_db(year: int, dry_run: bool, no_graph: bool) -> Dict[str, A
 
     # Step 5: upsert + jsonl.
     if not dry_run and summary.get("rows_to_upsert"):
-        jsonl_path = JSONL_OUT
+        jsonl_path = CHUNKED_DIR / f"husc_yearly_{year}.jsonl"
         upserted = upsert_rows(table, summary["rows_to_upsert"], jsonl_path=jsonl_path)
         summary["rows_added"] = upserted
         summary["jsonl_appended"] = upserted

@@ -107,7 +107,7 @@ def load_all_chunks(limit: int = 0) -> list[Chunk]:
         CHUNKED_DIR / "husc_thongbao_fix_2026.jsonl",
         CHUNKED_DIR / "husc_canonical_fix_2026.jsonl",
     ]
-    t6_yearly_jsonl = sorted(CHUNKED_DIR.glob("husc_yearly_*.jsonl"))
+    t6_yearly_jsonl = sorted(CHUNKED_DIR.glob("husc_yearly_[0-9][0-9][0-9][0-9].jsonl"))
     extra = extra + [p for p in t7_fix_jsonl if p.exists()] + t6_yearly_jsonl
     jsonl_files += [f for f in extra if f.exists()]
 

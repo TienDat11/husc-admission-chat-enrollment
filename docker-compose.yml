@@ -43,7 +43,7 @@ services:
       # (husc-app-data) if you want container-owned data:
       - ./rag2025/data:/data
     ports:
-      - "8000:8000"   # direct API access (debugging / non-Caddy paths)
+      - "127.0.0.1:8000:8000"   # direct API access (debugging / non-Caddy paths)
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
