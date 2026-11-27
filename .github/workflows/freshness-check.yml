@@ -2,6 +2,11 @@ name: Freshness Alert (daily)
 
 # Runs daily and posts a Slack warning if the latest crawl is stale.
 # Uses repo SLACK_RAG_OPS_WEBHOOK secret.
+#
+# KNOWN LIMITATION: the freshness input is rag2025/data/audit_pre_reingest.json,
+# which is gitignored and never present in a CI checkout. Until that audit is
+# published to a tracked or artifact source, this job skips the evaluation on
+# every run and says so in the job warning and step summary (it does not fail).
 
 on:
   schedule:
@@ -34,7 +39,12 @@ jobs:
         run: |
           AUDIT=rag2025/data/audit_pre_reingest.json
           if [ ! -f "$AUDIT" ]; then
-            echo "::warning title=Freshness check skipped::audit file $AUDIT is not in this checkout; no freshness alert was evaluated"
+            msg="audit file $AUDIT is gitignored and absent from CI checkouts; no freshness alert was evaluated"
+            echo "::warning title=Freshness check skipped::$msg"
+            {
+              echo "### Freshness check skipped"
+              echo "$msg"
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           python rag2025/scripts/freshness_alert.py --audit-path "$AUDIT"

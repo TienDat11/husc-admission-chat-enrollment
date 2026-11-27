@@ -155,10 +155,12 @@ export function ChatLayout() {
   const lastRole = messages.at(-1)?.role;
 
   // Announce only when a streamed answer completes (tokens are not announced).
-  const [announcement, setAnnouncement] = useState('');
+  // seq bumps on every announcement so the live-region text node is re-created
+  // even when the message is identical (identical text is otherwise not re-read).
+  const [announcement, setAnnouncement] = useState({ seq: 0, text: '' });
   const wasTypingRef = useRef(false);
   useEffect(() => {
-    if (wasTypingRef.current && !isTyping) setAnnouncement('Đã nhận được câu trả lời.');
+    if (wasTypingRef.current && !isTyping) setAnnouncement((prev) => ({ seq: prev.seq + 1, text: 'Đã nhận được câu trả lời.' }));
     wasTypingRef.current = isTyping;
   }, [isTyping]);
 
@@ -285,7 +287,7 @@ export function ChatLayout() {
 
         </div>
 
-        <div className="sr-only" role="status" aria-live="polite">{announcement}</div>
+        <div className="sr-only" role="status" aria-live="polite"><span key={announcement.seq}>{announcement.text}</span></div>
         <ChatComposer
           onSend={handleSendMessage}
           isLoading={isTyping}

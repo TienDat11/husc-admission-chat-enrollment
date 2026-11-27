@@ -410,14 +410,16 @@ const PROD_API_BASE_URL = 'https://rag2025-production.up.railway.app';
  *   - In development builds (`import.meta.env.DEV`) it falls back to the local
  *     FastAPI server on `http://localhost:8000` so `npm run dev` works out
  *     of the box.
- *   - In production builds (`import.meta.env.PROD`) a missing value falls back
+ *   - An explicitly empty value (`VITE_API_BASE_URL=""`) means same-origin:
+ *     relative URLs, served by Caddy in the compose deploy (CSP connect-src 'self').
+ *   - In production builds (`import.meta.env.PROD`) an UNSET value falls back
  *     to the public rag2025 API. A same-origin base would send `/v2/*` and
  *     `/api/*` to the static host, which answers 200 `text/html` for every path
  *     (SPA fallback): the stream then yields no frames and `/api/meta` fails to parse.
  */
 export function getApiBaseUrl(): string {
   const configured = import.meta.env.VITE_API_BASE_URL as string | undefined;
-  if (configured) return configured;
+  if (configured !== undefined) return configured;
   if (import.meta.env.PROD) {
     return PROD_API_BASE_URL;
   }

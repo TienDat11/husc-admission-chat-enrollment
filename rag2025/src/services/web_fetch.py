@@ -205,10 +205,13 @@ class _PinnedAdapter(requests.adapters.HTTPAdapter):
             return super().send(request, **kwargs)
         parts = urlparse(request.url)
         default_port = 443 if self._scheme == "https" else 80
+        # An IPv6 literal must be bracketed inside a URL netloc.
+        ip = self._pinned_ip
+        host_part = f"[{ip}]" if ":" in ip else ip
         netloc = (
-            self._pinned_ip
+            host_part
             if parts.port in (None, default_port)
-            else f"{self._pinned_ip}:{parts.port}"
+            else f"{host_part}:{parts.port}"
         )
         request.url = parts._replace(netloc=netloc).geturl()
         request.headers["Host"] = self._pinned_host

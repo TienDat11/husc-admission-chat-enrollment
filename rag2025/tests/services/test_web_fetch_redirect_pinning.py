@@ -5,6 +5,7 @@ DNS is faked through socket.getaddrinfo; no socket is opened.
 import socket
 
 import pytest
+import requests
 
 from src.services import web_fetch
 
@@ -99,3 +100,30 @@ def test_each_hop_adapter_dials_its_own_validated_address():
     adapter = sess.get_adapter("https://b.example/x")
     assert adapter._pinned_ip == "93.184.216.35"
     assert adapter._pinned_host == "b.example"
+
+
+def test_ipv6_pinned_address_is_bracketed_in_netloc(monkeypatch):
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        return [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:2800:220:1::1", port or 0, 0, 0))]
+
+    monkeypatch.setattr(web_fetch.socket, "getaddrinfo", fake_getaddrinfo)
+    seen = []
+
+    def fake_send(self, request, **kwargs):
+        seen.append((request.url, request.headers["Host"]))
+        return None
+
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", fake_send)
+    for url, expected in [
+        ("https://v6.example/x", "https://[2606:2800:220:1::1]/x"),
+        ("https://v6.example:8443/x", "https://[2606:2800:220:1::1]:8443/x"),
+    ]:
+        sess = web_fetch._pinned_session(url)
+        adapter = sess.get_adapter(url)
+        adapter.send(requests.Request("GET", url).prepare())
+        assert adapter._pinned_ip == "2606:2800:220:1::1"
+    assert [u for u, _ in seen] == [
+        "https://[2606:2800:220:1::1]/x",
+        "https://[2606:2800:220:1::1]:8443/x",
+    ]
+    assert all(host == "v6.example" for _, host in seen)

@@ -23,7 +23,7 @@ from rank_bm25 import BM25Okapi
 from services.lancedb_retrieval import (
     _current_as_of_int,
     _drop_by_effectiveness,
-    CURRENT_ADMISSION_YEAR,
+    get_current_admission_year,
     LanceDBRetriever,
     RetrievedDocument,
     RetrievalResult,
@@ -450,9 +450,12 @@ class HybridSearchService:
         if chunk_year is None:
             return raw_score
 
-        if chunk_year == CURRENT_ADMISSION_YEAR:
+        # Read at use time, not bound at import: the year is lazily detected and
+        # invalidated on table swap (lancedb_retrieval.invalidate_admission_year_cache).
+        current_year = get_current_admission_year()
+        if chunk_year == current_year:
             return raw_score * YEAR_BOOST_FACTOR
-        elif chunk_year < CURRENT_ADMISSION_YEAR:
+        elif chunk_year < current_year:
             return raw_score * OLD_YEAR_DEMOTE_FACTOR
         return raw_score
 
