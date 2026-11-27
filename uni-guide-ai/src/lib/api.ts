@@ -1,3 +1,4 @@
+import { RETRY_BASE_MS, RETRY_MAX_MS, WARMING_RETRY_MS } from "@/lib/constants";
 // @spec(plan-warmup-ux-20260705-111031 §3.2)
 // api.ts — RAG API client + retry wrapper + error classification.
 import type { ClaimCitation, components, GraphStats, RouterInfo, SourceChip } from './api-types';
@@ -42,9 +43,7 @@ export interface QueryError {
   message: string;
 }
 
-const DEFAULT_WARMING_RETRY_MS = 2000;
-const RETRY_BASE_MS = 1000;
-const RETRY_MAX_MS = 30_000;
+const DEFAULT_WARMING_RETRY_MS = WARMING_RETRY_MS;
 const MAX_ATTEMPTS = 2; // 1 initial + 1 retry (N3: bounded retry)
 
 /**

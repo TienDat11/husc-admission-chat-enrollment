@@ -1,3 +1,4 @@
+import { INDEX_JOBS_REFETCH_MS } from "@/lib/constants";
 // Admin CMS client — ticket 19.
 //
 // Thin, typed wrapper over the ticket-12/13/19 admin endpoints. Two things it
@@ -585,7 +586,7 @@ export interface IndexJobsStatus {
 }
 
 /** How often the job screen re-reads its state. Polling, not a page reload. */
-export const INDEX_JOBS_REFETCH_MS = 5000;
+export { INDEX_JOBS_REFETCH_MS };
 
 /** What `POST /admin/releases/{release_id}/rollback` answers. */
 export interface RollbackResult {

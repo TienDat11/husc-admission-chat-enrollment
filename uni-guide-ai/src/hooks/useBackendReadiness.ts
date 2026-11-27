@@ -1,3 +1,4 @@
+import { BACKEND_READINESS_POLL_MS } from "@/lib/constants";
 // @spec(plan-warmup-ux-20260705-111031 §3.2)
 // useBackendReadiness — poll /health every pollMs, stop when ready=true, pause on tab hidden, resume on visible.
 import { useEffect, useRef, useState } from 'react';
@@ -22,7 +23,7 @@ export interface BackendReadinessState {
   error: string | null;
 }
 
-const DEFAULT_POLL_MS = 2000;
+const DEFAULT_POLL_MS = BACKEND_READINESS_POLL_MS;
 
 export function useBackendReadiness(
   opts?: UseBackendReadinessOptions,

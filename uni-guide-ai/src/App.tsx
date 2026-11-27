@@ -26,11 +26,15 @@ const Ops = lazy(() => import("./pages/teacher/Ops"));
 const TableFix = lazy(() => import("./pages/teacher/TableFix"));
 const Feedback = lazy(() => import("./pages/teacher/Feedback"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 },
+  },
+});
 
 function RouteLoadingSkeleton() {
   return (
-    <div className="flex items-center justify-center h-screen">
+    <div role="status" aria-live="polite" className="flex items-center justify-center h-screen">
       <div className="animate-pulse text-muted-foreground">Đang tải...</div>
     </div>
   );

@@ -1367,7 +1367,7 @@ export type paths = {
          * Health Ready
          * @description Write-readiness for the load balancer. 503 while WRITE_FREEZE is engaged
          *     (e.g. schema_revision mismatch), when the shared DB engine is not wired, or
-         *     when the release lookup fails or exceeds 2s. Reports the served release id.
+         *     when the release lookup fails or exceeds the configured timeout). Reports the served release id.
          */
         get: operations["health_ready_health_ready_get"];
         put?: never;
@@ -1388,6 +1388,10 @@ export type paths = {
         /**
          * Metrics Endpoint
          * @description Lightweight internal metrics endpoint.
+         *
+         *     Gated: allowed when the request carries ``Authorization: Bearer
+         *     $METRICS_TOKEN`` (Prometheus scrape; the env var must be set) or when the
+         *     resolved client address is loopback. Anything else gets 403.
          */
         get: operations["metrics_endpoint_metrics_get"];
         put?: never;
@@ -1912,6 +1916,8 @@ export type components = {
             page: number;
             /** State */
             state?: string | null;
+            /** Table Tsv */
+            table_tsv?: string | null;
             /** Text */
             text: string;
             /** Version */
@@ -4692,6 +4698,10 @@ export interface operations {
                 year?: number | null;
                 /** @description Trạng thái lifecycle của version mới nhất. */
                 status?: components["schemas"]["RecordStatus"] | null;
+                /** @description Số bản ghi tối đa; bỏ trống = tất cả. */
+                limit?: number | null;
+                /** @description Bỏ qua N bản ghi đầu. */
+                offset?: number;
             };
             header?: {
                 "X-Admin-Token"?: string | null;
@@ -6076,7 +6086,9 @@ export interface operations {
     preview_chunks_debug_preview_chunks_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Admin-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
