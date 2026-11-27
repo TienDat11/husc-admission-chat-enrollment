@@ -1,12 +1,24 @@
 """main.py hardening: client IP trust, /metrics gating, debug preview auth and cap."""
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from config.constants import CHUNK_PREVIEW_MAX_TEXT_LENGTH
-from src import main as main_mod
-from src.main import app
-from src.utils.http import client_ip
+
+# Importing src.main runs load_dotenv() (config/env_loader.py), which would leak the local
+# dotenv values (APP_ENV and friends) into every later test in the session. Import once here
+# and restore the process environment so collection has no side effects.
+_ENV_BEFORE = dict(os.environ)
+try:
+    from src import main as main_mod
+    from src.main import app
+finally:
+    os.environ.clear()
+    os.environ.update(_ENV_BEFORE)
+
+from src.utils.http import client_ip  # noqa: E402
 
 
 def _req(headers=None, peer=("10.0.0.9", 5555)):
