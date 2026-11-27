@@ -14,6 +14,7 @@ import {
 import { mapSources, decorateAnswer } from '@/lib/chat-helpers';
 import type { SourceChip } from '@/lib/api-types';
 import type { SessionHistoryEntry } from '@/lib/session-history';
+import { CHAT_HISTORY_WINDOW } from '@/lib/constants';
 
 export interface UseChatStreamResult {
   /** Append a user message and run the streaming + fallback pipeline. */
@@ -80,7 +81,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
       // Multi-turn context slice: last 4 prior messages (2 user + 2 assistant
       // turns). Exclude the current user message — the BE treats `content` as
       // the live question.
-      const historyWindow: ChatTurn[] = messages.slice(-4).map((m) => ({
+      const historyWindow: ChatTurn[] = messages.slice(-CHAT_HISTORY_WINDOW).map((m) => ({
         role: m.role,
         content: m.content,
       }));
@@ -108,6 +109,30 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
       // captured by the options object, not the stale state at send time.
       const replacePlaceholder = (updater: (current: Message[]) => Message[]) => {
         onMessagesChange(updater([...messages, userMessage, placeholder]));
+      };
+
+      // Token deltas are buffered and applied at most once per animation frame.
+      let pendingDelta = '';
+      let frameId: number | null = null;
+      const flushDelta = () => {
+        if (frameId !== null) {
+          cancelFrame(frameId);
+          frameId = null;
+        }
+        if (!pendingDelta) return;
+        const chunk = pendingDelta;
+        pendingDelta = '';
+        replacePlaceholder((list) =>
+          list.map((m) => (m.id === assistantId ? { ...m, stage: null, content: (m.content || '') + chunk } : m)),
+        );
+      };
+      const scheduleFlush = () => {
+        if (frameId === null) {
+          frameId = requestFrame(() => {
+            frameId = null;
+            flushDelta();
+          });
+        }
       };
 
       let finalAnswer = '';
@@ -174,12 +199,8 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
               },
               onDelta: (text) => {
                 finalAnswer += text;
-                replacePlaceholder((list) =>
-                  list.map((m) => {
-                    if (m.id !== assistantId) return m;
-                    return { ...m, stage: null, content: (m.content || '') + text };
-                  }),
-                );
+                pendingDelta += text;
+                scheduleFlush();
               },
               onDone: (fullAnswer) => {
                 finalAnswer = fullAnswer;
@@ -189,6 +210,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
             signal,
           );
 
+          flushDelta();
           const decorated = decorateAnswer(
             finalAnswer,
             statusCode,
@@ -223,6 +245,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
           setIsTyping(false);
           return;
         } catch (_streamErr) {
+          flushDelta();
           replacePlaceholder((list) =>
             list.map((m) => (m.id === assistantId ? { ...m, content: '' } : m)),
           );
@@ -269,6 +292,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
         );
         setIsTyping(false);
       } catch (err) {
+        flushDelta();
         setIsTyping(false);
         // Classify the error so MessageBubble (below) can render the
         // correct Vietnamese copy. The `queryStream` retry loop already
@@ -299,6 +323,18 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamResul
   );
 
   return { send, isTyping, error, clearError };
+}
+
+/** requestAnimationFrame with a setTimeout fallback where rAF is unavailable. */
+function requestFrame(cb: () => void): number {
+  return typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame(cb)
+    : (setTimeout(cb, 16) as unknown as number);
+}
+
+function cancelFrame(id: number): void {
+  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id);
+  else clearTimeout(id);
 }
 
 function defaultGenerateId(): string {

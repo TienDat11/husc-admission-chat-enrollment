@@ -27,6 +27,7 @@ import { ChatUserBubble } from './ChatUserBubble';
 import { ChatBotBubble } from './ChatBotBubble';
 import { ChatComposer } from './ChatComposer';
 import { SuggestedQuestions } from './SuggestedQuestions';
+import { WARMING_BANNER } from '@/lib/copy';
 
 function WarmingBanner({ stage }: { stage: ReadinessStage }) {
   const mountedAtRef = useRef<number>(Date.now());
@@ -46,11 +47,11 @@ function WarmingBanner({ stage }: { stage: ReadinessStage }) {
   if (stage === 'ready') return null;
   const isFailed = stage === 'failed';
   const copy = isFailed
-    ? '🔴 Máy chủ không phản hồi. Sẽ thử lại...'
-    : `⏳ Đang kết nối tới máy chủ... (${seconds}s)`;
+    ? `🔴 ${WARMING_BANNER.failed}`
+    : `⏳ ${WARMING_BANNER.connecting(seconds)}`;
   const cls = isFailed
-    ? 'border-[#DC3545] bg-[#FDECEA] text-[#8B1A1A]'
-    : 'border-[#096EBA] bg-[#E6ECF7] text-[#143980]';
+    ? 'border-brand-danger bg-[#FDECEA] text-[#8B1A1A]'
+    : 'border-brand bg-[#E6ECF7] text-brand-navy';
 
   return (
     <motion.div
@@ -112,12 +113,14 @@ export function ChatLayout() {
 
   const isNoActiveRelease = error === LOCALIZED_ERROR_COPY.no_active_release;
 
-  const handleSendMessage = useCallback(
-    (content: string) => {
-      send(content, history);
-    },
-    [send, history],
-  );
+  // Stable send: latest send/history are read through a ref so memoised bubbles
+  // do not receive a new callback on every streamed token.
+  const latestSendRef = useRef({ send, history });
+  latestSendRef.current = { send, history };
+  const handleSendMessage = useCallback((content: string) => {
+    const latest = latestSendRef.current;
+    latest.send(content, latest.history);
+  }, []);
 
   const handleTopicSelect = useCallback(
     (question: string) => {
@@ -147,6 +150,18 @@ export function ChatLayout() {
   // Keep the newest exchange in view inside the message list (never the document):
   // a bot answer is aligned to the top of the list so its text and source chips
   // both fit; a user message scrolls to the bottom. Reduced motion skips smoothing.
+  const messageCount = messages.length;
+  const lastId = messages.at(-1)?.id;
+  const lastRole = messages.at(-1)?.role;
+
+  // Announce only when a streamed answer completes (tokens are not announced).
+  const [announcement, setAnnouncement] = useState('');
+  const wasTypingRef = useRef(false);
+  useEffect(() => {
+    if (wasTypingRef.current && !isTyping) setAnnouncement('Đã nhận được câu trả lời.');
+    wasTypingRef.current = isTyping;
+  }, [isTyping]);
+
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -154,10 +169,9 @@ export function ChatLayout() {
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const behavior: ScrollBehavior = reduceMotion ? 'auto' : 'smooth';
-    const last = messages[messages.length - 1];
     const anchor =
-      last?.role === 'assistant'
-        ? list.querySelector<HTMLElement>(`[data-message-id="${last.id}"]`)
+      lastRole === 'assistant' && lastId
+        ? list.querySelector<HTMLElement>(`[data-message-id="${lastId}"]`)
         : null;
     if (anchor) {
       const offset =
@@ -166,7 +180,7 @@ export function ChatLayout() {
     } else {
       list.scrollTo?.({ top: list.scrollHeight, behavior });
     }
-  }, [messages, isTyping]);
+  }, [messageCount, isTyping, lastId, lastRole]);
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-[#F3F5F9]">
@@ -217,7 +231,7 @@ export function ChatLayout() {
               aria-expanded={profileOpen}
               aria-controls="chat-profile-panel"
               onClick={() => setProfileOpen((open) => !open)}
-              className="flex w-full items-center justify-between rounded-8 border border-[#D6DEEA] bg-white px-3 py-3 text-left text-sm font-semibold text-[#143980]"
+              className="flex w-full items-center justify-between rounded-8 border border-[#D6DEEA] bg-white px-3 py-3 text-left text-sm font-semibold text-brand-navy"
             >
               <span>Hồ sơ thí sinh và lộ trình</span>
               <span aria-hidden="true">{profileOpen ? '▲' : '▼'}</span>
@@ -237,7 +251,7 @@ export function ChatLayout() {
           ref={listRef}
           className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-4 space-y-4"
           role="log"
-          aria-live="polite"
+          aria-live="off"
           aria-label="Dòng hội thoại"
           tabIndex={0}
         >
@@ -256,9 +270,7 @@ export function ChatLayout() {
                 <ChatBotBubble
                   key={message.id}
                   message={message}
-                  onRetry={
-                    message.retryQuery ? () => handleSendMessage(message.retryQuery) : undefined
-                  }
+                  onRetry={handleSendMessage}
                   followUps={!isTyping && message.id === lastAnswerId ? followUps : undefined}
                   onFollowUp={handleTopicSelect}
                 />
@@ -273,6 +285,7 @@ export function ChatLayout() {
 
         </div>
 
+        <div className="sr-only" role="status" aria-live="polite">{announcement}</div>
         <ChatComposer
           onSend={handleSendMessage}
           isLoading={isTyping}

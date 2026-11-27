@@ -2,7 +2,7 @@
 // ChatBotBubble — câu trả lời của Bot. Giữ khung Frame 12 và phục hồi các hành vi từ HEAD:
 // khung báo trạng thái (INSUFFICIENT_DATA / HUSC_ENTITY_NOT_FOUND / GENERATION_FAILED / không xác định),
 // chip nguồn, đọc answer_confidence, nút thử lại cho GENERATION_FAILED, bản báo lỗi "Có lỗi xảy ra".
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Shield, AlertTriangle, RefreshCw, ThumbsDown, ThumbsUp } from 'lucide-react';
@@ -11,17 +11,32 @@ import { sendFeedback } from '@/lib/api';
 import { isGenerationFailure, LOCALIZED_ERROR_COPY } from '@/lib/chat-helpers';
 import { SourceChip } from '@/components/student/SourceChip';
 import { SuggestedQuestions } from './SuggestedQuestions';
+import { safeHref } from '@/lib/safeHref';
 
 interface ChatBotBubbleProps {
   message: Message;
   /** Ticket 43: gửi lại ngay câu hỏi trước đó qua handleSendMessage của ChatLayout. */
-  onRetry?: () => void;
+  onRetry?: (query: string) => void;
   /** Câu hỏi gợi ý của câu trả lời mới nhất; chỉ truyền cho bubble đó. */
   followUps?: string[];
   onFollowUp?: (question: string) => void;
 }
 
+// Memoised: parents pass stable props, so unrelated stream updates do not re-render old bubbles.
+export const ChatBotBubble = memo(ChatBotBubbleView);
+
 const ANSWER_COMPONENTS: Components = {
+  // react-markdown strips only unsafe schemes; '//host' passes through, so links are allow-listed here.
+  a: ({ href, children }) => {
+    const safe = safeHref(href);
+    if (!safe) return <>{children}</>;
+    const external = /^https?:/i.test(safe);
+    return (
+      <a href={safe} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+        {children}
+      </a>
+    );
+  },
   table: ({ children }) => (
     <div className="my-3 w-full max-w-full overflow-x-auto rounded-8 border border-[#EDF1F6]">
       <table className="min-w-full border-collapse text-[13px] leading-[18px]">{children}</table>
@@ -35,7 +50,7 @@ const ANSWER_COMPONENTS: Components = {
   ),
 };
 
-export function ChatBotBubble({ message, onRetry, followUps, onFollowUp }: ChatBotBubbleProps) {
+function ChatBotBubbleView({ message, onRetry, followUps, onFollowUp }: ChatBotBubbleProps) {
   const generationFailure = isGenerationFailure(message);
   const isError = !!message.errorKind;
   const [rated, setRated] = useState<'helpful' | 'unclear' | null>(null);
@@ -66,7 +81,7 @@ export function ChatBotBubble({ message, onRetry, followUps, onFollowUp }: ChatB
   return (
     <div className="flex gap-3 mb-4">
       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-[#E6ECF7] flex items-center justify-center shrink-0">
-        <Shield className="w-3.5 h-3.5 text-[#143980]" aria-hidden="true" />
+        <Shield className="w-3.5 h-3.5 text-brand-navy" aria-hidden="true" />
       </div>
       <div className="flex-1 max-w-[640px] text-[#0F1B2D] text-[14px] leading-[1.65]">
         {/* Khung báo trạng thái — riêng biệt so với câu trả lời bình thường, KHÔNG phải 'Cần kiểm tra dữ liệu' cho GENERATION_FAILED. */}
@@ -115,7 +130,7 @@ export function ChatBotBubble({ message, onRetry, followUps, onFollowUp }: ChatB
               aria-pressed={rated === 'helpful'}
               onClick={() => rate('helpful')}
               className={`inline-flex items-center gap-1 rounded-8 border px-2.5 py-1 font-semibold ${
-                rated === 'helpful' ? 'border-[#143980] bg-[#143980] text-white' : 'border-[#D6DEEA] bg-white text-[#143980]'
+                rated === 'helpful' ? 'border-brand-navy bg-brand-navy text-white' : 'border-[#D6DEEA] bg-white text-brand-navy'
               }`}
             >
               <ThumbsUp className="h-3.5 w-3.5" aria-hidden="true" />
@@ -126,7 +141,7 @@ export function ChatBotBubble({ message, onRetry, followUps, onFollowUp }: ChatB
               aria-pressed={rated === 'unclear'}
               onClick={() => rate('unclear')}
               className={`inline-flex items-center gap-1 rounded-8 border px-2.5 py-1 font-semibold ${
-                rated === 'unclear' ? 'border-[#143980] bg-[#143980] text-white' : 'border-[#D6DEEA] bg-white text-[#143980]'
+                rated === 'unclear' ? 'border-brand-navy bg-brand-navy text-white' : 'border-[#D6DEEA] bg-white text-brand-navy'
               }`}
             >
               <ThumbsDown className="h-3.5 w-3.5" aria-hidden="true" />
@@ -145,12 +160,12 @@ export function ChatBotBubble({ message, onRetry, followUps, onFollowUp }: ChatB
         )}
 
         {/* Nút thử lại chỉ xuất hiện khi sinh thất bại; gửi lại ngay câu hỏi trước đó, không bao giờ rỗng. */}
-        {generationFailure && onRetry && (
+        {generationFailure && onRetry && message.retryQuery && (
           <button
             type="button"
-            onClick={onRetry}
+            onClick={() => message.retryQuery && onRetry(message.retryQuery)}
             aria-label={LOCALIZED_ERROR_COPY.server}
-            className="mt-3 inline-flex items-center gap-1 text-[12.5px] leading-[16px] text-[#143980] font-medium hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#143980]"
+            className="mt-3 inline-flex items-center gap-1 text-[12.5px] leading-[16px] text-brand-navy font-medium hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-navy"
           >
             <RefreshCw className="w-3 h-3" aria-hidden="true" />
             Thử lại

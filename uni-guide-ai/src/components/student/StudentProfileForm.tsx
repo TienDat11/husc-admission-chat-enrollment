@@ -13,6 +13,18 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { ACTION_LABELS } from '@/lib/copy';
 import { useStudentProfile } from '@/hooks/useStudentProfile';
 import { toast } from 'sonner';
 
@@ -134,7 +146,6 @@ export function StudentProfileForm({ onSaved }: { onSaved?: () => void } = {}) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm('Xóa hồ sơ thí sinh hiện tại?')) return;
     setSaving(true);
     try {
       const res = await fetch('/v2/student-profile', { method: 'DELETE' });
@@ -306,14 +317,35 @@ export function StudentProfileForm({ onSaved }: { onSaved?: () => void } = {}) {
               {saveLabel}
             </Button>
             {hasProfile && (
-              <Button
-                variant="destructive"
-                onClick={handleDelete}
-                disabled={!canSave}
-                className="px-3 py-1.5 text-[12px]"
-              >
-                Xóa hồ sơ
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={!canSave}
+                    className="px-3 py-1.5 text-[12px]"
+                  >
+                    Xóa hồ sơ
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Xóa hồ sơ thí sinh?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Hồ sơ thí sinh hiện tại sẽ bị xóa. Bạn không thể hoàn tác thao tác này.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{ACTION_LABELS.cancel}</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDelete}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      {ACTION_LABELS.delete} hồ sơ
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </div>
         </form>
