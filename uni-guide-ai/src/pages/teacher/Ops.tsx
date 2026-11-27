@@ -1,3 +1,4 @@
+import { OPS_REFRESH_MS, WORKER_STALE_MS } from "@/lib/constants";
 // Vận hành — API and worker health, parse jobs, warmup. Admin and ops only.
 // There is deliberately no rollback control here (rollback lives in Lịch sử).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,8 +20,6 @@ import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
 import { SecondaryButton } from "@/components/ui-kit/SecondaryButton";
 import { StatusPill } from "@/components/ui-kit/StatusPill";
 
-/** A worker whose heartbeat is older than this is treated as disconnected. */
-const WORKER_STALE_MS = 60_000;
 
 function isWorkerDisconnected(worker: WorkerStatus, now: number): boolean {
   if (!worker.last_heartbeat_at) return true;
@@ -28,7 +27,6 @@ function isWorkerDisconnected(worker: WorkerStatus, now: number): boolean {
 }
 
 const OPS_ROLES: Record<string, true> = { admin: true, ops: true };
-const REFRESH_MS = 15_000;
 
 function failureOf(error: unknown): ApiFailure | null {
   return error instanceof AdminApiError ? error.failure : null;
@@ -43,20 +41,23 @@ const Ops = () => {
   const health = useQuery({
     queryKey: ["health"],
     queryFn: fetchApiHealth,
-    refetchInterval: REFRESH_MS,
+    refetchInterval: OPS_REFRESH_MS,
+    refetchIntervalInBackground: false,
     enabled: allowed,
   });
   const workers = useQuery({
     queryKey: ["admin", "workers"],
     queryFn: () => fetchWorkers(null),
-    refetchInterval: REFRESH_MS,
+    refetchInterval: OPS_REFRESH_MS,
+    refetchIntervalInBackground: false,
     retry: false,
     enabled,
   });
   const jobs = useQuery({
     queryKey: ["admin", "jobs"],
     queryFn: () => fetchJobs(null),
-    refetchInterval: REFRESH_MS,
+    refetchInterval: OPS_REFRESH_MS,
+    refetchIntervalInBackground: false,
     retry: false,
     enabled,
   });

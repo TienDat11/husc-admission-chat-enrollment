@@ -5,6 +5,7 @@
 // notice and no requests are sent.
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAdminSession } from "@/hooks/useAdminSession";
+import { formatViDateTime } from "@/lib/utils";
 import {
   AdminApiError,
   createIdentity,
@@ -76,7 +77,7 @@ const Accounts = () => {
   if (!canManage) {
     return (
       <section aria-labelledby="accounts-title" className="p-6">
-        <h1 id="accounts-title" className="text-2xl font-bold text-[#143980]">
+        <h1 id="accounts-title" className="text-2xl font-bold text-brand-navy">
           Tài khoản
         </h1>
         <p className="mt-4">Chỉ quản trị viên mới quản lý tài khoản.</p>
@@ -179,7 +180,7 @@ const Accounts = () => {
         </div>
         <a
           href="#personal-password"
-          className="inline-flex min-h-11 items-center rounded-8 border border-[#143980] bg-white px-4 text-base font-semibold text-[#143980] hover:bg-[#eef3fb]"
+          className="inline-flex min-h-11 items-center rounded-8 border border-brand-navy bg-white px-4 text-base font-semibold text-brand-navy hover:bg-[#eef3fb]"
         >
           Đổi mật khẩu của tôi
         </a>
@@ -187,7 +188,7 @@ const Accounts = () => {
 
       <ul className="m-0 grid list-none gap-4 p-0 md:grid-cols-3">
         <li className="space-y-2 rounded-xl border border-[#C9D8EE] bg-[#E6ECF7] p-5">
-          <h2 className="text-lg font-semibold text-[#143980]">Đang hoạt động: {active} cán bộ</h2>
+          <h2 className="text-lg font-semibold text-brand-navy">Đang hoạt động: {active} cán bộ</h2>
           <p className="text-sm text-[#2d4a7a]">
             {roleCounts.length > 0
               ? roleCounts.map((entry) => `${entry.label}: ${entry.count}`).join(" · ")
@@ -209,7 +210,7 @@ const Accounts = () => {
       </ul>
 
       {banner ? (
-        <p role="status" className="rounded-lg border border-[#143980] bg-[#eef3fb] px-4 py-3 text-base">
+        <p role="status" className="rounded-lg border border-brand-navy bg-[#eef3fb] px-4 py-3 text-base">
           {banner}
         </p>
       ) : null}
@@ -256,11 +257,11 @@ const Accounts = () => {
                     <p className="text-sm text-[#4a5568]">
                       {row.disabled ? "Đang bị tạm khóa" : "Đang hoạt động"}
                       {row.last_login_at
-                        ? ` · Đăng nhập gần nhất: ${new Date(row.last_login_at).toLocaleString("vi-VN")}`
+                        ? ` · Đăng nhập gần nhất: ${formatViDateTime(row.last_login_at)}`
                         : ""}
                     </p>
                     {isSelf ? (
-                      <p className="text-sm text-[#143980]">
+                      <p className="text-sm text-brand-navy">
                         Tài khoản của bạn (không thể tự hạ quyền hoặc tự khóa)
                       </p>
                     ) : null}
@@ -286,7 +287,7 @@ const Accounts = () => {
                       <button
                         type="button"
                         disabled={busy || reasonMissing}
-                        className="min-h-11 rounded-lg border border-[#143980] bg-white px-4 text-sm font-semibold text-[#143980] hover:bg-[#eef3fb] disabled:opacity-50"
+                        className="min-h-11 rounded-lg border border-brand-navy bg-white px-4 text-sm font-semibold text-brand-navy hover:bg-[#eef3fb] disabled:opacity-50"
                         onClick={() => void onToggleDisabled(row)}
                       >
                         {row.disabled ? "Mở khóa tài khoản ngay" : "Tạm ngừng tài khoản"}
@@ -370,7 +371,7 @@ const Accounts = () => {
             <button
               type="submit"
               disabled={busy || reasonMissing || (!password && !issueToken)}
-              className="min-h-11 w-full rounded-lg bg-[#143980] px-4 text-base font-semibold text-white hover:bg-[#0f2d66] disabled:opacity-50"
+              className="min-h-11 w-full rounded-lg bg-brand-navy px-4 text-base font-semibold text-white hover:bg-[#0f2d66] disabled:opacity-50"
             >
               Lưu thông tin tài khoản →
             </button>
@@ -397,7 +398,7 @@ const Accounts = () => {
               <button
                 type="submit"
                 disabled={busy || !self || ownPassword === ""}
-                className="min-h-11 rounded-lg border border-[#143980] bg-white px-4 text-base font-semibold text-[#143980] hover:bg-[#eef3fb] disabled:opacity-50"
+                className="min-h-11 rounded-lg border border-brand-navy bg-white px-4 text-base font-semibold text-brand-navy hover:bg-[#eef3fb] disabled:opacity-50"
               >
                 Cập nhật mật khẩu
               </button>

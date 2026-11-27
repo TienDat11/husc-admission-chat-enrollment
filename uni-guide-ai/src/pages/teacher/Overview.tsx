@@ -10,6 +10,8 @@ import { useAdminSession } from "@/hooks/useAdminSession";
 import { AdminApiError, fetchReleaseStatus, listRecords } from "@/lib/adminApi";
 import { fetchAdminOverview } from "@/lib/adminOpsApi";
 import type { ApiFailure } from "@/lib/apiError";
+import { adminKeys } from "@/lib/queryKeys";
+import { ListSkeleton } from "@/components/ui-kit/PageState";
 import { ExceptionBar } from "@/components/ui-kit/ExceptionBar";
 import { OVERDUE_LABEL, StatusPill } from "@/components/ui-kit/StatusPill";
 
@@ -37,18 +39,18 @@ const Overview = () => {
   const [view, setView] = useState<View>("admin");
 
   const overview = useQuery({
-    queryKey: ["admin", "overview"],
+    queryKey: adminKeys.overview(),
     queryFn: () => fetchAdminOverview(null),
     enabled: canRead,
     retry: false,
   });
   const release = useQuery({
-    queryKey: ["admin", "releases"],
+    queryKey: adminKeys.releases(),
     queryFn: () => fetchReleaseStatus(null),
     retry: false,
   });
   const waiting = useQuery({
-    queryKey: ["admin", "records", "review"],
+    queryKey: adminKeys.recordsReview(),
     queryFn: () => listRecords(null, { status: "review" }),
     enabled: canRead && view === "admin",
     retry: false,
@@ -111,8 +113,8 @@ const Overview = () => {
               onClick={() => setView(option.value)}
               className={`min-h-11 rounded-8 border px-4 text-sm font-semibold ${
                 view === option.value
-                  ? "border-[#143980] bg-[#143980] text-white"
-                  : "border-[#d6deea] bg-white text-[#143980] hover:bg-[#eef3fb]"
+                  ? "border-brand-navy bg-brand-navy text-white"
+                  : "border-[#d6deea] bg-white text-brand-navy hover:bg-[#eef3fb]"
               }`}
             >
               {option.label}
@@ -129,7 +131,7 @@ const Overview = () => {
         />
       ) : null}
       {overviewFailure ? <ExceptionBar title="Không tải được số liệu tổng quan" detail={overviewFailure.message} /> : null}
-      {overview.isPending && canRead ? <p className="text-base">Đang tải...</p> : null}
+      {overview.isPending && canRead ? <ListSkeleton rows={3} label="Đang tải tổng quan…" /> : null}
 
       {counts ? (
         <ul className="m-0 grid list-none gap-4 p-0 md:grid-cols-3">
@@ -142,7 +144,7 @@ const Overview = () => {
             </p>
           </li>
           <li className="space-y-2 rounded-xl border border-[#C9D8EE] bg-[#E6ECF7] p-5">
-            <h2 className="text-lg font-semibold text-[#143980]">
+            <h2 className="text-lg font-semibold text-brand-navy">
               Đang chờ duyệt &amp; cập nhật · <span>{reviews}</span> mục
             </h2>
             <p className="text-base text-[#2d4a7a]">{reviews} mục chờ quản trị viên thứ hai duyệt.</p>
@@ -182,7 +184,7 @@ const Overview = () => {
                   </div>
                   <Link
                     to={action.to}
-                    className="inline-flex min-h-11 items-center rounded-8 bg-[#143980] px-4 text-base font-semibold !text-white hover:bg-[#0f2d66]"
+                    className="inline-flex min-h-11 items-center rounded-8 bg-brand-navy px-4 text-base font-semibold !text-white hover:bg-[#0f2d66]"
                   >
                     {action.cta}
                   </Link>
@@ -198,7 +200,7 @@ const Overview = () => {
           <h2 id="overview-approval" className="text-xl font-semibold text-[#0f1b2d]">
             Chờ người quản trị thứ hai duyệt (duyệt hai cấp)
           </h2>
-          {waiting.isPending ? <p className="text-base">Đang tải...</p> : null}
+          {waiting.isPending ? <ListSkeleton rows={3} label="Đang tải danh sách chờ duyệt…" /> : null}
           {waiting.isError ? (
             <p className="text-base text-[#9b1c1c]">Không tải được danh sách chờ duyệt.</p>
           ) : null}
@@ -216,7 +218,7 @@ const Overview = () => {
                 <div className="space-y-1">
                   <span
                     className={`inline-block rounded-full px-2.5 py-0.5 text-sm font-semibold ${
-                      mine ? "bg-[#FFF3DC] text-[#8A5A00]" : "bg-[#E6ECF7] text-[#143980]"
+                      mine ? "bg-[#FFF3DC] text-[#8A5A00]" : "bg-[#E6ECF7] text-brand-navy"
                     }`}
                   >
                     {mine ? "Cần người khác duyệt" : "Sẵn sàng cho người thứ hai duyệt"}
@@ -230,7 +232,7 @@ const Overview = () => {
                 </div>
                 <Link
                   to="/quan-ly/cho-duyet"
-                  className="inline-flex min-h-11 items-center rounded-8 border border-[#143980] bg-white px-4 text-base font-semibold text-[#143980] hover:bg-[#eef3fb]"
+                  className="inline-flex min-h-11 items-center rounded-8 border border-brand-navy bg-white px-4 text-base font-semibold text-brand-navy hover:bg-[#eef3fb]"
                 >
                   Mở màn hình duyệt
                 </Link>

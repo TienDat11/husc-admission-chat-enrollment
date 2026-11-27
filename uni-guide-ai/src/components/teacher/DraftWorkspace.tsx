@@ -13,6 +13,8 @@ import {
   type ExceptionsListResponse,
 } from "@/lib/adminApi";
 import { warningLabel } from "@/lib/blockWarnings";
+import { ACTION_LABELS } from "@/lib/copy";
+import { getErrorMessage } from "@/lib/utils";
 import { ExcelPasteModal } from "@/components/admin/ExcelPasteModal";
 import { ExceptionBar } from "@/components/ui-kit/ExceptionBar";
 import { PrimaryButton } from "@/components/ui-kit/PrimaryButton";
@@ -34,8 +36,7 @@ function blockTitle(block: Block): string {
 
 function messageOf(error: unknown): string {
   if (error instanceof AdminApiError) return error.failure.message;
-  if (error instanceof Error) return error.message;
-  return "Có lỗi xảy ra. Thử lại sau.";
+  return getErrorMessage(error, "Có lỗi xảy ra. Thử lại sau.");
 }
 
 interface DraftWorkspaceProps {
@@ -88,7 +89,7 @@ export function DraftWorkspace({ documentId, pageCount, onRestart }: DraftWorksp
         <p className="font-semibold text-[#143980]">Chưa tải được các mục cần kiểm tra.</p>
         <p className="text-sm text-[#4A5568]">Bạn vẫn có thể gửi duyệt các bản nháp bên dưới.</p>
         <div className="flex flex-wrap gap-3">
-          <SecondaryButton onClick={() => void exceptions.refetch()}>Thử lại</SecondaryButton>
+          <SecondaryButton onClick={() => void exceptions.refetch()}>{ACTION_LABELS.retry}</SecondaryButton>
           <SecondaryButton onClick={onRestart}>Quay lại Bước 1</SecondaryButton>
         </div>
       </div>

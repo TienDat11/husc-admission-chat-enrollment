@@ -8,7 +8,7 @@
  * (\t columns, \n rows, strips trailing empty line), previews rows/columns,
  * and submits via ``PATCH /admin/source-documents/{id}/blocks/{block_id}``.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Dialog,
@@ -25,6 +25,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { patchBlock } from "@/lib/adminApi";
 import { useAdminSession } from "@/hooks/useAdminSession";
+import { getErrorMessage } from "@/lib/utils";
+import { DEFAULT_ERROR_MESSAGE } from "@/lib/copy";
 
 interface ExcelPasteModalProps {
   documentId: string;
@@ -46,6 +48,7 @@ export function ExcelPasteModal({
   const [parseError, setParseError] = useState<string | null>(null);
   const [rows, setRows] = useState<string[][]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const rawTsvId = useId();
 
   // Restore focus to the trigger when the modal closes.
   useEffect(() => {
@@ -116,7 +119,7 @@ export function ExcelPasteModal({
     } catch (err: unknown) {
       toast({
         title: "Dán thất bại",
-        description: err instanceof Error ? err.message : "Lỗi không xác định",
+        description: getErrorMessage(err, DEFAULT_ERROR_MESSAGE),
         variant: "destructive",
       });
     } finally {
@@ -140,8 +143,9 @@ export function ExcelPasteModal({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 pt-4">
-          <Label>Dán dữ liệu Excel (TSV)</Label>
+          <Label htmlFor={rawTsvId}>Dán dữ liệu Excel (TSV)</Label>
           <Textarea
+            id={rawTsvId}
             value={rawTsv}
             onChange={handleChange}
             onPaste={handlePaste}
@@ -149,7 +153,9 @@ export function ExcelPasteModal({
             className="font-mono text-sm"
             placeholder="C1\tC2\tC3\nGiá 1\tGiá 2\tGiá 3\n…"
           />
-          {parseError && <p className="text-xs text-destructive">{parseError}</p>}
+          {parseError && (
+            <p role="alert" className="text-xs text-destructive">{parseError}</p>
+          )}
           {!parseError && rows.length > 0 && (
             <div className="overflow-x-auto border rounded p-2 bg-muted/50 max-h-48 overflow-y-auto">
               <table className="text-xs border-collapse">

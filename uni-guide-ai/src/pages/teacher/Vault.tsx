@@ -14,7 +14,10 @@ import {
 import { useAdminSession } from "@/hooks/useAdminSession";
 import { invalidateRecordTransition } from "@/lib/recordTransitions";
 import { RECORD_TYPE_LABELS } from "@/lib/adminValidation";
-import { cn } from "@/lib/utils";
+import { cn, formatViDate, getErrorMessage } from "@/lib/utils";
+import { PAGE_SIZE } from "@/lib/constants";
+import { adminKeys } from "@/lib/queryKeys";
+import { EmptyState, ErrorState, ListSkeleton } from "@/components/ui-kit/PageState";
 
 const YEARS = ["2026", "2025"];
 
@@ -29,7 +32,6 @@ const BUCKETS: { id: Bucket; label: string }[] = [
 ];
 
 const PENDING_STATUSES: RecordStatus[] = ["draft", "review", "approved"];
-const PAGE_SIZE = 25;
 
 /** A published record whose validity ends within the next 30 days. */
 const isExpiring = (record: CanonicalRecord) => {
@@ -56,7 +58,7 @@ const matchesBucket = (record: CanonicalRecord, bucket: Bucket) => {
 };
 
 const formatDate = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString("vi-VN") : null;
+  iso ? formatViDate(iso) : null;
 
 /** What the Bot serves for this record: the badge text and its colour. */
 const botStatus = (record: CanonicalRecord) => {
@@ -90,7 +92,7 @@ const Vault = () => {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const list = useQuery({
-    queryKey: ["admin", "vault", { text, year }],
+    queryKey: adminKeys.vaultQuery({ text, year }),
     queryFn: () =>
       listRecords(null, {
         ...(text.trim() ? { nganh: text.trim() } : {}),
@@ -107,7 +109,7 @@ const Vault = () => {
   const selected = shown.find((record) => record.record_id === selectedId) ?? shown[0] ?? null;
 
   const log = useQuery({
-    queryKey: ["admin", "record-history", selected?.record_id ?? null],
+    queryKey: adminKeys.recordHistoryFor(selected?.record_id ?? null),
     queryFn: () => fetchRecordHistory(null, selected?.record_id ?? ""),
     enabled: Boolean(selected),
   });
@@ -129,11 +131,11 @@ const Vault = () => {
       setConfirm(null);
       setReason("");
       setActionError(null);
-      void queryClient.invalidateQueries({ queryKey: ["admin", "vault"] });
-      void queryClient.invalidateQueries({ queryKey: ["admin", "record-history"] });
+      void queryClient.invalidateQueries({ queryKey: adminKeys.vault() });
+      void queryClient.invalidateQueries({ queryKey: adminKeys.recordHistory() });
       invalidateRecordTransition(queryClient);
     },
-    onError: (error) => setActionError(error instanceof Error ? error.message : "Thao tác thất bại."),
+    onError: (error) => setActionError(getErrorMessage(error, "Thao tác thất bại.")),
   });
   const pageCount = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
@@ -141,17 +143,16 @@ const Vault = () => {
 
   if (list.isPending) {
     return (
-      <p role="status" aria-live="polite" className="text-zinc-600">
-        Đang tải kho thông tin…
-      </p>
+      <ListSkeleton rows={5} label="Đang tải kho thông tin…" />
     );
   }
 
   if (list.isError) {
     return (
-      <div role="alert" className="note bad">
-        Chưa tải được kho thông tin. Kiểm tra kết nối mạng rồi thử lại.
-      </div>
+      <ErrorState
+        message="Chưa tải được kho thông tin. Kiểm tra kết nối mạng rồi thử lại."
+        onRetry={() => void list.refetch()}
+      />
     );
   }
 
@@ -239,15 +240,15 @@ const Vault = () => {
       </div>
 
       {shown.length === 0 ? (
-        <div className="note info" role="status">
-          <p>
-            Không có thông tin nào khớp bộ lọc hiện tại. Thử bỏ bớt bộ lọc, hoặc thêm tài liệu
-            mới.
-          </p>
-          <Link to="/quan-ly/them" className="btn">
-            Thêm tài liệu
-          </Link>
-        </div>
+        <EmptyState
+          title="Không có thông tin nào khớp bộ lọc hiện tại."
+          hint="Thử bỏ bớt bộ lọc, hoặc thêm tài liệu mới."
+          action={
+            <Link to="/quan-ly/them" className="btn">
+              Thêm tài liệu
+            </Link>
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(280px,3fr)]">
           <div className="table-wrap rounded-[12px] border border-[#D6DEEA] bg-white">

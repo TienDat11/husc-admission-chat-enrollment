@@ -6,6 +6,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchReleaseStatus, newIdempotencyKey, rollbackRelease, type ReleaseView } from "@/lib/adminApi";
 import { fetchAuditEvents, type AuditEventRecord } from "@/lib/teacherApi";
+import { getErrorMessage } from "@/lib/utils";
+import { adminKeys } from "@/lib/queryKeys";
 
 const ACTION_TITLES: Record<string, string> = {
   publish: "Phát hành lên Bot",
@@ -73,13 +75,13 @@ const History = () => {
   const [rollbackKey, setRollbackKey] = useState<{ key: string; reason: string } | null>(null);
 
   const events = useQuery({
-    queryKey: ["admin", "audit-events"],
+    queryKey: adminKeys.auditEvents(),
     queryFn: () => fetchAuditEvents(null, 50),
     retry: false,
   });
 
   const release = useQuery({
-    queryKey: ["admin", "releases"],
+    queryKey: adminKeys.releases(),
     queryFn: () => fetchReleaseStatus(null),
     retry: false,
   });
@@ -94,11 +96,11 @@ const History = () => {
       setRollbackDone(true);
       setRollbackOpen(false);
       setRollbackReason("");
-      void queryClient.invalidateQueries({ queryKey: ["admin", "releases"] });
-      void queryClient.invalidateQueries({ queryKey: ["admin", "audit-events"] });
+      void queryClient.invalidateQueries({ queryKey: adminKeys.releases() });
+      void queryClient.invalidateQueries({ queryKey: adminKeys.auditEvents() });
     },
     onError: (failure: unknown) =>
-      setRollbackError(failure instanceof Error ? failure.message : "Khôi phục thất bại."),
+      setRollbackError(getErrorMessage(failure, "Khôi phục thất bại.")),
   });
 
   const rows = events.data?.events ?? [];
@@ -135,7 +137,7 @@ const History = () => {
                 <ReleaseCard release={previous} tone="previous" title="Bản lưu trước đó" />
                 <button
                   type="button"
-                  className="min-h-11 rounded-8 border border-[#143980] bg-white px-4 text-base font-semibold text-[#143980] hover:bg-[#eef3fb] disabled:opacity-50"
+                  className="min-h-11 rounded-8 border border-brand-navy bg-white px-4 text-base font-semibold text-brand-navy hover:bg-[#eef3fb] disabled:opacity-50"
                   onClick={() => {
                     setRollbackDone(false);
                     setRollbackError(null);
@@ -193,7 +195,7 @@ const History = () => {
                   value={rollbackReason}
                   placeholder="Ví dụ: Phát hiện bảng phụ lục trang 9 của thông báo mới cần đính chính"
                   onChange={(event) => setRollbackReason(event.target.value)}
-                  className="min-h-11 w-full rounded-8 border border-[#143980] bg-white px-3 text-base"
+                  className="min-h-11 w-full rounded-8 border border-brand-navy bg-white px-3 text-base"
                 />
               </div>
               <div className="flex flex-wrap gap-3">

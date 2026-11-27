@@ -214,7 +214,7 @@ const AddInfo = () => {
             <span
               aria-current={index === 0 ? "step" : undefined}
               className={`inline-flex h-9 items-center rounded-8 px-4 text-sm font-semibold ${
-                index === 0 ? "bg-[#143980] text-white" : "bg-[#E9EEF6] text-[#4A5568]"
+                index === 0 ? "bg-brand-navy text-white" : "bg-[#E9EEF6] text-[#4A5568]"
               }`}
             >
               {label}
@@ -224,7 +224,7 @@ const AddInfo = () => {
       </ol>
 
       <div className="space-y-2">
-        <h1 id="addinfo-title" className="text-2xl font-bold text-[#143980]">
+        <h1 id="addinfo-title" className="text-2xl font-bold text-brand-navy">
           Thêm thông tin tuyển sinh
         </h1>
         <p className="text-base text-[#4A5568]">
@@ -243,9 +243,9 @@ const AddInfo = () => {
               Chọn tệp PDF, DOCX hoặc XLSX (tối đa 20 MB)
             </label>
             {chosen ? (
-              <div className="flex flex-wrap items-center justify-between gap-4 rounded-12 border border-[#143980] bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-12 border border-brand-navy bg-white p-4">
                 <div className="min-w-0">
-                  <p className="truncate text-[15px] font-semibold text-[#143980]">{chosen.name}</p>
+                  <p className="truncate text-[15px] font-semibold text-brand-navy">{chosen.name}</p>
                   <p className="text-sm text-[#6B7686]">
                     {(chosen.name.split(".").pop() ?? "").toUpperCase()} · {formatFileSize(chosen.size)} · Sẵn sàng tải lên
                   </p>
@@ -272,10 +272,10 @@ const AddInfo = () => {
           </div>
 
           <section aria-labelledby="split-mode-title" className="space-y-2 rounded-12 border border-[#D6DEEA] bg-white p-4">
-            <h2 id="split-mode-title" className="text-base font-semibold text-[#143980]">
+            <h2 id="split-mode-title" className="text-base font-semibold text-brand-navy">
               Cách tách nội dung
             </h2>
-            <p className="text-sm font-semibold text-[#143980]">Tự nhận diện (mặc định)</p>
+            <p className="text-sm font-semibold text-brand-navy">Tự nhận diện (mặc định)</p>
             <p className="text-sm text-[#4A5568]">
               Hệ thống đọc chữ trong tệp và tách thành từng mục nhỏ để bạn kiểm tra. Bảng được đọc ở chế độ văn bản, nên
               các bảng sẽ được đánh dấu để bạn kiểm tra số liệu bằng tay.

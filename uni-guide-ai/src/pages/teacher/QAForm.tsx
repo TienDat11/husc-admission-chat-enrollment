@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { createRecord, newIdempotencyKey } from "@/lib/adminApi";
 import { promoteToGolden, submitDraftForReview } from "@/lib/teacherApi";
 import { useAdminSession } from "@/hooks/useAdminSession";
+import { getErrorMessage } from "@/lib/utils";
 
 const YEARS = [2026, 2027];
 const MAJORS = ["Tất cả các ngành", "Hán Nôm", "Công nghệ thông tin", "Báo chí", "Kiến trúc"];
@@ -72,9 +73,7 @@ const QAForm = () => {
     },
     onSuccess: () => setSent(true),
     onError: (failure: unknown) =>
-      setFieldError(
-        failure instanceof Error ? failure.message : "Gửi duyệt thất bại.",
-      ),
+      setFieldError(getErrorMessage(failure, "Gửi duyệt thất bại.")),
   });
 
   const handleAsk = () => {

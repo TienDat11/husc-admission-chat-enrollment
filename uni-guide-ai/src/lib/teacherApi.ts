@@ -17,6 +17,8 @@ import {
   adminRequestHeaders,
 } from "./adminApi";
 import { getApiBaseUrl } from "./api";
+import { DEFAULT_ERROR_MESSAGE } from "./copy";
+import { getErrorMessage } from "./utils";
 import type { components } from "./api-types";
 
 type Schemas = components["schemas"];
@@ -153,7 +155,7 @@ export async function approveAndPublish(
       { idempotencyKey: actionIdempotencyKey(idempotencyKey, "publish") },
     );
   } catch (failure: unknown) {
-    const reason = failure instanceof Error ? failure.message : "Hành động thất bại.";
+    const reason = getErrorMessage(failure, DEFAULT_ERROR_MESSAGE);
     throw new Error(`Đã duyệt nhưng chưa xuất bản: ${reason}`);
   }
 }
@@ -214,7 +216,7 @@ export async function approveAndPublishMany(
     } catch (failure: unknown) {
       failures.push({
         recordId: record.recordId,
-        error: failure instanceof Error ? failure.message : "Hành động thất bại.",
+        error: getErrorMessage(failure, DEFAULT_ERROR_MESSAGE),
       });
     }
   }

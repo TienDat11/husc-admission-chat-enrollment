@@ -1,3 +1,4 @@
+import { ADMIN_OVERVIEW_POLL_MS } from "@/lib/constants";
 // Ticket T09 — the 7 teacher-facing screens share one shell: the left nav
 // from 05 §3, the "Cần giúp?" line in the nav footer from 05 §2, and the HUSC
 // token set (#143980 accent, 18 px body, Montserrat) that the mockups check 30/30.
@@ -67,7 +68,8 @@ const TeacherLayout = () => {
     queryFn: () => fetchAdminOverview(null),
     enabled: status === "ready" && can("records.read"),
     retry: false,
-    refetchInterval: 30_000,
+    refetchInterval: ADMIN_OVERVIEW_POLL_MS,
+    refetchIntervalInBackground: false,
   });
   const reviewCount = overview.data?.review_count ?? 0;
   const visibleItems = navItems.filter((item) => !item.action || can(item.action));

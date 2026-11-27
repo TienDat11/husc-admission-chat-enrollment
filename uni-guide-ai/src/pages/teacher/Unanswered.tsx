@@ -3,7 +3,9 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAdminSession } from "@/hooks/useAdminSession";
 import { listUnanswered, markOutOfScope, type UnansweredItem } from "@/lib/teacherApi";
-import { cn } from "@/lib/utils";
+import { cn, formatViDate } from "@/lib/utils";
+import { adminKeys } from "@/lib/queryKeys";
+import { ErrorState, ListSkeleton } from "@/components/ui-kit/PageState";
 
 const REASON_LABELS: Record<string, string> = {
   OUT_OF_DOMAIN: "Ngoài phạm vi",
@@ -30,7 +32,7 @@ export function formatAskedAt(iso: string, now: Date = new Date()): string {
   yesterday.setDate(now.getDate() - 1);
   if (asked.toDateString() === now.toDateString()) return `Hôm nay ${time}`;
   if (asked.toDateString() === yesterday.toDateString()) return `Hôm qua ${time}`;
-  return `${asked.toLocaleDateString("vi-VN")} ${time}`;
+  return `${formatViDate(asked)} ${time}`;
 }
 
 const isOverdue = (item: UnansweredItem) =>
@@ -48,7 +50,7 @@ const Unanswered = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const list = useQuery({
-    queryKey: ["admin", "unanswered"],
+    queryKey: adminKeys.unanswered(),
     queryFn: () => listUnanswered(null),
     retry: false,
   });
@@ -62,18 +64,15 @@ const Unanswered = () => {
   });
 
   if (list.isPending) {
-    return (
-      <p role="status" aria-live="polite" className="text-zinc-600">
-        Đang lấy danh sách câu hỏi…
-      </p>
-    );
+    return <ListSkeleton rows={4} label="Đang lấy danh sách câu hỏi…" />;
   }
 
   if (list.isError) {
     return (
-      <div role="alert" className="note bad">
-        Chưa lấy được danh sách câu hỏi. Kiểm tra kết nối mạng rồi thử lại.
-      </div>
+      <ErrorState
+        message="Chưa lấy được danh sách câu hỏi. Kiểm tra kết nối mạng rồi thử lại."
+        onRetry={() => void list.refetch()}
+      />
     );
   }
 
@@ -117,7 +116,7 @@ const Unanswered = () => {
                       className={cn(
                         "block w-full rounded-[8px] border p-3 text-left",
                         active
-                          ? "border-[#143980] bg-[#E6ECF7]"
+                          ? "border-brand-navy bg-[#E6ECF7]"
                           : "border-[#E4E9F2] bg-[#F7F9FC] hover:border-[#D6DEEA]",
                       )}
                     >
@@ -175,8 +174,8 @@ const Unanswered = () => {
                 </p>
               </div>
 
-              <div className="mt-4 rounded-[8px] border-2 border-[#143980] p-4">
-                <h3 className="!m-0 font-display text-[15px] font-semibold text-[#143980]">
+              <div className="mt-4 rounded-[8px] border-2 border-brand-navy p-4">
+                <h3 className="!m-0 font-display text-[15px] font-semibold text-brand-navy">
                   Chế độ 1: Tạo mục Hỏi - Đáp (HOI_DAP) chuẩn và gửi duyệt
                 </h3>
                 <p className="mt-2 text-[14px] leading-6 text-[#474747]">
@@ -187,7 +186,7 @@ const Unanswered = () => {
                   {canCreate ? (
                     <Link
                       to={`/quan-ly/them/qa?question=${encodeURIComponent(selected.question)}&trace_id=${encodeURIComponent(selected.trace_id)}&promote=1`}
-                      className="inline-flex min-h-11 items-center rounded-[8px] bg-[#143980] px-5 text-[14px] font-semibold !text-white hover:bg-[#1a4a9e]"
+                      className="inline-flex min-h-11 items-center rounded-[8px] bg-brand-navy px-5 text-[14px] font-semibold !text-white hover:bg-[#1a4a9e]"
                     >
                       Trả lời & Đưa vào bộ câu hỏi chuẩn
                     </Link>
@@ -217,7 +216,7 @@ const Unanswered = () => {
                 ) : (
                   <button
                     type="button"
-                    className="min-h-11 rounded-[8px] border border-[#D6DEEA] bg-white px-4 text-[14px] font-semibold text-[#143980] hover:bg-[#E6ECF7] disabled:text-[#6B7280]"
+                    className="min-h-11 rounded-[8px] border border-[#D6DEEA] bg-white px-4 text-[14px] font-semibold text-brand-navy hover:bg-[#E6ECF7] disabled:text-[#6B7280]"
                     disabled={!canEdit || outOfScope.isPending}
                     onClick={() => void outOfScope.mutate(selected.trace_id)}
                   >

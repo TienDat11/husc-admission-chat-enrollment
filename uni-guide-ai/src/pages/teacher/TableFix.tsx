@@ -30,6 +30,8 @@ import {
 } from "@/lib/adminApi";
 import { ChunkHistogram } from "@/components/admin/ChunkHistogram";
 import { PdfPageViewer } from "@/components/admin/PdfPageViewer";
+import { getErrorMessage } from "@/lib/utils";
+import { DEFAULT_ERROR_MESSAGE } from "@/lib/copy";
 
 const RESOLVABLE_BLOCKERS = [
   "TABLE_CELL_DROP_SUSPECTED",
@@ -46,8 +48,6 @@ const BLOCKER_LABELS: Record<string, string> = {
   AMBIGUOUS_SUPERSEDED: "Thay thế không rõ",
 };
 
-interface TableFixProps {}
-
 export function TableFix() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -57,6 +57,7 @@ export function TableFix() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [submitDisabled, setSubmitDisabled] = useState(true);
   const [activeBlock, setActiveBlock] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const docId = documentId ?? "";
 
@@ -72,7 +73,7 @@ export function TableFix() {
     } catch (err: unknown) {
       toast({
         title: "Không tải được danh sách ngoại lệ",
-        description: err instanceof Error ? err.message : "Lỗi không xác định",
+        description: getErrorMessage(err, DEFAULT_ERROR_MESSAGE),
         variant: "destructive",
       });
     }
@@ -100,7 +101,7 @@ export function TableFix() {
       setActiveBlock(null);
       toast({
         title: "Cập nhật block thất bại",
-        description: err instanceof Error ? err.message : "Lỗi không xác định",
+        description: getErrorMessage(err, DEFAULT_ERROR_MESSAGE),
         variant: "destructive",
       });
     }
@@ -117,7 +118,7 @@ export function TableFix() {
     } catch (err: unknown) {
       toast({
         title: "Xem trước chunk thất bại",
-        description: err instanceof Error ? err.message : "Lỗi không xác định",
+        description: getErrorMessage(err, DEFAULT_ERROR_MESSAGE),
         variant: "destructive",
       });
     } finally {
@@ -127,6 +128,7 @@ export function TableFix() {
 
   const handleSubmit = async () => {
     if (submitDisabled) return;
+    setSubmitting(true);
     try {
       await transitionRecord(null, docId, {
         action: "submit",
@@ -138,9 +140,11 @@ export function TableFix() {
     } catch (err: unknown) {
       toast({
         title: "Gửi duyệt thất bại",
-        description: err instanceof Error ? err.message : "Lỗi không xác định",
+        description: getErrorMessage(err, DEFAULT_ERROR_MESSAGE),
         variant: "destructive",
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -171,9 +175,9 @@ export function TableFix() {
           <Button
             data-variant="primary"
             onClick={handleSubmit}
-            disabled={submitDisabled || blockerCount > 0}
+            disabled={submitDisabled || blockerCount > 0 || submitting}
           >
-            {submitDisabled || blockerCount > 0 ? "Chưa thể gửi duyệt" : "Gửi duyệt"}
+            {submitting ? "Đang…" : submitDisabled || blockerCount > 0 ? "Chưa thể gửi duyệt" : "Gửi duyệt"}
           </Button>
         </div>
       </div>
@@ -239,7 +243,7 @@ export function TableFix() {
                               onClick={() => handlePatch(b.block_id, { coordinate_key: b.block_id })}
                               disabled={activeBlock === b.block_id}
                             >
-                              Gán tọa độ
+                              {activeBlock === b.block_id ? "Đang…" : "Gán tọa độ"}
                             </Button>
                           )}
                           {b.warnings.includes("TABLE_CELL_DROP_SUSPECTED") && (
@@ -298,7 +302,7 @@ export function TableFix() {
                             onClick={() => handlePatch(String(u.record_id), { coordinate_key: String(u.record_id) })}
                             disabled={activeBlock === String(u.record_id)}
                           >
-                            Gán tọa độ
+                            {activeBlock === String(u.record_id) ? "Đang…" : "Gán tọa độ"}
                           </Button>
                         </TableCell>
                       </TableRow>

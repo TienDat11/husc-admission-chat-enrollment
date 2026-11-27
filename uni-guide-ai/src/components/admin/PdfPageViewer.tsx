@@ -19,6 +19,8 @@ import {
   type ReocrRequest,
 } from "@/lib/adminApi";
 import { useAdminSession } from "@/hooks/useAdminSession";
+import { getErrorMessage } from "@/lib/utils";
+import { DEFAULT_ERROR_MESSAGE } from "@/lib/copy";
 
 interface PdfPageViewerProps {
   documentId: string;
@@ -40,8 +42,10 @@ export function PdfPageViewer({
   const { token } = useAdminSession();
   const { toast } = useToast();
   const [ocrRunning, setOcrRunning] = useState(false);
+  const [inserting, setInserting] = useState(false);
 
   const handleInsertMissing = useCallback(async () => {
+    setInserting(true);
     try {
       await insertMissingRows(token, documentId, blockId, {
         expected_version: undefined,
@@ -54,9 +58,11 @@ export function PdfPageViewer({
     } catch (err: unknown) {
       toast({
         title: "Chèn dòng thất bại",
-        description: err instanceof Error ? err.message : "Lỗi không xác định",
+        description: getErrorMessage(err, DEFAULT_ERROR_MESSAGE),
         variant: "destructive",
       });
+    } finally {
+      setInserting(false);
     }
   }, [token, documentId, blockId, pageNumber, missingPypdfRows, onResolve]);
 
@@ -72,7 +78,7 @@ export function PdfPageViewer({
     } catch (err: unknown) {
       toast({
         title: "OCR lại thất bại",
-        description: err instanceof Error ? err.message : "Lỗi không xác định",
+        description: getErrorMessage(err, DEFAULT_ERROR_MESSAGE),
         variant: "destructive",
       });
     } finally {
@@ -91,9 +97,9 @@ export function PdfPageViewer({
             <Button
               size="sm"
               onClick={handleInsertMissing}
-              disabled={!token}
+              disabled={!token || inserting}
             >
-              Chèn dòng thiếu
+              {inserting ? "Đang…" : "Chèn dòng thiếu"}
             </Button>
           )}
           <Button size="sm" onClick={handleReocr} disabled={ocrRunning || !token}>
