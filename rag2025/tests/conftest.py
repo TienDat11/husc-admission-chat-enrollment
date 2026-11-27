@@ -38,10 +38,17 @@ A test that wants conflicts registers its own source and restores it, as
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+
+# Several test modules import src.main at collection time, which runs load_dotenv()
+# (config/env_loader.py). load_dotenv never overrides a variable that is already set, so
+# pinning APP_ENV here keeps a local dotenv value of "prod" from leaking into the whole
+# session and failing dev-fallback tests (tests/routers/test_meta.py) in subset runs.
+os.environ.setdefault("APP_ENV", "test")
 
 
 @pytest.fixture(autouse=True)
