@@ -24,6 +24,7 @@ from asyncio import FIRST_COMPLETED, Lock, create_task
 import time
 import uuid
 import hashlib
+import hmac
 import json
 from contextlib import asynccontextmanager
 
@@ -47,6 +48,7 @@ from src.services.lancedb_retrieval import (
     get_retriever,
     LanceDBRetriever,
     LanceDBRetrieverConfig,
+    invalidate_admission_year_cache,
 )
 from src.app.request_tracker import RequestTracker
 from src.services.llm_generator import get_llm_generator
@@ -75,6 +77,18 @@ from infrastructure.db import make_session_factory
 from sqlalchemy import text
 
 # Keep existing imports for backward compatibility
+from config.constants import (
+    CHUNK_PREVIEW_MAX_TEXT_LENGTH,
+    GROUNDING_THRESHOLD,
+    MAX_GRAPH_CHUNK_TEXT_LENGTH,
+    MAX_GRAPH_UPDATE_CHUNKS,
+    MAX_QUERY_LENGTH,
+    RATE_LIMIT_PER_MINUTE,
+    TRUSTED_PROXY_COUNT,
+)
+from src.utils.http import client_ip
+from src.domain.admin_identity import AdminAction
+from src.routers.admin_auth import require_action
 from config.settings import RAGSettings
 from config.request_context import set_request_id, reset_request_id
 from src.domain.canonical.semantic_units import _pack_units_greedily
@@ -92,11 +106,66 @@ from services.citation import ClaimCitation
 settings = RAGSettings()
 
 # Security/limits config
-MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "1000"))
-MAX_GRAPH_UPDATE_CHUNKS = int(os.getenv("MAX_GRAPH_UPDATE_CHUNKS", "100"))
-MAX_GRAPH_CHUNK_TEXT_LENGTH = int(os.getenv("MAX_GRAPH_CHUNK_TEXT_LENGTH", "5000"))
-RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
-GROUNDING_THRESHOLD = float(os.getenv("GROUNDING_THRESHOLD", "0.18"))
+# ========== INTENT → FAQ_TYPE MAPPING ==========
+# Dynamic faq_type selection based on query intent
+INTENT_TO_FAQ_TYPES = {
+    "overview": ["tong_hop_tuyen_sinh", "tong_hop_nhom_nganh", "thong_tin_nganh"],
+    "specific_program": ["thong_tin_nganh"],
+    "tuition": ["hoc_phi"],
+    # V5-R013 / FIX 2: liet_ke (enumerate / list majors) must
+    # pull from BOTH the aggregate chunk types
+    # (tong_hop_tuyen_sinh, tong_hop_nhom_nganh) AND the
+    # per-major detail chunks (thong_tin_nganh). The previous
+    # omission made the liet_ke intent fall through to a
+    # narrower "thong_tin_nganh" filter that excluded the
+    # listing-style chunks (liet_ke_28_nganh_2026_v2,
+    # bang_xep_hang_chi_tieu_2026_v2, tuyensinh_overview_2026_v2),
+    # which is why the generator only had the COUNT signal and
+    # produced "29 ngành" without listing names.
+    "liet_ke": ["tong_hop_tuyen_sinh", "tong_hop_nhom_nganh", "thong_tin_nganh"],
+}
+
+# Keyword sets for intent detection
+OVERVIEW_KEYWORDS = [
+    "bao nhiêu ngành", "tổng cộng", "có mấy ngành",
+    "tổng số", "tất cả ngành", "các ngành", "tuyển sinh mấy ngành"
+]
+TUITION_KEYWORDS = ["học phí", "tiền học", "đóng phí", "tín chỉ", "tín", "bao nhiêu tiền", "1 kỳ", "một kỳ", "học kỳ"]
+
+def get_faq_type_filter(query: str) -> dict | None:
+    """Build metadata filter based on query intent."""
+    query_lower = query.lower()
+
+    # Overview queries - allow summary and program chunks
+    if any(kw in query_lower for kw in OVERVIEW_KEYWORDS):
+        return {"or_conditions": [{"faq_type": t} for t in INTENT_TO_FAQ_TYPES["overview"]]}
+
+    # Tuition queries - only hoc_phi chunks
+    if any(kw in query_lower for kw in TUITION_KEYWORDS):
+        return {"or_conditions": [{"faq_type": t} for t in INTENT_TO_FAQ_TYPES["tuition"]]}
+
+    # Specific program queries (list only, not overview)
+    # Detect program list queries for metadata filtering
+    is_program_list = any(
+        keyword in query_lower
+        for keyword in ["các ngành", "danh sách ngành", "có ngành nào", "ngành nào"]
+    )
+    if is_program_list:
+        # V5-R013 / FIX 2: pull from BOTH aggregate listing chunks
+        # (tong_hop_*) AND per-major detail chunks (thong_tin_nganh)
+        # so the liet_ke intent can list the 29 tên ngành instead of
+        # only emitting a count.
+        return {
+            "or_conditions": [
+                {"faq_type": t}
+                for t in INTENT_TO_FAQ_TYPES["liet_ke"]
+            ]
+        }
+
+    # Default: no filter, pure semantic retrieval
+    return None
+
+
 
 _graph_update_lock = Lock()
 
@@ -205,12 +274,8 @@ def _rerank_trace_reason(reranker_service: Any) -> Optional[str]:
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client and request.client.host:
-        return request.client.host
-    return "unknown"
+    """Client address behind the trusted reverse proxy (leftmost XFF is spoofable)."""
+    return client_ip(request, TRUSTED_PROXY_COUNT)
 
 
 async def _enforce_rate_limit(request: Request) -> None:
@@ -419,6 +484,9 @@ async def _warmup_lifespan(app: FastAPI):
 
     # ---- shutdown ----
     logger.info("Shutting down RAG API 2025")
+    from services.llm_client import close_llm_clients
+
+    await close_llm_clients()
 
 
 app = FastAPI(
@@ -674,6 +742,7 @@ class ChunkPreviewRequest(BaseModel):
     text: str = Field(
         ...,
         min_length=10,
+        max_length=CHUNK_PREVIEW_MAX_TEXT_LENGTH,
         description="Text to chunk (minimum 10 characters)",
         example="Trong công tác tuyển sinh năm 2025, Bộ GDĐT quy định tất cả thí sinh phải đăng ký xét tuyển trực tuyến."
     )
@@ -797,6 +866,8 @@ def swap_runtime_services(retriever: Any, *, app_state: Any = None) -> Dict[str,
 
     lancedb_retriever_service = retriever
     hybrid_search_service = new_hybrid
+    # The admission year is derived from the table, so a swap may change it.
+    invalidate_admission_year_cache()
 
     pipeline_rebound = False
     if unified_pipeline is not None:
@@ -856,9 +927,26 @@ async def root():
     }
 
 
+def _metrics_access_allowed(request: Request) -> bool:
+    """Prometheus scrape with the optional METRICS_TOKEN, or a loopback client."""
+    token = os.getenv("METRICS_TOKEN", "").strip()
+    if token and hmac.compare_digest(
+        request.headers.get("authorization", ""), f"Bearer {token}"
+    ):
+        return True
+    return _client_ip(request) in ("127.0.0.1", "::1", "localhost")
+
+
 @app.get("/metrics", response_model=Dict[str, Any])
-async def metrics_endpoint():
-    """Lightweight internal metrics endpoint."""
+async def metrics_endpoint(request: Request):
+    """Lightweight internal metrics endpoint.
+
+    Gated: allowed when the request carries ``Authorization: Bearer
+    $METRICS_TOKEN`` (Prometheus scrape; the env var must be set) or when the
+    resolved client address is loopback. Anything else gets 403.
+    """
+    if not _metrics_access_allowed(request):
+        raise HTTPException(status_code=403, detail="metrics not accessible from this address")
     return {
         "status": "ok",
         "metrics": _metrics_snapshot(),
@@ -977,65 +1065,6 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
             query_type = enhanced_request["query_type"]
             top_k = enhanced_request["top_k"]
 
-            # ========== INTENT → FAQ_TYPE MAPPING ==========
-            # Dynamic faq_type selection based on query intent
-            INTENT_TO_FAQ_TYPES = {
-                "overview": ["tong_hop_tuyen_sinh", "tong_hop_nhom_nganh", "thong_tin_nganh"],
-                "specific_program": ["thong_tin_nganh"],
-                "tuition": ["hoc_phi"],
-                # V5-R013 / FIX 2: liet_ke (enumerate / list majors) must
-                # pull from BOTH the aggregate chunk types
-                # (tong_hop_tuyen_sinh, tong_hop_nhom_nganh) AND the
-                # per-major detail chunks (thong_tin_nganh). The previous
-                # omission made the liet_ke intent fall through to a
-                # narrower "thong_tin_nganh" filter that excluded the
-                # listing-style chunks (liet_ke_28_nganh_2026_v2,
-                # bang_xep_hang_chi_tieu_2026_v2, tuyensinh_overview_2026_v2),
-                # which is why the generator only had the COUNT signal and
-                # produced "29 ngành" without listing names.
-                "liet_ke": ["tong_hop_tuyen_sinh", "tong_hop_nhom_nganh", "thong_tin_nganh"],
-            }
-
-            # Keyword sets for intent detection
-            OVERVIEW_KEYWORDS = [
-                "bao nhiêu ngành", "tổng cộng", "có mấy ngành",
-                "tổng số", "tất cả ngành", "các ngành", "tuyển sinh mấy ngành"
-            ]
-            TUITION_KEYWORDS = ["học phí", "tiền học", "đóng phí", "tín chỉ", "tín", "bao nhiêu tiền", "1 kỳ", "một kỳ", "học kỳ"]
-
-            def get_faq_type_filter(query: str) -> dict | None:
-                """Build metadata filter based on query intent."""
-                query_lower = query.lower()
-
-                # Overview queries - allow summary and program chunks
-                if any(kw in query_lower for kw in OVERVIEW_KEYWORDS):
-                    return {"or_conditions": [{"faq_type": t} for t in INTENT_TO_FAQ_TYPES["overview"]]}
-
-                # Tuition queries - only hoc_phi chunks
-                if any(kw in query_lower for kw in TUITION_KEYWORDS):
-                    return {"or_conditions": [{"faq_type": t} for t in INTENT_TO_FAQ_TYPES["tuition"]]}
-
-                # Specific program queries (list only, not overview)
-                # Detect program list queries for metadata filtering
-                is_program_list = any(
-                    keyword in query_lower
-                    for keyword in ["các ngành", "danh sách ngành", "có ngành nào", "ngành nào"]
-                )
-                if is_program_list:
-                    # V5-R013 / FIX 2: pull from BOTH aggregate listing chunks
-                    # (tong_hop_*) AND per-major detail chunks (thong_tin_nganh)
-                    # so the liet_ke intent can list the 29 tên ngành instead of
-                    # only emitting a count.
-                    return {
-                        "or_conditions": [
-                            {"faq_type": t}
-                            for t in INTENT_TO_FAQ_TYPES["liet_ke"]
-                        ]
-                    }
-
-                # Default: no filter, pure semantic retrieval
-                return None
-
             # Build metadata filter for this query
             metadata_filter = get_faq_type_filter(original_query)
 
@@ -1074,7 +1103,7 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
                         metadata_filter=metadata_filter,
                     )
                 else:
-                    retrieval_result = lancedb_retriever_service.retrieve(
+                    retrieval_result = await run_in_threadpool(lancedb_retriever_service.retrieve, 
                         query_vector=query_vector,
                         top_k=retrieval_top_k,
                         metadata_filter=metadata_filter,
@@ -1091,7 +1120,7 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
                             metadata_filter=None,
                         )
                     else:
-                        retrieval_result = lancedb_retriever_service.retrieve(
+                        retrieval_result = await run_in_threadpool(lancedb_retriever_service.retrieve, 
                             query_vector=query_vector,
                             top_k=retrieval_top_k,
                             metadata_filter=None,
@@ -1146,7 +1175,7 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
                         f"query_rerank_bypass trace_id={trace_id} "
                         "reason=load_failed"
                     )
-                chunks = reranker_service.rerank(
+                chunks = await run_in_threadpool(reranker_service.rerank, 
                     query=original_query,
                     chunks=chunks,
                     top_k=top_k,
@@ -1267,7 +1296,12 @@ async def query(request: SimpleQueryRequest, raw_request: Request):
 # ========== Debug/Tools Endpoints ==========
 
 
-@app.post("/debug/preview-chunks", response_model=ChunkPreviewResponse, tags=["Debug/Tools"])
+@app.post(
+    "/debug/preview-chunks",
+    response_model=ChunkPreviewResponse,
+    tags=["Debug/Tools"],
+    dependencies=[Depends(require_action(AdminAction.OPS_WARMUP))],
+)
 async def preview_chunks(request: ChunkPreviewRequest):
     """
     Preview chunking results without saving to disk
@@ -1784,7 +1818,7 @@ async def _build_v2_query_payload_inner(
                     # same quantity, from the same call parameters, that the
                     # dense path feeds the gate. Measured at ~52-63ms, and it
                     # runs inside max() with the ~5s router leg.
-                    probe = lancedb_retriever_service.retrieve(
+                    probe = await run_in_threadpool(lancedb_retriever_service.retrieve, 
                         query_vector=query_vec,
                         top_k=request.top_k * 3,
                         query=request.query,
@@ -1810,7 +1844,7 @@ async def _build_v2_query_payload_inner(
                             "so the rerank gate never sees an RRF score"
                         )
                 else:
-                    result = lancedb_retriever_service.retrieve(
+                    result = await run_in_threadpool(lancedb_retriever_service.retrieve, 
                         query_vector=query_vec,
                         top_k=request.top_k * 3,
                         query=request.query,
@@ -1827,7 +1861,7 @@ async def _build_v2_query_payload_inner(
         if lancedb_retriever_service is not None:
             try:
                 from services.aggregation_booster import boost_with_aggregation
-                baseline_docs = boost_with_aggregation(
+                baseline_docs = await run_in_threadpool(boost_with_aggregation, 
                     query=request.query,
                     baseline_docs=baseline_docs,
                     lancedb_retriever=lancedb_retriever_service,

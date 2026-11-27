@@ -1040,12 +1040,18 @@ def get_llm_client(
 
     Args:
         force_model: Optional model override, still whitelist-checked. A forced
-            model creates a NEW client so the shared per-role instance keeps
-            the role's configured model.
+            model gets its own client, cached per (role, model), so the shared
+            per-role instance keeps the role's configured model.
         role: Call-site role — router / ner / hyde / guardrail / gen / default.
     """
     if force_model:
-        return UnifiedLLMClient(force_model=force_model, role=role)
+        key = f"{role}|{force_model}"
+        with _clients_lock:
+            client = _clients.get(key)
+            if client is None:
+                client = UnifiedLLMClient(force_model=force_model, role=role)
+                _clients[key] = client
+            return client
     with _clients_lock:
         client = _clients.get(role)
         if client is None:
@@ -1057,6 +1063,15 @@ def get_llm_client(
 def get_router_llm_client() -> UnifiedLLMClient:
     """Router/classify client — its own role, its own model pair."""
     return get_llm_client(role="router")
+
+
+async def close_llm_clients() -> None:
+    """Close every cached client's HTTP pool and empty the registry (lifespan shutdown)."""
+    with _clients_lock:
+        clients = list(_clients.values())
+        _clients.clear()
+    for client in clients:
+        await client.close()
 
 
 def reset_llm_clients() -> None:

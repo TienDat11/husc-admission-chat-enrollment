@@ -13,6 +13,8 @@ from loguru import logger
 
 from config.settings import RAGSettings
 from services.llm_client import get_llm_client
+from src.utils.text import fold_diacritics_nfkd
+from src.config.paths import MAJOR_SCOPE_FILE as _MAJOR_SCOPE_FILE, TUITION_2026_OFFICIAL_FILE as _TUITION_2026_OFFICIAL_FILE
 
 
 # Bounded multi-turn history cap. FE slices last 4 (2 user + 2 assistant);
@@ -249,21 +251,11 @@ class GuardrailService:
     ]
 
     # Major-scope file (crawler-updatable).
-    MAJOR_SCOPE_FILE = (
-        Path(__file__).resolve().parents[2]
-        / "data"
-        / "major_codes"
-        / "husc_majors_current.json"
-    )
+    MAJOR_SCOPE_FILE = _MAJOR_SCOPE_FILE
     # Fallback if the dynamic file is missing/corrupt: parse the canonical
     # tuition JSON (which is the source of truth for the 2026 majors) so
     # guardrail still works offline.
-    _MAJOR_FALLBACK_FILES = (
-        Path(__file__).resolve().parents[2]
-        / "data"
-        / "major_codes"
-        / "husc_tuition_2026_official.json",
-    )
+    _MAJOR_FALLBACK_FILES = (_TUITION_2026_OFFICIAL_FILE,)
 
     # Cache (mtime -> (allowed_set, alias_to_canonical))
     _SCOPE_MTIME: Optional[float] = None
@@ -296,9 +288,7 @@ class GuardrailService:
         """Lowercase + strip Vietnamese diacritics for fuzzy matching."""
         if not isinstance(text, str):
             return ""
-        nfkd = unicodedata.normalize("NFKD", text)
-        ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
-        return ascii_only.lower().strip()
+        return fold_diacritics_nfkd(text).strip()
 
     @classmethod
     def _seed_minimal_allowed(cls) -> Set[str]:

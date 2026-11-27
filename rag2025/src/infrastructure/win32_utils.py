@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from loguru import logger
+from src.config.paths import LANCEDB_DIR, SNAPSHOTS_DIR
 
 MIN_FREE_GB = 2.0
 MAX_RSS_GB = 12.0
@@ -56,7 +57,7 @@ def check_disk_space(path: str | Path = "D:/") -> float:
     return free_gb
 
 
-def cleanup_old_snapshots(base_dir: str | Path = "rag2025/data/snapshots", keep: int = 3) -> int:
+def cleanup_old_snapshots(base_dir: str | Path = SNAPSHOTS_DIR, keep: int = 3) -> int:
     """Remove oldest snapshots, keeping N most recent. Returns count removed."""
     snap_path = Path(base_dir)
     if not snap_path.exists():
@@ -140,7 +141,7 @@ def checkpoint_lancedb(db_path: str | Path) -> None:
             logger.warning(f"WAL checkpoint failed for {lance_dir}: {e}")
 
 
-def check_stale_journals(db_path: str | Path = "rag2025/data/lancedb", max_age_s: float = 60) -> int:
+def check_stale_journals(db_path: str | Path = LANCEDB_DIR, max_age_s: float = 60) -> int:
     """Find .lance-journal files older than max_age_s seconds."""
     db_dir = Path(db_path)
     if not db_dir.exists():

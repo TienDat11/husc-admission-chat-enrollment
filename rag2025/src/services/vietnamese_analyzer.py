@@ -41,6 +41,7 @@ from typing import List, Tuple
 from services.major_code_validator import _CODE_IN_TEXT_RX
 from services.vn_legal_structure import RX_DOC_CENTRAL, RX_DOC_LOCAL
 from src.data.to_hop_codes import TO_HOP_PATTERN_RE
+from src.utils.text import fold_diacritics
 
 # Bump when the token stream or the folding rules change: this string is part of
 # the BM25 corpus identity (`HybridSearchService.corpus_version`), because two
@@ -65,26 +66,14 @@ _CODE_PATTERNS: Tuple[re.Pattern, ...] = (
 
 
 def fold(text: str) -> str:
-    """Return the diacritic-folded search key for ``text``.
+    """Return the diacritic-folded search key for ``text`` (see src.utils.text).
 
     Case-folded and diacritic-stripped; every other character (including
-    whitespace and punctuation) is preserved, so the mapping is a pure
-    character substitution and is cheap to reason about. ``text`` itself is
-    never mutated — callers keep the original string.
+    whitespace and punctuation) is preserved. ``text`` itself is never mutated.
     """
     if not text:
         return ""
-    # str.lower() maps "Đ" -> "đ", so the explicit đ mapping below covers both.
-    out: List[str] = []
-    for ch in unicodedata.normalize("NFD", text.lower()):
-        if ch == "đ":
-            out.append("d")
-        elif ord(ch) < 128:
-            # Fast path: ASCII is never a combining mark.
-            out.append(ch)
-        elif unicodedata.category(ch) != "Mn":
-            out.append(ch)
-    return "".join(out)
+    return fold_diacritics(text)
 
 
 def tokenize(text: str) -> List[str]:

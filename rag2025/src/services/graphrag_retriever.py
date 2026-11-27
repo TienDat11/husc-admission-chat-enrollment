@@ -32,9 +32,10 @@ from src.services.ner_service import NERService
 from src.services.query_router import QueryRoute, RouterResult, SmartQueryRouter
 from src.services.lancedb_retrieval import RetrievedDocument
 from config.settings import RAGSettings
+from src.config.paths import KNOWLEDGE_GRAPH_PATH
 
 
-GRAPH_PATH = Path(__file__).parent.parent.parent / "data" / "graph" / "knowledge_graph.graphml"
+GRAPH_PATH = KNOWLEDGE_GRAPH_PATH
 
 # ─── S15.1 / S15.2 / S15.5 constants ───────────────────────────────────────────
 # Expander budget (M): max number of PPR-only chunks to admit into the candidate

@@ -251,6 +251,7 @@ from src.services.ner_service import (  # noqa: E402
     _NGANH_KEYWORDS as _NER_NGANH_KEYWORDS,
     _TO_HOP_PATTERN as _NER_TO_HOP_PATTERN,
 )
+from src.config.constants import QUERY_ROUTER_LLM_TIMEOUT_S
 _NGANH_ENTITY_RE = re.compile(
     r"\b(" + "|".join(re.escape(k) for k in _NER_NGANH_KEYWORDS) + r")\b",
     re.IGNORECASE,
@@ -607,7 +608,7 @@ class SmartQueryRouter:
                     temperature=0.1,
                     max_tokens=512,
                 ),
-                timeout=8.0,
+                timeout=QUERY_ROUTER_LLM_TIMEOUT_S,
             )
             return data
         except Exception as exc:
@@ -644,7 +645,7 @@ class SmartQueryRouter:
                     temperature=0.1,
                     max_tokens=512,
                 ),
-                timeout=8.0,
+                timeout=QUERY_ROUTER_LLM_TIMEOUT_S,
             )
             # Ensure is_in_scope is present and boolean
             if "is_in_scope" not in data:

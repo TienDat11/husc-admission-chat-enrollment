@@ -52,6 +52,7 @@ from src.services.reindex_job import (
     read_corpus_stamp,
     stamp_is_stale,
 )
+from src.config.paths import CANONICAL_CORPUS_DIR
 
 __all__ = [
     "IndexJobView",
@@ -295,7 +296,7 @@ def _clean_id(value: object) -> str | None:
 #: Anchored to ``rag2025/`` the way ``RAGSettings`` anchors its paths, and the
 #: same directory ``scripts/ingest_lancedb.py`` calls ``CANONICAL_CORPUS_DIR`` —
 #: one corpus, named the same way in both places.
-DEFAULT_CORPUS_DIR = Path(__file__).resolve().parents[2] / "data" / "canonical_corpus"
+DEFAULT_CORPUS_DIR = CANONICAL_CORPUS_DIR
 
 #: The staging suffix ``ReindexJob`` derives when no ``staging_root`` is given.
 #: Written here so this read model finds the builds a default-constructed job

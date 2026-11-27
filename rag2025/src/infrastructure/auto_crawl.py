@@ -25,17 +25,18 @@ from src.infrastructure.win32_utils import (
 )
 
 from src.services.lancedb_retrieval import _detect_current_admission_year
+from src.config.paths import CHUNKED_DIR, GRAPH_DIR, LANCEDB_DIR, SNAPSHOTS_DIR
 
 # --- Configuration ---
 
 HASH_LOG_PATH = "data/crawl_hash_log.json"
 CRAWLER_STATE_PATH = "data/crawler_state.json"
 CHECKPOINT_PATH = "data/checkpoint_incremental.json"
-SNAPSHOT_BASE = "rag2025/data/snapshots"
+SNAPSHOT_BASE = str(SNAPSHOTS_DIR)
 DATA_DIRS = [
-    "rag2025/data/chunked",
-    "rag2025/data/lancedb",
-    "rag2025/data/graph",
+    str(CHUNKED_DIR),
+    str(LANCEDB_DIR),
+    str(GRAPH_DIR),
 ]
 
 CURRENT_YEAR = _detect_current_admission_year()
@@ -506,7 +507,7 @@ class IngestPipeline:
                         # matching text/chunk lookup is unavailable so skip — caller
                         # must pass full chunk dicts (see _load_existing_chunks fix).
                         continue
-                    chunked_dir = Path("rag2025/data/chunked")
+                    chunked_dir = CHUNKED_DIR
                     for jsonl_path in chunked_dir.glob("*.jsonl"):
                         lines = jsonl_path.read_text(encoding="utf-8").splitlines()
                         updated = []
@@ -573,7 +574,7 @@ class IngestPipeline:
         """Load existing chunks for supersession check. Returns FULL chunk
         dicts (with `chunk_id` and `metadata`) so persistence layer can
         write back to JSONL by chunk_id."""
-        chunked_dir = Path("rag2025/data/chunked")
+        chunked_dir = CHUNKED_DIR
         if not chunked_dir.exists():
             return []
 

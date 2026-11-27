@@ -13,12 +13,11 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from services.temporal_authority import get_current_admission_year
+from src.config.paths import AUDIT_PRE_REINGEST_PATH
 
 
-# Anchor relative paths to the repo root so the endpoint works regardless of CWD.
-# meta.py → routers → src → rag2025 → repo_root
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_DEFAULT_AUDIT_PATH = _REPO_ROOT / "rag2025" / "data" / "audit_pre_reingest.json"
+# Package-layout anchored (src/config/paths.py), so the endpoint ignores CWD.
+_DEFAULT_AUDIT_PATH = AUDIT_PRE_REINGEST_PATH
 
 router = APIRouter(prefix="/api", tags=["meta"])
 

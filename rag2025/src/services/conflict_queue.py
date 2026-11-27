@@ -51,6 +51,7 @@ from src.domain.audit import AuditAction, AuditEvent, TargetKind
 from src.domain.canonical.record import CanonicalRecord, RecordStatus
 from src.infrastructure.audit_ledger import AuditLedger
 from src.infrastructure.canonical_record_store import CanonicalRecordStore
+from src.config.paths import CANONICAL_RECORDS_DIR
 
 __all__ = [
     "ConflictAlreadyResolvedError",
@@ -240,10 +241,7 @@ class ConflictQueueService:
         if seed_report_path is None:
             in_store = Path(store.root) / "seed_report.json"
             seed_report_path = in_store if in_store.is_file() else (
-                Path(__file__).resolve().parents[2]
-                / "data"
-                / "canonical_records"
-                / "seed_report.json"
+                CANONICAL_RECORDS_DIR / "seed_report.json"
             )
         self._seed_report_path = Path(seed_report_path)
         if queue_path is None:

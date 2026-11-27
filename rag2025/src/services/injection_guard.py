@@ -37,6 +37,7 @@ import re
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
+from src.utils.text import fold_diacritics_nfkd
 
 # ---------------------------------------------------------------------------
 # 1. System-information exfiltration refusal (criterion 2)
@@ -47,9 +48,7 @@ from urllib.parse import urlsplit
 def _fold(text: str) -> str:
     if not isinstance(text, str):
         return ""
-    nfkd = unicodedata.normalize("NFKD", text)
-    ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
-    return ascii_only.lower()
+    return fold_diacritics_nfkd(text)
 
 
 # (leak-verb) + (system-object) must co-occur in the SAME query. Matching on

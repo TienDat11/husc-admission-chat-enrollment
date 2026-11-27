@@ -17,6 +17,7 @@ import json
 import re
 from pathlib import Path
 from typing import Iterable, Optional
+from src.config.paths import MAJOR_CODES_DIR
 
 # NOTE: ``services.temporal_authority`` is imported lazily inside get_whitelist()
 # so the test loader (importlib.util.spec_from_file_location) — which does NOT
@@ -96,7 +97,7 @@ _CODE_IN_TEXT_RX = re.compile(r"\b7\d{6}(?:[A-Z]{2})?\b")
 #       to the legacy WHITELIST_2026 frozenset. NEVER raises.
 #     - result is memoized per year for the lifetime of the module.
 
-_MAJOR_CODES_DIR = Path(__file__).resolve().parents[2] / "data" / "major_codes"
+_MAJOR_CODES_DIR = MAJOR_CODES_DIR
 _WHITELIST_CACHE: dict[int, frozenset[str]] = {}
 _LEGACY_DEFAULT_YEAR = 2026
 # Injected by the release reconciler so serving reads the active release's

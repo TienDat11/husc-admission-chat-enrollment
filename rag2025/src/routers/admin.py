@@ -11,6 +11,7 @@ from datetime import date
 from typing import Any, Awaitable, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from starlette.concurrency import run_in_threadpool
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -1103,24 +1104,8 @@ class RecordListResponse(BaseModel):
     total: int
 
 def _fold(text: str) -> str:
-    """Case- and diacritic-folded search key for the ngành filter.
-
-    Deliberately local rather than imported from
-    ``src.services.vietnamese_analyzer``: that module imports its siblings as
-    ``services.*`` (the layout the app runs in), which the ``src.*`` layout the
-    router and its tests use cannot resolve. The rule is that module's rule,
-    ``đ`` included — ``str.lower()`` maps ``Đ`` to ``đ`` first, so the single
-    mapping below covers both cases.
-    """
-    out: list[str] = []
-    for char in unicodedata.normalize("NFD", text.lower()):
-        if char == "đ":
-            out.append("d")
-        elif ord(char) < 128:
-            out.append(char)
-        elif unicodedata.category(char) != "Mn":
-            out.append(char)
-    return "".join(out)
+    """Case- and diacritic-folded search key for the ngành filter (src.utils.text)."""
+    return fold_diacritics(text)
 
 def _nganh_candidates(record: CanonicalRecord) -> tuple[str, ...]:
     """The strings that name the ngành (major) a record is about.
@@ -1151,9 +1136,7 @@ def _matches_nganh(record: CanonicalRecord, query: str) -> bool:
     three it has at hand.
     """
     needle = _fold(query).strip()
-    if not needle:
-        return True
-    return any(needle in _fold(candidate) for candidate in _nganh_candidates(record))
+    return not needle or _matches_folded_nganh(record, needle)
 
 def _latest_versions(store: CanonicalRecordStore) -> list[CanonicalRecord]:
     """Latest version of every record the store holds.
@@ -1174,6 +1157,29 @@ def _latest_versions(store: CanonicalRecordStore) -> list[CanonicalRecord]:
             latest.append(store.get_version(record_id, versions[-1]))
     return latest
 
+def _matches_folded_nganh(record: CanonicalRecord, needle: str) -> bool:
+    """`_matches_nganh` with the query already folded (folded once per request)."""
+    return any(needle in _fold(candidate) for candidate in _nganh_candidates(record))
+
+
+def _filter_records(
+    store: CanonicalRecordStore,
+    year: int | None,
+    status: RecordStatus | None,
+    needle: str,
+) -> list[CanonicalRecord]:
+    """Blocking store read + filter; the handler runs it off the event loop."""
+    matched = [
+        record
+        for record in _latest_versions(store)
+        if (year is None or record.admission_year == year)
+        and (status is None or record.status is status)
+        and (not needle or _matches_folded_nganh(record, needle))
+    ]
+    matched.sort(key=lambda record: (-record.admission_year, record.record_id))
+    return matched
+
+
 @router.get(
     "/records",
     response_model=RecordListResponse,
@@ -1192,6 +1198,10 @@ async def list_records(
     status: RecordStatus | None = Query(
         default=None, description="Trạng thái lifecycle của version mới nhất."
     ),
+    limit: int | None = Query(
+        default=None, ge=1, le=500, description="Số bản ghi tối đa; bỏ trống = tất cả."
+    ),
+    offset: int = Query(default=0, ge=0, description="Bỏ qua N bản ghi đầu."),
 ) -> RecordListResponse:
     """Every stored record's latest version, filtered by ngành / năm / trạng thái.
 
@@ -1200,15 +1210,11 @@ async def list_records(
     lists in the same order on every call.
     """
     store = _lifecycle_service(request).store
-    matched = [
-        record
-        for record in _latest_versions(store)
-        if (year is None or record.admission_year == year)
-        and (status is None or record.status is status)
-        and (nganh is None or _matches_nganh(record, nganh))
-    ]
-    matched.sort(key=lambda record: (-record.admission_year, record.record_id))
-    return RecordListResponse(records=matched, total=len(matched))
+    # Folded once per request; a blank ngành filters nothing.
+    needle = _fold(nganh).strip() if nganh is not None else ""
+    matched = await run_in_threadpool(_filter_records, store, year, status, needle)
+    end = None if limit is None else offset + limit
+    return RecordListResponse(records=matched[offset:end], total=len(matched))
 
 
 
@@ -1483,5 +1489,6 @@ router.include_router(releases_router)
 
 # U8: review + retrieval sandbox + supersession candidates.
 from src.routers.admin_review import router as review_router  # noqa: E402
+from src.utils.text import fold_diacritics
 
 router.include_router(review_router)

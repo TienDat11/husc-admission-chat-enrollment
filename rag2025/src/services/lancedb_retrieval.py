@@ -7,6 +7,7 @@ Includes temporal filtering: auto-prefer newest year, exclude superseded.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import math
 import re
@@ -101,10 +102,25 @@ def _detect_current_admission_year() -> int:
         pass
     # Fallback: use system clock year (admissions happen mid-year)
     now = datetime.now()
-    return now.year if now.month >= 1 else now.year - 1
+    return now.year
 
 
-CURRENT_ADMISSION_YEAR = _detect_current_admission_year()
+@functools.lru_cache(maxsize=1)
+def get_current_admission_year() -> int:
+    """Admission year, detected lazily on first use and cached until invalidated."""
+    return _detect_current_admission_year()
+
+
+def invalidate_admission_year_cache() -> None:
+    """Drop the cached year so the next read re-detects it (called on table swap)."""
+    get_current_admission_year.cache_clear()
+
+
+def __getattr__(name: str) -> Any:
+    # PEP 562: keep the legacy CURRENT_ADMISSION_YEAR symbol readable for importers.
+    if name == "CURRENT_ADMISSION_YEAR":
+        return get_current_admission_year()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 YEAR_BOOST_FACTOR = 1.5       # 50% boost for current-year chunks
 OLD_YEAR_DEMOTE_FACTOR = 0.7  # 30% demote for non-current-year chunks
 # G1-T4 (durability S14.x): match any 4-digit year literal (20\d{2}) so

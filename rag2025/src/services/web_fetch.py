@@ -177,6 +177,12 @@ class _PinnedAdapter(requests.adapters.HTTPAdapter):
     to a re-resolved one.
     """
 
+    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+        # requests' HTTPAdapter has no pool_kwargs in __init__; the TLS
+        # server_hostname/assert_hostname pins are applied when the pool is built.
+        merged = {**self._extra_pool_kw, **pool_kwargs}
+        return super().init_poolmanager(connections, maxsize, block=block, **merged)
+
     def __init__(self, pinned_host: str, pinned_ip: str, scheme: str, **kwargs):
         # Thread SNI + cert assertion into the urllib3 pool so an https
         # connection to the pinned IP still validates the certificate against
@@ -187,7 +193,8 @@ class _PinnedAdapter(requests.adapters.HTTPAdapter):
         if scheme == "https":
             pool_kw["server_hostname"] = pinned_host
             pool_kw["assert_hostname"] = pinned_host
-        super().__init__(**kwargs, pool_kwargs=pool_kw)
+        self._extra_pool_kw = pool_kw
+        super().__init__(**kwargs)
         self._pinned_host = pinned_host
         self._pinned_ip = pinned_ip
         self._scheme = scheme
@@ -341,6 +348,7 @@ def fetch_html(
     cut off at the deadline, not at the per-socket inactivity window.
     """
     deadline = time.monotonic() + _DEADLINE_S
+    owns_session = session is None
     if validate:
         url = validate_public_url(url)
         sess = session or _pinned_session(url)
@@ -382,7 +390,14 @@ def fetch_html(
                     raise WebFetchError(f"too many redirects on {url} (> {max_redirects})")
                 next_url = urljoin(url, location)
                 if validate:
-                    validate_public_url(next_url)
+                    next_url = validate_public_url(next_url)
+                    # A session we built pins each hop to its own validated address:
+                    # the previous hop's adapter would dial the old IP, and a scheme
+                    # change has no pinned adapter mounted. A caller-injected session
+                    # is used as given.
+                    if owns_session:
+                        sess.close()
+                        sess = _pinned_session(next_url)
                 redirects += 1
                 url = next_url
                 continue  # redirect hop: not a failed attempt, no sleep, no retry burn

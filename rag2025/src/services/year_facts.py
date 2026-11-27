@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel
+from src.config.paths import YEAR_FACTS_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -40,7 +41,7 @@ class YearFacts(BaseModel):
 # Module constant — data directory (resolved at import, never created here)
 # ---------------------------------------------------------------------------
 
-_YEAR_FACTS_DIR = Path(__file__).resolve().parents[2] / "data" / "year_facts"
+_YEAR_FACTS_DIR = YEAR_FACTS_DIR
 
 
 # ---------------------------------------------------------------------------

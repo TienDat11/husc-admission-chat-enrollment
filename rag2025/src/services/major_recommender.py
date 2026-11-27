@@ -48,7 +48,9 @@ import sys
 if str(_RAG_ROOT) not in sys.path:
     sys.path.insert(0, str(_RAG_ROOT))
 
-_HISTORY_PATH = _RAG_ROOT / "data" / "major_codes" / "diem_chuan_history.json"
+from src.config.paths import MAJOR_HISTORY_PATH  # noqa: E402
+
+_HISTORY_PATH = MAJOR_HISTORY_PATH
 
 # ---- Cache (mtime → loaded dataset) -----------------------------------------
 _CACHE_MTIME: Optional[float] = None

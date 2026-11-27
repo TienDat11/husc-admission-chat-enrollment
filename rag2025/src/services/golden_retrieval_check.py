@@ -21,8 +21,7 @@ from typing import Any, Mapping, Optional, Sequence
 
 from src.domain.canonical.record import CanonicalRecord
 from src.services.lancedb_retrieval import LanceDBRetriever
-
-_RAG2025_ROOT = Path(__file__).resolve().parents[2]
+from src.config.paths import EVAL_DIR
 
 #: Golden set + heldout questions that carry an expected record set.
 GOLDEN_RECORDS_FILENAME = "husc86q_golden_records.json"
@@ -30,7 +29,7 @@ GOLDEN_RECORDS_FILENAME = "husc86q_golden_records.json"
 
 def golden_set_path() -> Path:
     """The golden records artifact the check runs against."""
-    return _RAG2025_ROOT / "data" / "eval" / GOLDEN_RECORDS_FILENAME
+    return EVAL_DIR / GOLDEN_RECORDS_FILENAME
 
 
 def load_golden_set(path: Optional[Path] = None) -> list[dict]:

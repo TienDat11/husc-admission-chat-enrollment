@@ -22,6 +22,7 @@ from services.injection_guard import (
     render_untrusted_block,
     restrict_to_allowed_corpus,
 )
+from src.config.constants import LLM_READ_TIMEOUT_S
 
 
 
@@ -909,7 +910,7 @@ class LLMGenerator:
                         temperature=0.1,
                         max_tokens=max_tokens,
                     ),
-                    timeout=30.0,
+                    timeout=LLM_READ_TIMEOUT_S,
                 )
                 answer = unified_resp.content.strip()
                 provider = f"{unified_resp.model} ({unified_resp.provider})"

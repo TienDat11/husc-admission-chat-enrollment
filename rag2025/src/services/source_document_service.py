@@ -69,6 +69,7 @@ from src.infrastructure.source_document_registry import (
     SourceDocumentEntry,
     SourceDocumentRegistry,
 )
+from src.utils.text import fold_diacritics
 
 logger = logging.getLogger(__name__)
 
@@ -1306,13 +1307,7 @@ def _xlsx_record_type(row: Mapping[str, object]) -> RecordType:
 
 def _fold_header(text: str) -> str:
     """Lowercase + strip Vietnamese diacritics, so header matching is robust."""
-    decomposed = unicodedata.normalize("NFD", text.lower())
-    stripped = "".join(
-        "d" if char == "đ" else char
-        for char in decomposed
-        if char == "đ" or not unicodedata.combining(char)
-    )
-    return stripped
+    return fold_diacritics(text, use_combining_class=True)
 
 
 def _xlsx_render(name: str, value: object) -> str:

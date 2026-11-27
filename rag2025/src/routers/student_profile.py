@@ -33,12 +33,18 @@ from infrastructure.db import make_session_factory
 from services.admission_roadmap import build_admission_roadmap
 from services.log_redaction import redact_pii
 from services.priority_score import compute_priority
+from src.config.constants import (
+    STUDENT_PROFILE_RATE_LIMIT_PER_MINUTE,
+    STUDENT_PROFILE_RATE_LIMIT_WINDOW_S,
+    TRUSTED_PROXY_COUNT,
+)
+from src.utils.http import client_ip
 
 router = APIRouter(tags=["student-profile"])
 
 _STUDENT_SESSION_HEADER = "X-Student-Session"
-_RATE_LIMIT_PER_MINUTE = 30
-_RATE_LIMIT_WINDOW_S = 60
+_RATE_LIMIT_PER_MINUTE = STUDENT_PROFILE_RATE_LIMIT_PER_MINUTE
+_RATE_LIMIT_WINDOW_S = STUDENT_PROFILE_RATE_LIMIT_WINDOW_S
 _MAX_TARGET_MAJORS = 10
 
 
@@ -88,12 +94,7 @@ from services.rate_limit import FixedWindowLimiter  # noqa: E402
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client and request.client.host:
-        return request.client.host
-    return "unknown"
+    return client_ip(request, TRUSTED_PROXY_COUNT)
 
 
 _student_profile_limiter = FixedWindowLimiter(
